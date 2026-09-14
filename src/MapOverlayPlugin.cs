@@ -15,7 +15,7 @@ namespace MapOverlay
     {
         public const string Guid = "j1ga.mapoverlay";
         public const string Name = "Map Overlay";
-        public const string Version = "0.11.0";
+        public const string Version = "0.12.0";
 
         private const byte MatNone = 255;
         private const byte TerrainNone = 0;
@@ -56,6 +56,7 @@ namespace MapOverlay
         private ConfigEntry<bool> _cfgHiRes;
 
         private ConfigEntry<string> _cfgScanSource;
+        private ConfigEntry<string> _cfgPathSource;
         private ConfigEntry<float> _cfgZdoInterval;
         private ConfigEntry<int> _cfgZdoPerFrame;
         private ConfigEntry<float> _cfgScanRadius;
@@ -159,6 +160,7 @@ namespace MapOverlay
         {
             public bool IsPiece;
             public bool IsTree;
+            public bool IsTerrain;        // the _TerrainCompiler record of a zone
             public byte Mat;
             public Vector3 Min, Max;      // prefab-local AABB of its "piece"-layer colliders
         }
@@ -179,6 +181,18 @@ namespace MapOverlay
         private readonly System.Diagnostics.Stopwatch _sw = new System.Diagnostics.Stopwatch();   // main-thread time of one step
         private double _zdoPassMs, _forestMs;
         private bool _zdoDisabled;
+
+        // paths from the terrain records in the database
+        private readonly List<ZDO> _tcZdos = new List<ZDO>();                          // records seen by the current pass
+        private readonly Dictionary<ZDOID, uint> _tcRevision = new Dictionary<ZDOID, uint>();   // record -> revision last parsed
+        private int _tcCursor = -1;                 // index into _tcZdos, -1 = not parsing
+        private int _tcParsed, _tcSkipped, _tcAdded, _tcRemoved, _tcChanged, _tcErrorCount, _tcPasses;
+        private double _tcMs;
+        private bool _tcDisabled;
+        private bool[] _tcHeightScratch;
+        private byte[] _tcKindScratch;
+        private const int TerrainZonesPerFrame = 4;
+        private const int MaxTcErrors = 10;
         private const int MaxZdoErrors = 10;
 
         // cleared forest: the vanilla mask says woods, the object database says no trees
@@ -344,6 +358,10 @@ namespace MapOverlay
             _cfgZdoInterval = Config.Bind("03 Scanning", "ZdoScanInterval", 5f,
                 new ConfigDescription("Seconds between full passes over the object database.",
                     new AcceptableValueRange<float>(1f, 120f)));
+            _cfgPathSource = Config.Bind("03 Scanning", "PathScanSource", "ZDO",
+                new ConfigDescription(
+                    "Where hoe-painted ground is read from. ZDO reads each zone's terrain record from the object database (the same _TerrainCompiler data the game saves): on the host every modified zone of the world at once, on a client of a dedicated server the zones the server has sent this session. Only records whose revision changed are re-read. Heightmap is the old way: sampling the loaded terrain around you within ScanRadius. ZDO needs BuildingScanSource = ZDO and falls back to Heightmap on its own if the records cannot be read.",
+                    new AcceptableValueList<string>("ZDO", "Heightmap")));
             _cfgZdoPerFrame = Config.Bind("03 Scanning", "ZdoObjectsPerFrame", 4000,
                 new ConfigDescription("Objects examined per frame during a pass. A world of 70 000 objects takes about 18 frames at the default; raise it if you would rather have the map update sooner than smoother.",
                     new AcceptableValueRange<int>(500, 50000)));
@@ -493,7 +511,7 @@ namespace MapOverlay
                 else _nextScanTime = now + 0.25f;
             }
 
-            if (UseZdoScan && (_cfgShowBuildings.Value || _treeCount != null)) StepZdoScan(now, pos);
+            if (UseZdoScan && (_cfgShowBuildings.Value || _treeCount != null || (UseZdoPaths && _cfgShowPaths.Value))) StepZdoScan(now, pos);
 
             if (now >= _nextRefogTime &&
                 (_deferredByFog.Count > 0 || _fogPieces.Count > 0 || _fogTerrain.Count > 0 || _fogForest.Count > 0))
@@ -514,7 +532,8 @@ namespace MapOverlay
                 if ((_rtDirty || adds || _maskDirty) && now >= _nextRtRebuild)
                 {
                     _nextRtRebuild = now + _cfgMapRebuildInterval.Value;
-                    if (_rtDirty || (adds && (!_cfgIncremental.Value || _cfgDebugMarker.Value || _addPieces.Count > MaxIncrementalPieces)))
+                    if (_rtDirty || (adds && (!_cfgIncremental.Value || _cfgDebugMarker.Value ||
+                                              _addPieces.Count > MaxIncrementalPieces || _addTerrain.Count > MaxIncrementalPieces)))
                     {
                         _rtDirty = false;
                         RebuildGpuLayer();
@@ -652,7 +671,7 @@ namespace MapOverlay
                     ? _rt.width + "px on the GPU = " + (_pixelSize / _rtScale).ToString("0.##") + " m/px"
                     : (_ourTex != null ? "CPU " + _texSize + "px" : "off"),
                 UseZdoScan ? "the object database (ZDO)" : "physics",
-                _treeCount != null ? "on" : "off",
+                (_treeCount != null ? "on" : "off") + "; paths via " + (UseZdoPaths ? "terrain records (ZDO)" : "loaded heightmaps"),
                 _worldUid, _pieceCount, _terrain.Count, _clearedForest.Count, _plantedForest.Count));
             return true;
         }
@@ -748,7 +767,7 @@ namespace MapOverlay
         {
             bool changed = false;
             if (_cfgShowBuildings.Value && !UseZdoScan && ScanBuildings(center)) { changed = true; _rtDirty = true; }
-            if (_cfgShowPaths.Value && !_terrainDisabled) changed |= ScanTerrain(center);
+            if (_cfgShowPaths.Value && !_terrainDisabled && !UseZdoPaths) changed |= ScanTerrain(center);
             if (changed) _storeChanged = true;
         }
 
@@ -988,7 +1007,7 @@ namespace MapOverlay
         {
             try
             {
-                if (_zdoCursor < 0 && _forestCursor < 0)
+                if (_zdoCursor < 0 && _forestCursor < 0 && _tcCursor < 0)
                 {
                     if (now < _nextZdoPass) return;
                     if (!BeginZdoPass(pos))
@@ -1010,15 +1029,23 @@ namespace MapOverlay
 
                     if (_zdoCursor >= _zdoSnapshot.Count)
                     {
-                        FinishZdoPass();                    // may queue the forest check as a second phase
-                        if (_forestCursor < 0) _nextZdoPass = now + _cfgZdoInterval.Value;
+                        FinishZdoPass();                    // may queue the forest check and the terrain records as further phases
+                        if (_forestCursor < 0 && _tcCursor < 0) _nextZdoPass = now + _cfgZdoInterval.Value;
                     }
                     return;
                 }
 
                 // second phase: the forest check of the same pass, a few zones per frame
-                StepForestEval();
-                if (_forestCursor < 0) _nextZdoPass = now + _cfgZdoInterval.Value;
+                if (_forestCursor >= 0)
+                {
+                    StepForestEval();
+                    if (_forestCursor < 0 && _tcCursor < 0) _nextZdoPass = now + _cfgZdoInterval.Value;
+                    return;
+                }
+
+                // third phase: terrain records whose revision changed, a few zones per frame
+                StepTerrainRecords();
+                if (_tcCursor < 0) _nextZdoPass = now + _cfgZdoInterval.Value;
             }
             catch (Exception e)
             {
@@ -1061,6 +1088,8 @@ namespace MapOverlay
         {
             _zdoCursor = -1;
             _forestCursor = -1;
+            _tcCursor = -1;
+            _tcZdos.Clear();
             _zdoSnapshot.Clear();
             foreach (KeyValuePair<int, List<PieceRec>> kv in _zdoBuckets) ReturnList(kv.Value);
             _zdoBuckets.Clear();
@@ -1080,6 +1109,11 @@ namespace MapOverlay
             {
                 info = BuildPrefabInfo(hash);
                 _prefabCache[hash] = info;
+            }
+            if (info.IsTerrain)
+            {
+                if (UseZdoPaths && _cfgShowPaths.Value) _tcZdos.Add(zdo);
+                return;
             }
             if (info.IsTree)
             {
@@ -1153,6 +1187,11 @@ namespace MapOverlay
 
             GameObject prefab = ZNetScene.instance.GetPrefab(hash);
             if (prefab == null) return info;
+            if (prefab.GetComponent<TerrainComp>() != null)
+            {
+                info.IsTerrain = true;
+                return info;
+            }
             if (prefab.GetComponent<Piece>() == null)
             {
                 info.IsTree = IsTreePrefab(prefab);
@@ -1340,6 +1379,13 @@ namespace MapOverlay
                 catch (Exception e) { ForestError(e); }
             }
 
+            if (_tcZdos.Count > 0)
+            {
+                _tcCursor = 0;
+                _tcParsed = 0; _tcSkipped = 0; _tcAdded = 0; _tcRemoved = 0; _tcChanged = 0;
+                _tcMs = 0.0;
+            }
+
             _zdoPrevOrigin = _zdoPassOrigin;
             _zdoHavePrevOrigin = true;
             _zdoPasses++;
@@ -1435,6 +1481,167 @@ namespace MapOverlay
         private static int ZoneKey(int zx, int zy)
         {
             return (zx << 16) | (zy & 0xFFFF);
+        }
+
+        // ------------------------------------------------------------------
+        // paths from the terrain records
+        // ------------------------------------------------------------------
+        // Every zone anyone has ever hoed carries a _TerrainCompiler object whose ZDO holds the
+        // whole zone's terrain edits as one compressed blob (ZDOVars.s_TCData): per vertex of
+        // the 65 x 65 grid, whether its height was changed and what paint it got. That is the
+        // same data the loaded heightmap shows, readable without loading the zone, and on the
+        // host it exists for the entire world. The revision counter on the ZDO says whether a
+        // blob changed since it was last read, so a quiet world costs nothing.
+        private bool UseZdoPaths
+        {
+            get
+            {
+                return UseZdoScan && !_tcDisabled &&
+                       string.Equals(_cfgPathSource.Value, "ZDO", StringComparison.OrdinalIgnoreCase);
+            }
+        }
+
+        private void StepTerrainRecords()
+        {
+            if (_tcCursor < 0) return;
+            try
+            {
+                _sw.Restart();
+                int end = Mathf.Min(_tcZdos.Count, _tcCursor + TerrainZonesPerFrame);
+                for (; _tcCursor < end; _tcCursor++)
+                {
+                    ZDO zdo = _tcZdos[_tcCursor];
+                    if (zdo == null || zdo.m_uid.IsNone() || !zdo.IsValid()) continue;
+
+                    uint rev = zdo.DataRevision;
+                    uint seen;
+                    if (_tcRevision.TryGetValue(zdo.m_uid, out seen) && seen == rev) { _tcSkipped++; continue; }
+
+                    byte[] data = zdo.GetByteArray(ZDOVars.s_TCData, null);
+                    if (data == null) { _tcRevision[zdo.m_uid] = rev; continue; }
+
+                    ApplyTerrainRecord(zdo, data);
+                    _tcRevision[zdo.m_uid] = rev;
+                    _tcParsed++;
+                }
+                _tcMs += _sw.Elapsed.TotalMilliseconds;
+
+                if (_tcCursor < _tcZdos.Count) return;
+
+                _tcCursor = -1;
+                _tcZdos.Clear();
+                _tcPasses++;
+                if (_tcAdded + _tcRemoved + _tcChanged > 0) _storeChanged = true;
+                if (_tcPasses == 1 || (_cfgDebug.Value && _tcParsed > 0))
+                    Logger.LogInfo(string.Format(
+                        "Terrain records: {0} zones read, {1} unchanged, cells +{2} -{3} ~{4}, {5} stored, {6:0.0} ms CPU",
+                        _tcParsed, _tcSkipped, _tcAdded, _tcRemoved, _tcChanged, _terrain.Count, _tcMs));
+            }
+            catch (Exception e)
+            {
+                _tcErrorCount++;
+                HandleError("terrain records", e);
+                if (_tcErrorCount >= MaxTcErrors && !_tcDisabled)
+                {
+                    _tcDisabled = true;
+                    Logger.LogWarning("Reading the terrain records failed too often; paths are sampled from the loaded heightmaps for the rest of this session.");
+                }
+                _tcCursor = -1;
+                _tcZdos.Clear();
+            }
+        }
+
+        // Replaces this zone's cells with what the record says. The record is authoritative for
+        // its zone, so cells it does not paint are removed, and every cell is sampled at the
+        // vertex the heightmap scan would have read, so the two sources agree to the metre.
+        private void ApplyTerrainRecord(ZDO zdo, byte[] compressed)
+        {
+            ZPackage pkg = new ZPackage(Utils.Decompress(compressed));
+            pkg.ReadInt();          // format version
+            pkg.ReadInt();          // operation count
+            pkg.ReadVector3();      // last operation point
+            pkg.ReadSingle();       // last operation radius
+
+            int heightCount = pkg.ReadInt();
+            int pitch = Mathf.RoundToInt(Mathf.Sqrt(heightCount));
+            if (pitch < 2 || pitch * pitch != heightCount) throw new InvalidOperationException("terrain record with " + heightCount + " height entries");
+
+            if (_tcHeightScratch == null || _tcHeightScratch.Length < heightCount) _tcHeightScratch = new bool[heightCount];
+            bool[] modifiedHeight = _tcHeightScratch;
+            for (int i = 0; i < heightCount; i++)
+            {
+                modifiedHeight[i] = pkg.ReadBool();
+                if (modifiedHeight[i]) { pkg.ReadSingle(); pkg.ReadSingle(); }   // level and smooth deltas
+            }
+
+            int paintCount = pkg.ReadInt();
+            int paintPitch = Mathf.RoundToInt(Mathf.Sqrt(paintCount));
+            if (paintPitch < 2 || paintPitch * paintPitch != paintCount) throw new InvalidOperationException("terrain record with " + paintCount + " paint entries");
+
+            if (_tcKindScratch == null || _tcKindScratch.Length < paintCount) _tcKindScratch = new byte[paintCount];
+            byte[] kinds = _tcKindScratch;
+            bool showCleared = _cfgShowCleared.Value;
+            for (int i = 0; i < paintCount; i++)
+            {
+                bool levelled = showCleared && paintPitch == pitch && modifiedHeight[i];
+                if (!pkg.ReadBool())
+                {
+                    kinds[i] = levelled ? TerrainCleared : TerrainNone;
+                    continue;
+                }
+                float r = pkg.ReadSingle(), g = pkg.ReadSingle(), b = pkg.ReadSingle(), a = pkg.ReadSingle();
+                // PaintType in the game is { Dirt = red, Cultivate = green, Paved = blue }
+                byte kind = TerrainNone;
+                if (b > 0.5f) kind = TerrainPaved;
+                else if (r > 0.5f) kind = TerrainDirt;
+                else if (g > 0.5f) kind = TerrainCultivated;
+                else if (showCleared && (a < 0.5f || levelled)) kind = TerrainCleared;
+                kinds[i] = kind;
+            }
+
+            // Heightmap.WorldToVertexMask: vertex = floor((world - zoneCentre) / scale + 0.5 + (width + 1) / 2);
+            // the heightmap scan queries the mask at (cell centre - 0.5), and so does this
+            float zoneSize = ZoneSystem.instance != null ? ZoneSystem.instance.m_zoneSize : 64f;
+            Vector3 c = ZoneSystem.GetZonePos(ZoneSystem.GetZone(zdo.GetPosition()));
+            float scale = zoneSize / (paintPitch - 1);
+            int halfMask = paintPitch / 2;
+            float zh = zoneSize * 0.5f;
+
+            float grid = Mathf.Max(0.5f, _cfgTerrainGrid.Value);
+            int gx0 = Mathf.FloorToInt((c.x - zh) / grid), gx1 = Mathf.CeilToInt((c.x + zh) / grid);
+            int gz0 = Mathf.FloorToInt((c.z - zh) / grid), gz1 = Mathf.CeilToInt((c.z + zh) / grid);
+
+            for (int gz = gz0; gz <= gz1; gz++)
+            {
+                int lz = Mathf.FloorToInt(((gz + 0.5f) * grid - 0.5f - c.z) / scale + 0.5f + halfMask);
+                if (lz < 0 || lz >= paintPitch) continue;
+                for (int gx = gx0; gx <= gx1; gx++)
+                {
+                    int lx = Mathf.FloorToInt(((gx + 0.5f) * grid - 0.5f - c.x) / scale + 0.5f + halfMask);
+                    if (lx < 0 || lx >= paintPitch) continue;
+
+                    byte kind = kinds[lz * paintPitch + lx];
+                    long key = ((long)gx << 32) | (uint)gz;
+                    byte cur;
+                    bool had = _terrain.TryGetValue(key, out cur);
+
+                    if (kind == TerrainNone)
+                    {
+                        if (had) { _terrain.Remove(key); _rtDirty = true; _tcRemoved++; MarkPixelDirty((gx + 0.5f) * grid, (gz + 0.5f) * grid); }
+                        continue;
+                    }
+                    if (had && cur == kind) continue;
+                    if (!had && _terrain.Count >= _cfgMaxTerrain.Value)
+                    {
+                        LogOnce("terraincap", "Reached MaxTerrainCells (" + _cfgMaxTerrain.Value + ").");
+                        continue;
+                    }
+                    _terrain[key] = kind;
+                    if (had) { _rtDirty = true; _tcChanged++; }
+                    else { _addTerrain.Add(key); _tcAdded++; }
+                    MarkPixelDirty((gx + 0.5f) * grid, (gz + 0.5f) * grid);
+                }
+            }
         }
 
         private void ForestError(Exception e)
