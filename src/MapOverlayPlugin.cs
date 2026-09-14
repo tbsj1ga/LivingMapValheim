@@ -15,7 +15,7 @@ namespace MapOverlay
     {
         public const string Guid = "j1ga.mapoverlay";
         public const string Name = "Map Overlay";
-        public const string Version = "0.9.0";
+        public const string Version = "0.10.0";
 
         private const byte MatNone = 255;
         private const byte TerrainNone = 0;
@@ -87,6 +87,8 @@ namespace MapOverlay
         private ConfigEntry<Color> _cfgDirtColor;
         private ConfigEntry<Color> _cfgClearedColor;
         private ConfigEntry<bool> _cfgShowCleared;
+        private ConfigEntry<bool> _cfgShowForest;
+        private ConfigEntry<float> _cfgForestRadius;
 
         private static readonly string[] MatNames =
         {
@@ -139,6 +141,7 @@ namespace MapOverlay
         private struct PrefabInfo
         {
             public bool IsPiece;
+            public bool IsTree;
             public byte Mat;
             public Vector3 Min, Max;      // prefab-local AABB of its "piece"-layer colliders
         }
@@ -158,6 +161,27 @@ namespace MapOverlay
         private int _zdoPasses, _zdoPassFrames, _zdoErrorCount;
         private bool _zdoDisabled;
         private const int MaxZdoErrors = 10;
+
+        // cleared forest: the vanilla mask says woods, the object database says no trees
+        private FieldInfo _fiGeneratedZones;
+        private BitArray _forestMask;              // vanilla forest pixels, read once from _MaskTex
+        private BitArray _pixelTrusted;            // pixels whose zone we hold complete tree data for
+        private BitArray _treePixels;              // vanilla map pixels holding a tree, rebuilt every ZDO pass
+        private readonly HashSet<int> _clearedForest = new HashSet<int>();
+        private readonly HashSet<int> _trustedZones = new HashSet<int>();      // client: zones synced this session
+        private readonly List<int> _trustedZoneScratch = new List<int>();
+        private readonly HashSet<int> _stubHashes = new HashSet<int>();
+        private bool _stubsCollected;
+        private bool _forestDisabled;
+        private int _forestCursor = -1;            // index into _trustedZoneScratch, -1 = not evaluating
+        private bool _forestChanged;
+        private int _forestAdded, _forestRemoved;
+        private const int ForestZonesPerFrame = 150;
+        private bool _zdoPassPieces;
+        private RenderTexture _rtMask;
+        private Material _glMatMask;
+        private Texture2D _vanillaMask;
+        private Texture _origSmallMask, _origLargeMask;
 
         private Vector3 _lastScanPos;
         private float _nextScanTime, _lastScanTime, _nextFlushTime, _nextSaveTime, _nextRefogTime, _nextHiResTime;
@@ -212,6 +236,12 @@ namespace MapOverlay
                 else
                     Logger.LogWarning("ZDOMan.m_objectsByID was not found or has an unexpected type; build pieces will be scanned through physics instead.");
 
+                FieldInfo fiZones = typeof(ZoneSystem).GetField("m_generatedZones", BindingFlags.Instance | BindingFlags.NonPublic | BindingFlags.Public);
+                if (fiZones != null && typeof(HashSet<Vector2s>).IsAssignableFrom(fiZones.FieldType))
+                    _fiGeneratedZones = fiZones;
+                else
+                    Logger.LogWarning("ZoneSystem.m_generatedZones was not found; the cleared-forest layer will only cover zones you have visited this session, even on the host.");
+
                 _fiExplored = typeof(Minimap).GetField("m_explored", BindingFlags.Instance | BindingFlags.NonPublic | BindingFlags.Public);
                 _fiExploredOthers = typeof(Minimap).GetField("m_exploredOthers", BindingFlags.Instance | BindingFlags.NonPublic | BindingFlags.Public);
 
@@ -248,6 +278,11 @@ namespace MapOverlay
                 "Show ground painted with the hoe: dirt paths, cultivated soil and paving.");
             _cfgShowCleared = Config.Bind("02 Layers", "ShowClearedGround", false,
                 "Also mark ground that was merely levelled or raised, with no paint applied. This covers everything you have terraformed, so it paints wide areas.");
+            _cfgShowForest = Config.Bind("02 Layers", "ShowClearedForest", true,
+                "Erase the map's forest pattern where the trees are gone. The vanilla forest layer comes from the world generator and never changes, so a clear-cut around your base still shows as woods; this compares it with the trees that actually exist in the object database. On the host every generated zone is checked; on a client of a dedicated server only zones you have been near this session, remembered between sessions. Clearings the game itself makes around locations show up too. Needs the GPU map layer and the ZDO scan source. Takes effect after re-entering the world.");
+            _cfgForestRadius = Config.Bind("03 Scanning", "ClearedForestRadius", 24f,
+                new ConfigDescription("Metres around a map pixel that must hold no tree at all for the pixel to count as cleared forest. Larger ignores natural gaps between trees, smaller follows the edge of a clearing more closely.",
+                    new AcceptableValueRange<float>(6f, 96f)));
             _cfgRespectFog = Config.Bind("02 Layers", "RespectFog", true, "Only draw on explored ground.");
             _cfgPaintMapTexture = Config.Bind("02 Layers", "PaintMapTexture", true,
                 "Draw straight into the map texture, so the result IS the map: it pans, zooms, fogs and layers under every marker exactly like vanilla, on both the big map and the minimap.");
@@ -397,7 +432,8 @@ namespace MapOverlay
             if (Player.m_localPlayer == null) return;
 
             bool mapLayerMissing = _cfgPaintMapTexture.Value && _ourTex == null && _rt == null;
-            if (!_ready || _mm != mm || mapLayerMissing || mm.m_mapTexture == null ||
+            bool forestToggled = _rt != null && ForestWanted != (_rtMask != null);
+            if (!_ready || _mm != mm || mapLayerMissing || forestToggled || mm.m_mapTexture == null ||
                 _texSize != mm.m_textureSize || _vanillaTex != mm.m_mapTexture)
             {
                 if (!Setup(mm)) return;
@@ -420,7 +456,7 @@ namespace MapOverlay
                 else _nextScanTime = now + 0.25f;
             }
 
-            if (_cfgShowBuildings.Value && UseZdoScan) StepZdoScan(now, pos);
+            if (UseZdoScan && (_cfgShowBuildings.Value || _treePixels != null)) StepZdoScan(now, pos);
 
             if (_deferredByFog.Count > 0 && now >= _nextRefogTime)
             {
@@ -501,6 +537,7 @@ namespace MapOverlay
             ResetZdoPass();
             _zdoHavePrevOrigin = false;
             _nextZdoPass = 0f;
+            InitForestLayer();
 
             if (_cfgPaintMapTexture.Value)
             {
@@ -519,11 +556,14 @@ namespace MapOverlay
                 if (gpu)
                 {
                     ApplyTextureToMap(_rt, true);
+                    if (_rtMask != null) ApplyMaskToMap(_rtMask, true);
+                    else DropForestData();
                     _rtDirty = true;
                     _nextRtRebuild = 0f;
                 }
                 else
                 {
+                    DropForestData();
                     // fall back to painting pixels on the CPU at vanilla resolution
                     Color32[] baseColors;
                     try { baseColors = vanilla.GetPixels32(); }
@@ -550,13 +590,14 @@ namespace MapOverlay
             _ready = true;
 
             Logger.LogInfo(string.Format(
-                "Attached to map: vanilla {0}px at {1} m/px; map layer {2}; buildings via {3}; world={4}, restored pieces={5}, terrain cells={6}",
+                "Attached to map: vanilla {0}px at {1} m/px; map layer {2}; buildings via {3}; cleared forest {4}; world={5}, restored pieces={6}, terrain cells={7}, cleared-forest pixels={8}",
                 _texSize, _pixelSize.ToString("0.##"),
                 _rt != null
                     ? _rt.width + "px on the GPU = " + (_pixelSize / _rtScale).ToString("0.##") + " m/px"
                     : (_ourTex != null ? "CPU " + _texSize + "px" : "off"),
                 UseZdoScan ? "the object database (ZDO)" : "physics",
-                _worldUid, _pieceCount, _terrain.Count));
+                _treePixels != null ? "on" : "off",
+                _worldUid, _pieceCount, _terrain.Count, _clearedForest.Count));
             return true;
         }
 
@@ -578,6 +619,8 @@ namespace MapOverlay
             }
 
             _mm = null; _vanillaTex = null; _origSmallTex = null; _origLargeTex = null;
+            _vanillaMask = null; _origSmallMask = null; _origLargeMask = null;
+            DropForestData(); _clearedForest.Clear(); _trustedZones.Clear();
             _colliderBuf = null; _texSize = 0; _pixelSize = 0f; _ready = false;
 
             _pieces.Clear(); _terrain.Clear(); _pieceCount = 0;
@@ -606,13 +649,34 @@ namespace MapOverlay
             }
         }
 
+        private void ApplyMaskToMap(Texture tex, bool rememberOriginals)
+        {
+            if (_mm == null) return;
+            if (_mm.m_mapImageSmall != null && _mm.m_mapImageSmall.material != null)
+            {
+                if (rememberOriginals) _origSmallMask = _mm.m_mapImageSmall.material.GetTexture("_MaskTex");
+                _mm.m_mapImageSmall.material.SetTexture("_MaskTex", tex);
+            }
+            if (_mm.m_mapImageLarge != null && _mm.m_mapImageLarge.material != null)
+            {
+                if (rememberOriginals) _origLargeMask = _mm.m_mapImageLarge.material.GetTexture("_MaskTex");
+                _mm.m_mapImageLarge.material.SetTexture("_MaskTex", tex);
+            }
+        }
+
         private void RestoreOriginalTextures()
         {
             if (_mm == null) return;
             if (_mm.m_mapImageSmall != null && _mm.m_mapImageSmall.material != null)
+            {
                 _mm.m_mapImageSmall.material.SetTexture("_MainTex", _origSmallTex != null ? _origSmallTex : _vanillaTex);
+                if (_origSmallMask != null) _mm.m_mapImageSmall.material.SetTexture("_MaskTex", _origSmallMask);
+            }
             if (_mm.m_mapImageLarge != null && _mm.m_mapImageLarge.material != null)
+            {
                 _mm.m_mapImageLarge.material.SetTexture("_MainTex", _origLargeTex != null ? _origLargeTex : _vanillaTex);
+                if (_origLargeMask != null) _mm.m_mapImageLarge.material.SetTexture("_MaskTex", _origLargeMask);
+            }
             if (_mm.m_smallRoot != null && _mm.m_smallRoot.activeSelf)
             {
                 _mm.m_smallRoot.SetActive(false);
@@ -863,7 +927,7 @@ namespace MapOverlay
         {
             try
             {
-                if (_zdoCursor < 0)
+                if (_zdoCursor < 0 && _forestCursor < 0)
                 {
                     if (now < _nextZdoPass) return;
                     if (!BeginZdoPass(pos))
@@ -873,15 +937,23 @@ namespace MapOverlay
                     }
                 }
 
-                int end = Mathf.Min(_zdoSnapshot.Count, _zdoCursor + Mathf.Clamp(_cfgZdoPerFrame.Value, 500, 50000));
-                for (; _zdoCursor < end; _zdoCursor++) ExamineZdo(_zdoSnapshot[_zdoCursor]);
-                _zdoPassFrames++;
-
-                if (_zdoCursor >= _zdoSnapshot.Count)
+                if (_zdoCursor >= 0)
                 {
-                    FinishZdoPass();
-                    _nextZdoPass = now + _cfgZdoInterval.Value;
+                    int end = Mathf.Min(_zdoSnapshot.Count, _zdoCursor + Mathf.Clamp(_cfgZdoPerFrame.Value, 500, 50000));
+                    for (; _zdoCursor < end; _zdoCursor++) ExamineZdo(_zdoSnapshot[_zdoCursor]);
+                    _zdoPassFrames++;
+
+                    if (_zdoCursor >= _zdoSnapshot.Count)
+                    {
+                        FinishZdoPass();                    // may queue the forest check as a second phase
+                        if (_forestCursor < 0) _nextZdoPass = now + _cfgZdoInterval.Value;
+                    }
+                    return;
                 }
+
+                // second phase: the forest check of the same pass, a few zones per frame
+                StepForestEval();
+                if (_forestCursor < 0) _nextZdoPass = now + _cfgZdoInterval.Value;
             }
             catch (Exception e)
             {
@@ -905,9 +977,16 @@ namespace MapOverlay
             if (_zdoSnapshot.Capacity < all.Count) _zdoSnapshot.Capacity = all.Count;
             foreach (ZDO zdo in all.Values) _zdoSnapshot.Add(zdo);
 
+            if (_treePixels != null)
+            {
+                _treePixels.SetAll(false);
+                if (!_stubsCollected) CollectStubHashes();
+            }
+
             _zdoCursor = 0;
             _zdoPassFrames = 0;
             _zdoPassOrigin = pos;
+            _zdoPassPieces = _cfgShowBuildings.Value;
             _zdoAuthoritative = ZNet.instance.IsServer();
             return true;
         }
@@ -915,6 +994,7 @@ namespace MapOverlay
         private void ResetZdoPass()
         {
             _zdoCursor = -1;
+            _forestCursor = -1;
             _zdoSnapshot.Clear();
             foreach (KeyValuePair<int, List<PieceRec>> kv in _zdoBuckets) ReturnList(kv.Value);
             _zdoBuckets.Clear();
@@ -935,7 +1015,13 @@ namespace MapOverlay
                 info = BuildPrefabInfo(hash);
                 _prefabCache[hash] = info;
             }
-            if (!info.IsPiece) return;
+            if (info.IsTree)
+            {
+                int tidx;
+                if (_treePixels != null && WorldToIndex(zdo.GetPosition(), out tidx)) _treePixels[tidx] = true;
+                return;
+            }
+            if (!info.IsPiece || !_zdoPassPieces) return;
 
             Vector3 p = zdo.GetPosition();
             Quaternion q = zdo.GetRotation();
@@ -991,7 +1077,12 @@ namespace MapOverlay
             info.Mat = MatNone;
 
             GameObject prefab = ZNetScene.instance.GetPrefab(hash);
-            if (prefab == null || prefab.GetComponent<Piece>() == null) return info;
+            if (prefab == null) return info;
+            if (prefab.GetComponent<Piece>() == null)
+            {
+                info.IsTree = IsTreePrefab(prefab, hash);
+                return info;
+            }
 
             WearNTear wnt = prefab.GetComponent<WearNTear>();
             if (wnt != null)
@@ -1093,8 +1184,8 @@ namespace MapOverlay
             //    gone for real. On a client the server only keeps us current inside the active
             //    area, and even there the sync takes a moment after arriving, so a pixel has to
             //    have been inside it at the start of this pass AND the previous one.
-            bool trustNear = _zdoAuthoritative ||
-                             (_zdoHavePrevOrigin && ZoneSystem.instance != null && ZoneSystem.instance.IsActiveAreaLoaded());
+            bool trustNear = _zdoPassPieces && (_zdoAuthoritative ||
+                             (_zdoHavePrevOrigin && ZoneSystem.instance != null && ZoneSystem.instance.IsActiveAreaLoaded()));
             if (trustNear)
             {
                 float half = _texSize * 0.5f;
@@ -1157,6 +1248,14 @@ namespace MapOverlay
             _zdoBuckets.Clear();       // its lists now live in _pieces or went back to the pool
             _zdoSnapshot.Clear();
             _zdoCursor = -1;
+
+            int forestZones = 0;
+            if (_treePixels != null)
+            {
+                try { forestZones = BeginForestEval(); }
+                catch (Exception e) { ForestError(e); }
+            }
+
             _zdoPrevOrigin = _zdoPassOrigin;
             _zdoHavePrevOrigin = true;
             _zdoPasses++;
@@ -1165,10 +1264,254 @@ namespace MapOverlay
 
             if (_zdoPasses == 1 || (_cfgDebug.Value && changed))
                 Logger.LogInfo(string.Format(
-                    "ZDO scan: {0} build pieces in {1} map pixels, {2}; {3} pixels updated, {4} cleared, {5} frames",
+                    "ZDO scan: {0} build pieces in {1} map pixels, {2}; {3} pixels updated, {4} cleared; forest check queued for {5} zones; {6} frames",
                     fresh, seenPixels,
                     _zdoAuthoritative ? "host, the whole world" : "client, what the server has sent",
-                    replaced, removed, _zdoPassFrames));
+                    replaced, removed, forestZones, _zdoPassFrames));
+        }
+
+        // ------------------------------------------------------------------
+        // cleared forest
+        // ------------------------------------------------------------------
+        // The vanilla forest layer is a static mask from the world generator (red channel of
+        // _MaskTex: Meadows and Plains by forest factor, the whole Black Forest). Trees are
+        // persistent ZDOs placed once when a zone is generated, and chopping one destroys its
+        // ZDO, so "forest on the mask but no tree ZDO anywhere near" means the woods are gone.
+        // That verdict is only safe where we hold complete tree data: every generated zone on
+        // the host, and on a client the zones that sat inside the active area for two passes.
+        private bool ForestWanted
+        {
+            get { return _cfgShowForest.Value && !_forestDisabled && UseZdoScan; }
+        }
+
+        private void InitForestLayer()
+        {
+            DropForestData();
+            if (_mm == null || !ForestWanted)
+            {
+                if (_cfgShowForest.Value && !_forestDisabled && !UseZdoScan)
+                    LogOnce("forestzdo", "The cleared-forest layer needs BuildingScanSource = ZDO and is off.");
+                return;
+            }
+
+            try
+            {
+                Texture2D mask = null;
+                if (_mm.m_mapImageLarge != null && _mm.m_mapImageLarge.material != null)
+                    mask = _mm.m_mapImageLarge.material.GetTexture("_MaskTex") as Texture2D;
+                if (mask == null || mask.width != _texSize || mask.height != _texSize)
+                {
+                    _forestDisabled = true;
+                    Logger.LogWarning("The map's forest mask is missing or has an unexpected size; the cleared-forest layer is off.");
+                    return;
+                }
+
+                // one 16 MB read, kept as 512 KB of bits (three such bit sets in all)
+                Color32[] px = mask.GetPixels32();
+                BitArray bits = new BitArray(px.Length);
+                int forest = 0;
+                for (int i = 0; i < px.Length; i++)
+                    if (px[i].r > 127) { bits[i] = true; forest++; }
+
+                _vanillaMask = mask;
+                _forestMask = bits;
+                _pixelTrusted = new BitArray(px.Length);
+                _treePixels = new BitArray(px.Length);
+                if (_cfgDebug.Value) Logger.LogInfo("Forest mask read: " + forest + " forest pixels.");
+            }
+            catch (Exception e)
+            {
+                _forestDisabled = true;
+                DropForestData();
+                HandleError("forest mask", e);
+                Logger.LogWarning("Could not read the map's forest mask; the cleared-forest layer is off.");
+            }
+        }
+
+        private void DropForestData()
+        {
+            _forestMask = null;
+            _pixelTrusted = null;
+            _treePixels = null;
+            _trustedZoneScratch.Clear();
+            _forestCursor = -1;
+        }
+
+        private void CollectStubHashes()
+        {
+            _stubsCollected = true;
+            ZNetScene zs = ZNetScene.instance;
+            if (zs == null || zs.m_prefabs == null) return;
+            // a stump is whatever a tree leaves behind; it is a Destructible of the Tree kind
+            // like a young tree, so the only reliable tell is the tree prefab pointing at it
+            for (int i = 0; i < zs.m_prefabs.Count; i++)
+            {
+                GameObject go = zs.m_prefabs[i];
+                if (go == null) continue;
+                TreeBase tb = go.GetComponent<TreeBase>();
+                if (tb != null && tb.m_stubPrefab != null) _stubHashes.Add(zs.GetPrefabHash(tb.m_stubPrefab));
+            }
+            if (_cfgDebug.Value) Logger.LogInfo("Tree stumps: " + _stubHashes.Count + " prefabs.");
+        }
+
+        private bool IsTreePrefab(GameObject prefab, int hash)
+        {
+            if (prefab.GetComponent<TreeBase>() != null) return true;
+            if (_stubHashes.Contains(hash)) return false;
+            if (prefab.GetComponent<TreeLog>() != null) return false;
+            Destructible d = prefab.GetComponent<Destructible>();
+            return d != null && (d.m_destructibleType & DestructibleType.Tree) != 0;
+        }
+
+        private static int ZoneKey(int zx, int zy)
+        {
+            return (zx << 16) | (zy & 0xFFFF);
+        }
+
+        private void ForestError(Exception e)
+        {
+            HandleError("cleared forest", e);
+            DropForestData();
+            _forestDisabled = true;
+            Logger.LogWarning("The cleared-forest layer failed and is off for this session. Buildings and paths keep working.");
+        }
+
+        // Returns the number of zones queued for evaluation; StepForestEval works through them.
+        private int BeginForestEval()
+        {
+            _forestCursor = -1;
+            _forestChanged = false;
+            _forestAdded = 0;
+            _forestRemoved = 0;
+            _pixelTrusted.SetAll(false);
+            _trustedZoneScratch.Clear();
+
+            // 1. zones with complete tree data
+            HashSet<Vector2s> generated = null;
+            if (_zdoAuthoritative && _fiGeneratedZones != null && ZoneSystem.instance != null)
+                generated = _fiGeneratedZones.GetValue(ZoneSystem.instance) as HashSet<Vector2s>;
+
+            if (generated != null)
+            {
+                foreach (Vector2s z in generated) _trustedZoneScratch.Add(ZoneKey(z.x, z.y));
+            }
+            else
+            {
+                // synced once, synced for the session: persistent objects are never dropped
+                if (_zdoHavePrevOrigin)
+                {
+                    Vector2s c = ZoneSystem.GetZone(_zdoPassOrigin);
+                    for (int dy = -4; dy <= 4; dy++)
+                    {
+                        for (int dx = -4; dx <= 4; dx++)
+                        {
+                            Vector2s z = new Vector2s(c.x + dx, c.y + dy);
+                            Vector3 zc = ZoneSystem.GetZonePos(z);
+                            if (ZNetScene.InActiveArea(zc, _zdoPassOrigin) && ZNetScene.InActiveArea(zc, _zdoPrevOrigin))
+                                _trustedZones.Add(ZoneKey(z.x, z.y));
+                        }
+                    }
+                }
+                foreach (int key in _trustedZones) _trustedZoneScratch.Add(key);
+            }
+
+            int zones = _trustedZoneScratch.Count;
+            if (zones == 0) return 0;
+
+            float half = _texSize * 0.5f;
+            for (int i = 0; i < zones; i++)
+            {
+                int px0, py0, px1, py1;
+                ZonePixelRange(_trustedZoneScratch[i], half, out px0, out py0, out px1, out py1);
+                for (int py = py0; py <= py1; py++)
+                    for (int px = px0; px <= px1; px++)
+                        _pixelTrusted[py * _texSize + px] = true;
+            }
+
+            _forestCursor = 0;
+            return zones;
+        }
+
+        // 2. every forest pixel of a trusted zone: cleared when the whole window around it is
+        //    trusted and holds no tree. A few zones per frame: a host with thousands of
+        //    generated zones would otherwise spend tens of milliseconds here every pass.
+        private void StepForestEval()
+        {
+            if (_forestCursor < 0) return;
+            if (_pixelTrusted == null || _treePixels == null || _forestMask == null)
+            {
+                _forestCursor = -1;
+                return;
+            }
+
+            try
+            {
+                float half = _texSize * 0.5f;
+                int r = Mathf.Max(1, Mathf.CeilToInt(_cfgForestRadius.Value / _pixelSize));
+                int end = Mathf.Min(_trustedZoneScratch.Count, _forestCursor + ForestZonesPerFrame);
+                for (; _forestCursor < end; _forestCursor++)
+                    EvalForestZone(_trustedZoneScratch[_forestCursor], half, r);
+
+                if (_forestCursor < _trustedZoneScratch.Count) return;
+
+                _forestCursor = -1;
+                if (_forestChanged)
+                {
+                    _storeChanged = true;
+                    _rtDirty = true;
+                    if (_cfgDebug.Value)
+                        Logger.LogInfo(string.Format("Cleared forest: {0} pixels (+{1}, -{2}) over {3} zones",
+                            _clearedForest.Count, _forestAdded, _forestRemoved, _trustedZoneScratch.Count));
+                }
+            }
+            catch (Exception e)
+            {
+                ForestError(e);
+            }
+        }
+
+        private void EvalForestZone(int key, float half, int r)
+        {
+            int px0, py0, px1, py1;
+            ZonePixelRange(key, half, out px0, out py0, out px1, out py1);
+            for (int py = py0; py <= py1; py++)
+            {
+                for (int px = px0; px <= px1; px++)
+                {
+                    int idx = py * _texSize + px;
+                    bool cleared = false;
+                    if (_forestMask[idx])
+                    {
+                        cleared = true;
+                        for (int wy = py - r; wy <= py + r && cleared; wy++)
+                        {
+                            if (wy < 0 || wy >= _texSize) { cleared = false; break; }
+                            int row = wy * _texSize;
+                            for (int wx = px - r; wx <= px + r; wx++)
+                            {
+                                if (wx < 0 || wx >= _texSize || !_pixelTrusted[row + wx] || _treePixels[row + wx])
+                                {
+                                    cleared = false;
+                                    break;
+                                }
+                            }
+                        }
+                    }
+                    if (cleared) { if (_clearedForest.Add(idx)) { _forestChanged = true; _forestAdded++; } }
+                    else if (_clearedForest.Remove(idx)) { _forestChanged = true; _forestRemoved++; }
+                }
+            }
+        }
+
+        private void ZonePixelRange(int key, float half, out int px0, out int py0, out int px1, out int py1)
+        {
+            // pixels whose centre lies inside the 64 m zone square
+            Vector3 c = ZoneSystem.GetZonePos(new Vector2s((short)(key >> 16), (short)(key & 0xFFFF)));
+            const float zh = 32f; // ZoneSystem.c_ZoneSizeHalf
+            px0 = Mathf.Clamp(Mathf.CeilToInt((c.x - zh) / _pixelSize + half), 0, _texSize - 1);
+            px1 = Mathf.Clamp(Mathf.CeilToInt((c.x + zh) / _pixelSize + half) - 1, 0, _texSize - 1);
+            py0 = Mathf.Clamp(Mathf.CeilToInt((c.z - zh) / _pixelSize + half), 0, _texSize - 1);
+            py1 = Mathf.Clamp(Mathf.CeilToInt((c.z + zh) / _pixelSize + half) - 1, 0, _texSize - 1);
         }
 
         private List<PieceRec> RentList()
@@ -1446,6 +1789,49 @@ namespace MapOverlay
 
             _rtScale = scale;
             _rtRebuilds = 0;
+
+            // The forest pattern is drawn by the map shader from _MaskTex, so cleared woods have
+            // to be erased in a copy of that mask. Vanilla size is enough: the detection works
+            // per vanilla pixel anyway, and it saves another large texture.
+            if (_forestMask != null)
+            {
+                try
+                {
+                    RenderTexture mask = new RenderTexture(_texSize, _texSize, 0, RenderTextureFormat.ARGB32);
+                    mask.name = "MapOverlay_ForestMask";
+                    mask.useMipMap = false;
+                    mask.autoGenerateMips = false;
+                    mask.filterMode = _vanillaMask.filterMode;
+                    mask.wrapMode = _vanillaMask.wrapMode;
+                    if (mask.Create())
+                    {
+                        _rtMask = mask;
+                        _glMatMask = new Material(sh);
+                        _glMatMask.hideFlags = HideFlags.HideAndDontSave;
+                        // multiply: the quad colour scales each channel, so (0,1,1,1) wipes red only
+                        _glMatMask.SetInt("_SrcBlend", (int)UnityEngine.Rendering.BlendMode.DstColor);
+                        _glMatMask.SetInt("_DstBlend", (int)UnityEngine.Rendering.BlendMode.Zero);
+                        _glMatMask.SetInt("_Cull", (int)UnityEngine.Rendering.CullMode.Off);
+                        _glMatMask.SetInt("_ZWrite", 0);
+                        _glMatMask.SetInt("_ZTest", (int)UnityEngine.Rendering.CompareFunction.Always);
+                    }
+                    else
+                    {
+                        try { UnityEngine.Object.Destroy(mask); } catch { }
+                    }
+                }
+                catch (Exception e)
+                {
+                    HandleError("forest mask texture", e);
+                    _rtMask = null;
+                }
+                if (_rtMask == null)
+                {
+                    _forestDisabled = true;
+                    Logger.LogWarning("The card refused the forest mask texture; the cleared-forest layer is off for this session.");
+                }
+            }
+
             RebuildGpuLayer();
             return true;
         }
@@ -1461,6 +1847,16 @@ namespace MapOverlay
             {
                 try { UnityEngine.Object.Destroy(_glMat); } catch { }
                 _glMat = null;
+            }
+            if (_rtMask != null)
+            {
+                try { _rtMask.Release(); UnityEngine.Object.Destroy(_rtMask); } catch { }
+                _rtMask = null;
+            }
+            if (_glMatMask != null)
+            {
+                try { UnityEngine.Object.Destroy(_glMatMask); } catch { }
+                _glMatMask = null;
             }
             _rtScale = 1;
             _rtDirty = false;
@@ -1560,14 +1956,47 @@ namespace MapOverlay
 
                 GL.End();
                 GL.PopMatrix();
+
+                int clearedDrawn = 0;
+                if (_rtMask != null && _glMatMask != null && _vanillaMask != null)
+                {
+                    if (_rtMask.IsCreated() || _rtMask.Create())
+                    {
+                        Graphics.Blit(_vanillaMask, _rtMask);
+                        if (_cfgShowForest.Value && _clearedForest.Count > 0)
+                        {
+                            int mh = _rtMask.height;
+                            RenderTexture.active = _rtMask;
+                            GL.PushMatrix();
+                            GL.LoadPixelMatrix(0f, _rtMask.width, 0f, mh);
+                            _glMatMask.SetPass(0);
+                            GL.Begin(GL.QUADS);
+                            GL.Color(new Color(0f, 1f, 1f, 1f));      // red is the forest channel
+                            foreach (int idx in _clearedForest)
+                            {
+                                if (_cfgRespectFog.Value && !IsExplored(explored, exploredOthers, idx)) continue;
+                                float x0 = idx % _texSize;
+                                float y0 = idx / _texSize;
+                                if (flip) y0 = mh - 1 - y0;
+                                GL.Vertex3(x0, y0, 0f);
+                                GL.Vertex3(x0 + 1f, y0, 0f);
+                                GL.Vertex3(x0 + 1f, y0 + 1f, 0f);
+                                GL.Vertex3(x0, y0 + 1f, 0f);
+                                clearedDrawn++;
+                            }
+                            GL.End();
+                            GL.PopMatrix();
+                        }
+                    }
+                }
                 RenderTexture.active = prev;
 
                 _rtRebuilds++;
                 if (_rtRebuilds == 1 || (_cfgDebug.Value && _rtRebuilds % 20 == 1))
                     Logger.LogInfo(string.Format(
-                        "Map layer rebuilt on the GPU: {0}px ({1:0.##} m/px), {2} shapes drawn, {3:0} MB of video memory, linear colours {4}",
-                        _rt.width, _pixelSize / _rtScale, quads,
-                        _rt.width * (long)_rt.height * 4L / (1024f * 1024f),
+                        "Map layer rebuilt on the GPU: {0}px ({1:0.##} m/px), {2} shapes drawn, {3} forest pixels cleared, {4:0} MB of video memory, linear colours {5}",
+                        _rt.width, _pixelSize / _rtScale, quads, clearedDrawn,
+                        (_rt.width * (long)_rt.height + (_rtMask != null ? _rtMask.width * (long)_rtMask.height : 0L)) * 4L / (1024f * 1024f),
                         LinearColors ? "on" : "off"));
             }
             catch (Exception e)
@@ -1981,7 +2410,8 @@ namespace MapOverlay
                 using (BinaryReader br = new BinaryReader(fs))
                 {
                     if (br.ReadUInt32() != 0x334F4D4Du) return;   // "MMO3"
-                    if (br.ReadInt32() != 3) return;
+                    int version = br.ReadInt32();
+                    if (version != 3 && version != 4) return;
                     long uid = br.ReadInt64();
                     int texSize = br.ReadInt32();
                     float pixelSize = br.ReadSingle();
@@ -2023,6 +2453,17 @@ namespace MapOverlay
                         if (_terrain.Count >= _cfgMaxTerrain.Value) continue;
                         _terrain[key] = kind;
                     }
+
+                    if (version >= 4)
+                    {
+                        int clearedCount = br.ReadInt32();
+                        int maxIdx = _texSize * _texSize;
+                        for (int i = 0; i < clearedCount; i++)
+                        {
+                            int idx = br.ReadInt32();
+                            if (idx >= 0 && idx < maxIdx) _clearedForest.Add(idx);
+                        }
+                    }
                 }
             }
             catch (Exception e)
@@ -2030,6 +2471,7 @@ namespace MapOverlay
                 Logger.LogWarning("Could not read the stored overlay, starting fresh: " + e.Message);
                 _pieces.Clear();
                 _terrain.Clear();
+                _clearedForest.Clear();
                 _pieceCount = 0;
             }
         }
@@ -2048,7 +2490,7 @@ namespace MapOverlay
                 using (BinaryWriter bw = new BinaryWriter(fs))
                 {
                     bw.Write(0x334F4D4Du);
-                    bw.Write(3);
+                    bw.Write(4);
                     bw.Write(_worldUid);
                     bw.Write(_texSize);
                     bw.Write(_pixelSize);
@@ -2074,6 +2516,9 @@ namespace MapOverlay
                         bw.Write(kv.Key);
                         bw.Write(kv.Value);
                     }
+
+                    bw.Write(_clearedForest.Count);
+                    foreach (int idx in _clearedForest) bw.Write(idx);
                 }
 
                 if (File.Exists(path)) File.Delete(path);
@@ -2081,7 +2526,7 @@ namespace MapOverlay
                 _storeChanged = false;
 
                 if (_cfgDebug.Value)
-                    Logger.LogInfo("Overlay saved: " + _pieceCount + " pieces, " + _terrain.Count + " terrain cells.");
+                    Logger.LogInfo("Overlay saved: " + _pieceCount + " pieces, " + _terrain.Count + " terrain cells, " + _clearedForest.Count + " cleared-forest pixels.");
             }
             catch (Exception e)
             {
