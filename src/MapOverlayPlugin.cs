@@ -308,7 +308,7 @@ namespace MapOverlay
         private void BindConfig()
         {
             _cfgEnabled = Config.Bind("01 General", "Enabled", true, "Master switch.");
-            _cfgDebug = Config.Bind("01 General", "Debug", true, "Verbose logging, with timings of every scan and redraw.");
+            _cfgDebug = Config.Bind("01 General", "Debug", false, "Verbose logging, with timings of every scan and redraw, and a self-check of terrain records against the loaded terrain.");
             _cfgDebugMarker = Config.Bind("01 General", "DebugMarker", false,
                 "Draw a magenta cross at your own position in the detailed overlay. Use it once to confirm the overlay lines up with the vanilla player arrow.");
 
@@ -1611,6 +1611,24 @@ namespace MapOverlay
             int gx0 = Mathf.FloorToInt((c.x - zh) / grid), gx1 = Mathf.CeilToInt((c.x + zh) / grid);
             int gz0 = Mathf.FloorToInt((c.z - zh) / grid), gz1 = Mathf.CeilToInt((c.z + zh) / grid);
 
+            // Debug self-check: when this zone's terrain is loaded, read the same cells the old way
+            // and count how the two sources disagree. A shift by one vertex would show up as
+            // mismatches in both directions along every path edge; paint that only the loaded
+            // terrain knows (locations paint the ground without a record) shows up one-sided.
+            Heightmap live = null;
+            if (_cfgDebug.Value)
+            {
+                try
+                {
+                    List<Heightmap> maps = Heightmap.GetAllHeightmaps();
+                    Heightmap cached = null;
+                    if (maps != null) live = PickHeightmap(maps, c, ref cached);
+                }
+                catch { live = null; }
+            }
+            int liveOnly = 0, recordOnly = 0, kindDiffers = 0, compared = 0;
+            string firstMismatch = null;
+
             for (int gz = gz0; gz <= gz1; gz++)
             {
                 int lz = Mathf.FloorToInt(((gz + 0.5f) * grid - 0.5f - c.z) / scale + 0.5f + halfMask);
@@ -1622,6 +1640,28 @@ namespace MapOverlay
 
                     byte kind = kinds[lz * paintPitch + lx];
                     long key = ((long)gx << 32) | (uint)gz;
+
+                    if (live != null)
+                    {
+                        float wx = (gx + 0.5f) * grid, wz = (gz + 0.5f) * grid;
+                        if (Mathf.Abs(wx - c.x) < zh && Mathf.Abs(wz - c.z) < zh)
+                        {
+                            Color mask = live.GetPaintMask(new Vector3(wx - 0.5f, c.y, wz - 0.5f));
+                            byte liveKind = TerrainNone;
+                            if (mask.b > 0.5f) liveKind = TerrainPaved;
+                            else if (mask.r > 0.5f) liveKind = TerrainDirt;
+                            else if (mask.g > 0.5f) liveKind = TerrainCultivated;
+                            else if (showCleared && mask.a < 0.5f) liveKind = TerrainCleared;
+                            compared++;
+                            if (liveKind != kind)
+                            {
+                                if (kind == TerrainNone) liveOnly++;
+                                else if (liveKind == TerrainNone) recordOnly++;
+                                else kindDiffers++;
+                                if (firstMismatch == null) firstMismatch = string.Format(" first at ({0:0}, {1:0}): live {2}, record {3}", wx, wz, liveKind, kind);
+                            }
+                        }
+                    }
                     byte cur;
                     bool had = _terrain.TryGetValue(key, out cur);
 
@@ -1642,6 +1682,11 @@ namespace MapOverlay
                     MarkPixelDirty((gx + 0.5f) * grid, (gz + 0.5f) * grid);
                 }
             }
+
+            if (live != null && compared > 0)
+                Logger.LogInfo(string.Format(
+                    "Terrain record check at zone ({0:0}, {1:0}): {2} cells compared, live-only {3}, record-only {4}, kind differs {5}{6}",
+                    c.x, c.z, compared, liveOnly, recordOnly, kindDiffers, firstMismatch ?? ""));
         }
 
         private void ForestError(Exception e)
