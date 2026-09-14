@@ -15,7 +15,7 @@ namespace MapOverlay
     {
         public const string Guid = "j1ga.mapoverlay";
         public const string Name = "Map Overlay";
-        public const string Version = "0.10.0";
+        public const string Version = "0.11.0";
 
         private const byte MatNone = 255;
         private const byte TerrainNone = 0;
@@ -52,6 +52,7 @@ namespace MapOverlay
         private ConfigEntry<float> _cfgOutlineWidth;
         private ConfigEntry<Color> _cfgOutlineColor;
         private ConfigEntry<float> _cfgMapRebuildInterval;
+        private ConfigEntry<bool> _cfgIncremental;
         private ConfigEntry<bool> _cfgHiRes;
 
         private ConfigEntry<string> _cfgScanSource;
@@ -132,7 +133,19 @@ namespace MapOverlay
         private RenderTexture _rt;
         private Material _glMat;
         private bool _gpuUnavailable;
-        private bool _rtDirty;
+        private bool _rtDirty;                  // full rebuild wanted: something disappeared, or the texture was lost
+        private bool _maskDirty;                // forest mask wanted, it is cheap and rebuilt whole
+        // incremental GPU layer: shapes waiting to be drawn on top, and shapes the fog is holding back
+        private readonly List<PieceRec> _addPieces = new List<PieceRec>();
+        private readonly List<long> _addTerrain = new List<long>();
+        private readonly List<PieceRec> _fogPieces = new List<PieceRec>();
+        private readonly List<long> _fogTerrain = new List<long>();
+        private readonly List<int> _fogForest = new List<int>();
+        private readonly List<PieceRec> _groupScratch = new List<PieceRec>();
+        private readonly List<PieceRec> _fillScratch = new List<PieceRec>();
+        private int _rtIncrements;
+        private bool _drawnBuildings, _drawnPaths, _drawnOutline;   // layer switches at the last full rebuild
+        private const int MaxIncrementalPieces = 1500;    // beyond this a full rebuild is the cheaper option
         private float _nextRtRebuild;
         private int _rtScale = 1;
         private int _rtRebuilds;
@@ -313,8 +326,10 @@ namespace MapOverlay
             _cfgLinearFix = Config.Bind("02 Layers", "LinearColorFix", true,
                 "Convert overlay colours to linear before drawing on the GPU. Needed when the game renders in linear colour space, otherwise everything comes out pale and washed out. Turn it off if the colours look too dark instead.");
             _cfgMapRebuildInterval = Config.Bind("02 Layers", "MapRebuildInterval", 0.5f,
-                new ConfigDescription("Minimum seconds between map-texture rebuilds after something changes.",
+                new ConfigDescription("Minimum seconds between map-texture updates after something changes.",
                     new AcceptableValueRange<float>(0.1f, 10f)));
+            _cfgIncremental = Config.Bind("02 Layers", "IncrementalRedraw", true,
+                "Draw new shapes on top of the existing map texture instead of rebuilding it from scratch; a full rebuild happens only when something disappeared. Off = always rebuild the whole texture, as before 0.11.0.");
             _cfgMapFlipY = Config.Bind("02 Layers", "MapLayerFlipY", false,
                 "Flip the drawn shapes vertically. Only needed if the graphics API renders the map layer upside down - set it once and the whole layer lines up.");
             _cfgHiRes = Config.Bind("02 Layers", "DetailedOverlay", false,
@@ -478,21 +493,37 @@ namespace MapOverlay
 
             if (UseZdoScan && (_cfgShowBuildings.Value || _treeCount != null)) StepZdoScan(now, pos);
 
-            if (_deferredByFog.Count > 0 && now >= _nextRefogTime)
+            if (now >= _nextRefogTime &&
+                (_deferredByFog.Count > 0 || _fogPieces.Count > 0 || _fogTerrain.Count > 0 || _fogForest.Count > 0))
             {
                 _nextRefogTime = now + RefogInterval;
                 foreach (int idx in _deferredByFog) _pending.Add(idx);
                 _deferredByFog.Clear();
+                ReleaseFromFog();
             }
 
             if (_rt != null)
             {
                 if (!_rt.IsCreated()) _rtDirty = true;      // contents lost, e.g. after alt-tab
-                if (_rtDirty && now >= _nextRtRebuild)
+                if (_rtMask != null && !_rtMask.IsCreated()) _maskDirty = true;
+                if (_cfgShowBuildings.Value != _drawnBuildings || _cfgShowPaths.Value != _drawnPaths || _cfgOutline.Value != _drawnOutline)
+                    _rtDirty = true;                        // a layer switch flipped: only a rebuild can honour it
+                bool adds = _addPieces.Count > 0 || _addTerrain.Count > 0;
+                if ((_rtDirty || adds || _maskDirty) && now >= _nextRtRebuild)
                 {
                     _nextRtRebuild = now + _cfgMapRebuildInterval.Value;
-                    _rtDirty = false;
-                    RebuildGpuLayer();
+                    if (_rtDirty || (adds && (!_cfgIncremental.Value || _cfgDebugMarker.Value || _addPieces.Count > MaxIncrementalPieces)))
+                    {
+                        _rtDirty = false;
+                        RebuildGpuLayer();
+                    }
+                    else if (adds) DrawAdditions();
+
+                    if (_maskDirty && _rt != null)
+                    {
+                        _maskDirty = false;
+                        RebuildMask();
+                    }
                 }
             }
             else if (_cfgPaintMapTexture.Value && _ourTex != null && _pending.Count > 0 && now >= _nextFlushTime)
@@ -580,6 +611,7 @@ namespace MapOverlay
                     else DropForestData();
                     PokeMinimap();
                     _rtDirty = true;
+                    _maskDirty = _rtMask != null;
                     _nextRtRebuild = 0f;
                 }
                 else
@@ -713,9 +745,9 @@ namespace MapOverlay
         private void Scan(Vector3 center)
         {
             bool changed = false;
-            if (_cfgShowBuildings.Value && !UseZdoScan) changed |= ScanBuildings(center);
+            if (_cfgShowBuildings.Value && !UseZdoScan && ScanBuildings(center)) { changed = true; _rtDirty = true; }
             if (_cfgShowPaths.Value && !_terrainDisabled) changed |= ScanTerrain(center);
-            if (changed) { _storeChanged = true; _rtDirty = true; }
+            if (changed) _storeChanged = true;
         }
 
         private bool ScanBuildings(Vector3 center)
@@ -785,6 +817,7 @@ namespace MapOverlay
                 int newN = fresh != null ? fresh.Count : 0;
 
                 if (oldN == 0 && newN == 0) continue;
+                if (had && fresh != null && SameBucket(old, fresh)) continue;
 
                 if (had) _pieceCount -= oldN;
 
@@ -864,7 +897,7 @@ namespace MapOverlay
 
                         if (kind == TerrainNone)
                         {
-                            if (had) { _terrain.Remove(key); changed = true; MarkPixelDirty(wx, wz); }
+                            if (had) { _terrain.Remove(key); changed = true; _rtDirty = true; MarkPixelDirty(wx, wz); }
                             continue;
                         }
 
@@ -877,6 +910,8 @@ namespace MapOverlay
                         }
                         _terrain[key] = kind;
                         changed = true;
+                        if (had) _rtDirty = true;           // a different paint under the old one: repaint everything
+                        else _addTerrain.Add(key);
                         MarkPixelDirty(wx, wz);
                     }
                 }
@@ -1244,6 +1279,7 @@ namespace MapOverlay
                     _pieces.Remove(idx);
                     _pending.Add(idx);
                     changed = true;
+                    _rtDirty = true;
                     removed++;
                 }
                 _removeScratch.Clear();
@@ -1272,6 +1308,9 @@ namespace MapOverlay
                     continue;
                 }
 
+                // what is new gets drawn on top; anything gone means the texture is rebuilt
+                if (DiffBucket(had ? old : null, list)) _rtDirty = true;
+
                 _pieces[idx] = list;
                 _pieceCount += list.Count - oldN;
                 if (had) ReturnList(old);
@@ -1289,8 +1328,8 @@ namespace MapOverlay
                 try
                 {
                     forestZones = BeginForestEval();
-                    changed |= UpdatePlantedForest();
-                    if (_forestCursor < 0 && _forestChanged) changed = true;   // the cleared set was emptied with no second phase to follow
+                    if (UpdatePlantedForest()) { changed = true; _maskDirty = true; }
+                    if (_forestCursor < 0 && _forestChanged) { changed = true; _maskDirty = true; }   // the cleared set was emptied with no second phase to follow
                 }
                 catch (Exception e) { ForestError(e); }
             }
@@ -1299,7 +1338,7 @@ namespace MapOverlay
             _zdoHavePrevOrigin = true;
             _zdoPasses++;
 
-            if (changed) { _storeChanged = true; _rtDirty = true; }
+            if (changed) _storeChanged = true;
 
             if (_zdoPasses == 1 || (_cfgDebug.Value && changed))
                 Logger.LogInfo(string.Format(
@@ -1548,7 +1587,7 @@ namespace MapOverlay
                 if (_forestChanged)
                 {
                     _storeChanged = true;
-                    _rtDirty = true;
+                    _maskDirty = true;
                     if (_cfgDebug.Value)
                         Logger.LogInfo(string.Format("Cleared forest: {0} pixels (+{1}, -{2}) over {3} zones{4}",
                             _clearedForest.Count, _forestAdded, _forestRemoved, _trustedZoneScratch.Count, SampleText()));
@@ -1637,6 +1676,29 @@ namespace MapOverlay
             if (list == null) return;
             list.Clear();
             if (_listPool.Count < 4096) _listPool.Push(list);
+        }
+
+        private static bool RecEquals(PieceRec a, PieceRec b)
+        {
+            return a.X0 == b.X0 && a.X1 == b.X1 && a.Z0 == b.Z0 && a.Z1 == b.Z1 && a.Y == b.Y && a.Mat == b.Mat;
+        }
+
+        private static bool BucketContains(List<PieceRec> list, PieceRec rec)
+        {
+            for (int i = 0; i < list.Count; i++)
+                if (RecEquals(list[i], rec)) return true;
+            return false;
+        }
+
+        // Queues the pieces of fresh that old lacks; returns true when old holds something fresh lacks.
+        private bool DiffBucket(List<PieceRec> old, List<PieceRec> fresh)
+        {
+            if (old != null)
+                for (int i = 0; i < old.Count; i++)
+                    if (!BucketContains(fresh, old[i])) return true;
+            for (int i = 0; i < fresh.Count; i++)
+                if (old == null || !BucketContains(old, fresh[i])) _addPieces.Add(fresh[i]);
+            return false;
         }
 
         private static bool SameBucket(List<PieceRec> a, List<PieceRec> b)
@@ -1954,6 +2016,7 @@ namespace MapOverlay
             }
 
             RebuildGpuLayer();
+            if (_rtMask != null) RebuildMask();
             return true;
         }
 
@@ -1986,6 +2049,9 @@ namespace MapOverlay
             }
             _rtScale = 1;
             _rtDirty = false;
+            _maskDirty = false;
+            _addPieces.Clear(); _addTerrain.Clear();
+            _fogPieces.Clear(); _fogTerrain.Clear(); _fogForest.Clear();
         }
 
         private void RebuildGpuLayer()
@@ -1998,6 +2064,13 @@ namespace MapOverlay
 
                 // the vanilla map, upscaled on the card - no managed memory involved
                 Graphics.Blit(_vanillaTex, _rt);
+
+                // everything is drawn from scratch, so nothing is pending any more
+                _addPieces.Clear(); _addTerrain.Clear();
+                _fogPieces.Clear(); _fogTerrain.Clear();
+                _drawnBuildings = _cfgShowBuildings.Value;
+                _drawnPaths = _cfgShowPaths.Value;
+                _drawnOutline = _cfgOutline.Value;
 
                 BitArray explored = null, exploredOthers = null;
                 if (_cfgRespectFog.Value)
@@ -2029,7 +2102,7 @@ namespace MapOverlay
                         int gz = (int)(kv.Key & 0xFFFFFFFFL);
                         float wx = (gx + 0.5f) * grid;
                         float wz = (gz + 0.5f) * grid;
-                        if (!IsWorldExplored(explored, exploredOthers, wx, wz)) continue;
+                        if (!IsWorldExplored(explored, exploredOthers, wx, wz)) { _fogTerrain.Add(kv.Key); continue; }
                         EmitQuad(wx - halfGrid, wz - halfGrid, wx + halfGrid, wz + halfGrid,
                             TerrainColor(kv.Value), k, half, h, flip, grid);
                         quads++;
@@ -2066,7 +2139,7 @@ namespace MapOverlay
                         for (int i = 0; i < bucket.Count; i++)
                         {
                             PieceRec rec = bucket[i];
-                            if (!IsWorldExplored(explored, exploredOthers, rec.CX, rec.CZ)) continue;
+                            if (!IsWorldExplored(explored, exploredOthers, rec.CX, rec.CZ)) { _fogPieces.Add(rec); continue; }
                             EmitQuad(rec.X0, rec.Z0, rec.X1, rec.Z1, MatColor(rec.Mat), k, half, h, flip, minPiece);
                             quads++;
                         }
@@ -2082,47 +2155,283 @@ namespace MapOverlay
 
                 GL.End();
                 GL.PopMatrix();
-
-                int clearedDrawn = 0, plantedDrawn = 0;
-                if (_rtMask != null && _glMatMask != null && _glMatMaskAdd != null && _vanillaMask != null)
-                {
-                    if (_rtMask.IsCreated() || _rtMask.Create())
-                    {
-                        Graphics.Blit(_vanillaMask, _rtMask);
-                        RenderTexture.active = _rtMask;
-                        GL.PushMatrix();
-                        GL.LoadPixelMatrix(0f, _rtMask.width, 0f, _rtMask.height);
-                        // red is the forest channel: multiply by zero to clear it, add one to set it
-                        if (_cfgShowForest.Value && _clearedForest.Count > 0)
-                            clearedDrawn = DrawMaskPixels(_clearedForest, _glMatMask, new Color(0f, 1f, 1f, 1f), explored, exploredOthers, flip);
-                        if (_cfgShowPlanted.Value && _plantedForest.Count > 0)
-                            plantedDrawn = DrawMaskPixels(_plantedForest, _glMatMaskAdd, new Color(1f, 0f, 0f, 0f), explored, exploredOthers, flip);
-                        GL.PopMatrix();
-                    }
-                }
                 RenderTexture.active = prev;
 
                 _rtRebuilds++;
                 if (_rtRebuilds == 1 || (_cfgDebug.Value && _rtRebuilds % 20 == 1))
                     Logger.LogInfo(string.Format(
-                        "Map layer rebuilt on the GPU: {0}px ({1:0.##} m/px), {2} shapes drawn, forest pixels cleared {3} / planted {4}, {5:0} MB of video memory, linear colours {6}",
-                        _rt.width, _pixelSize / _rtScale, quads, clearedDrawn, plantedDrawn,
+                        "Map layer rebuilt on the GPU: {0}px ({1:0.##} m/px), {2} shapes drawn, {3} held back by fog, {4:0} MB of video memory, linear colours {5}",
+                        _rt.width, _pixelSize / _rtScale, quads, _fogPieces.Count + _fogTerrain.Count,
                         (_rt.width * (long)_rt.height + (_rtMask != null ? _rtMask.width * (long)_rtMask.height : 0L)) * 4L / (1024f * 1024f),
                         LinearColors ? "on" : "off"));
             }
             catch (Exception e)
             {
-                RenderTexture.active = null;
-                _gpuUnavailable = true;
-                HandleError("GPU map layer rebuild", e);
-                try
-                {
-                    RestoreOriginalTextures();
-                    ReleaseGpuLayer();
-                }
-                catch { }
-                Logger.LogWarning("The GPU map layer failed and was switched off; restart the world to fall back to CPU painting.");
+                GpuFailed("GPU map layer rebuild", e);
             }
+        }
+
+        // Draws what was queued since the last update straight onto the existing texture. A
+        // fresh outline would darken the edge of every neighbour it overlaps, and a fresh path
+        // cell would cover the building standing on it, so after each such shape the fills of
+        // everything its halo can touch are painted again: the same order as a full rebuild,
+        // restored locally.
+        private void DrawAdditions()
+        {
+            if (_rt == null || _glMat == null) return;
+
+            try
+            {
+                if (!_rt.IsCreated()) { _rtDirty = true; return; }
+
+                BitArray explored = null, exploredOthers = null;
+                if (_cfgRespectFog.Value)
+                {
+                    explored = _fiExplored != null ? _fiExplored.GetValue(_mm) as BitArray : null;
+                    exploredOthers = _fiExploredOthers != null ? _fiExploredOthers.GetValue(_mm) as BitArray : null;
+                }
+
+                float k = _rt.width / (float)_texSize;
+                float half = _texSize * 0.5f;
+                bool flip = _cfgMapFlipY.Value;
+                int h = _rt.height;
+                int quads = 0, cells = 0, pieces = 0;
+
+                RenderTexture prev = RenderTexture.active;
+                RenderTexture.active = _rt;
+                GL.PushMatrix();
+                GL.LoadPixelMatrix(0f, _rt.width, 0f, h);
+                _glMat.SetPass(0);
+                GL.Begin(GL.QUADS);
+
+                if (_addTerrain.Count > 0)
+                {
+                    float grid = Mathf.Max(0.5f, _cfgTerrainGrid.Value);
+                    float halfGrid = grid * 0.5f;
+                    for (int i = 0; i < _addTerrain.Count; i++)
+                    {
+                        long key = _addTerrain[i];
+                        byte kind;
+                        if (!_terrain.TryGetValue(key, out kind)) continue;
+                        float wx = ((int)(key >> 32) + 0.5f) * grid;
+                        float wz = ((int)(key & 0xFFFFFFFFL) + 0.5f) * grid;
+                        if (!IsWorldExplored(explored, exploredOthers, wx, wz)) { _fogTerrain.Add(key); continue; }
+                        if (!_cfgShowPaths.Value) continue;
+                        EmitQuad(wx - halfGrid, wz - halfGrid, wx + halfGrid, wz + halfGrid,
+                            TerrainColor(kind), k, half, h, flip, grid);
+                        quads++;
+                        cells++;
+                        if (_cfgShowBuildings.Value)
+                        {
+                            // any building standing on this cell was just painted over
+                            _groupScratch.Clear();
+                            PiecesIntersecting(wx - halfGrid, wz - halfGrid, wx + halfGrid, wz + halfGrid, true, _groupScratch);
+                            if (_groupScratch.Count > 0) quads += DrawPieceGroup(_groupScratch, explored, exploredOthers, k, half, h, flip);
+                        }
+                    }
+                    _addTerrain.Clear();
+                }
+
+                if (_addPieces.Count > 0)
+                {
+                    for (int i = 0; i < _addPieces.Count; i++)
+                    {
+                        PieceRec rec = _addPieces[i];
+                        if (!IsWorldExplored(explored, exploredOthers, rec.CX, rec.CZ)) { _fogPieces.Add(rec); continue; }
+                        if (!_cfgShowBuildings.Value) continue;
+                        _groupScratch.Clear();
+                        _groupScratch.Add(rec);
+                        quads += DrawPieceGroup(_groupScratch, explored, exploredOthers, k, half, h, flip);
+                        pieces++;
+                    }
+                    _addPieces.Clear();
+                }
+
+                GL.End();
+                GL.PopMatrix();
+                RenderTexture.active = prev;
+
+                _rtIncrements++;
+                if (_cfgDebug.Value && (_rtIncrements == 1 || _rtIncrements % 20 == 0))
+                    Logger.LogInfo(string.Format("Map layer updated in place: {0} new pieces, {1} new cells, {2} quads (update #{3})",
+                        pieces, cells, quads, _rtIncrements));
+            }
+            catch (Exception e)
+            {
+                GpuFailed("GPU map layer update", e);
+            }
+        }
+
+        // Outlines for the group, then fills for everything the outlines can have touched.
+        private int DrawPieceGroup(List<PieceRec> group, BitArray explored, BitArray exploredOthers,
+                                   float k, float half, int h, bool flip)
+        {
+            float minPiece = Mathf.Max(0.1f, _cfgPieceSize.Value);
+            float grow = _cfgOutline.Value ? Mathf.Max(0f, _cfgOutlineWidth.Value) : 0f;
+            int quads = 0;
+
+            float rx0 = float.MaxValue, rz0 = float.MaxValue, rx1 = float.MinValue, rz1 = float.MinValue;
+            for (int i = 0; i < group.Count; i++)
+            {
+                PieceRec rec = group[i];
+                float x0, z0, x1, z1;
+                DrawnRect(rec, grow, minPiece + grow * 2f, out x0, out z0, out x1, out z1);
+                if (x0 < rx0) rx0 = x0;
+                if (z0 < rz0) rz0 = z0;
+                if (x1 > rx1) rx1 = x1;
+                if (z1 > rz1) rz1 = z1;
+                if (_cfgOutline.Value && IsWorldExplored(explored, exploredOthers, rec.CX, rec.CZ))
+                {
+                    EmitQuad(rec.X0 - grow, rec.Z0 - grow, rec.X1 + grow, rec.Z1 + grow,
+                        _cfgOutlineColor.Value, k, half, h, flip, minPiece + grow * 2f);
+                    quads++;
+                }
+            }
+
+            _fillScratch.Clear();
+            if (_cfgOutline.Value) PiecesIntersecting(rx0, rz0, rx1, rz1, false, _fillScratch);
+            else _fillScratch.AddRange(group);
+            for (int i = 0; i < _fillScratch.Count; i++)
+            {
+                PieceRec rec = _fillScratch[i];
+                if (!IsWorldExplored(explored, exploredOthers, rec.CX, rec.CZ)) continue;
+                EmitQuad(rec.X0, rec.Z0, rec.X1, rec.Z1, MatColor(rec.Mat), k, half, h, flip, minPiece);
+                quads++;
+            }
+            return quads;
+        }
+
+        // The rectangle a piece actually occupies on the texture: its footprint, grown by the
+        // halo and widened to the minimum drawn size, exactly as EmitQuad will draw it.
+        private static void DrawnRect(PieceRec rec, float grow, float minWorld, out float x0, out float z0, out float x1, out float z1)
+        {
+            x0 = rec.X0 - grow; x1 = rec.X1 + grow;
+            z0 = rec.Z0 - grow; z1 = rec.Z1 + grow;
+            if (x1 - x0 < minWorld) { float m = (x0 + x1) * 0.5f; x0 = m - minWorld * 0.5f; x1 = m + minWorld * 0.5f; }
+            if (z1 - z0 < minWorld) { float m = (z0 + z1) * 0.5f; z0 = m - minWorld * 0.5f; z1 = m + minWorld * 0.5f; }
+        }
+
+        // Every stored piece whose drawn rectangle (with halo when asked) overlaps the area.
+        // Pieces are bucketed by the map pixel of their centre and reach at most half of
+        // MaxFootprint plus the halo from it, so only a few buckets around the area matter.
+        private void PiecesIntersecting(float x0, float z0, float x1, float z1, bool withHalo, List<PieceRec> result)
+        {
+            float minPiece = Mathf.Max(0.1f, _cfgPieceSize.Value);
+            float grow = _cfgOutline.Value ? Mathf.Max(0f, _cfgOutlineWidth.Value) : 0f;
+            float reach = MaxFootprint * 0.5f + grow + minPiece;
+            float half = _texSize * 0.5f;
+            int px0 = Mathf.Clamp(Mathf.FloorToInt((x0 - reach) / _pixelSize + half), 0, _texSize - 1);
+            int px1 = Mathf.Clamp(Mathf.CeilToInt((x1 + reach) / _pixelSize + half), 0, _texSize - 1);
+            int py0 = Mathf.Clamp(Mathf.FloorToInt((z0 - reach) / _pixelSize + half), 0, _texSize - 1);
+            int py1 = Mathf.Clamp(Mathf.CeilToInt((z1 + reach) / _pixelSize + half), 0, _texSize - 1);
+
+            float g = withHalo ? grow : 0f;
+            float minWorld = withHalo ? minPiece + grow * 2f : minPiece;
+            for (int py = py0; py <= py1; py++)
+            {
+                for (int px = px0; px <= px1; px++)
+                {
+                    List<PieceRec> bucket;
+                    if (!_pieces.TryGetValue(py * _texSize + px, out bucket)) continue;
+                    for (int i = 0; i < bucket.Count; i++)
+                    {
+                        PieceRec rec = bucket[i];
+                        float ax0, az0, ax1, az1;
+                        DrawnRect(rec, g, minWorld, out ax0, out az0, out ax1, out az1);
+                        if (ax1 < x0 || ax0 > x1 || az1 < z0 || az0 > z1) continue;
+                        result.Add(rec);
+                    }
+                }
+            }
+        }
+
+        // Shapes skipped because their ground was unexplored get another look now and then.
+        private void ReleaseFromFog()
+        {
+            if (_rt == null || !_cfgRespectFog.Value) return;
+            BitArray explored = _fiExplored != null ? _fiExplored.GetValue(_mm) as BitArray : null;
+            BitArray exploredOthers = _fiExploredOthers != null ? _fiExploredOthers.GetValue(_mm) as BitArray : null;
+
+            int kept = 0;
+            for (int i = 0; i < _fogPieces.Count; i++)
+            {
+                PieceRec rec = _fogPieces[i];
+                if (IsWorldExplored(explored, exploredOthers, rec.CX, rec.CZ)) _addPieces.Add(rec);
+                else _fogPieces[kept++] = rec;
+            }
+            _fogPieces.RemoveRange(kept, _fogPieces.Count - kept);
+
+            float grid = Mathf.Max(0.5f, _cfgTerrainGrid.Value);
+            kept = 0;
+            for (int i = 0; i < _fogTerrain.Count; i++)
+            {
+                long key = _fogTerrain[i];
+                float wx = ((int)(key >> 32) + 0.5f) * grid;
+                float wz = ((int)(key & 0xFFFFFFFFL) + 0.5f) * grid;
+                if (IsWorldExplored(explored, exploredOthers, wx, wz)) _addTerrain.Add(key);
+                else _fogTerrain[kept++] = key;
+            }
+            _fogTerrain.RemoveRange(kept, _fogTerrain.Count - kept);
+
+            for (int i = 0; i < _fogForest.Count; i++)
+            {
+                if (IsExplored(explored, exploredOthers, _fogForest[i])) { _maskDirty = true; break; }
+            }
+        }
+
+        private void RebuildMask()
+        {
+            if (_rtMask == null || _glMatMask == null || _glMatMaskAdd == null || _vanillaMask == null) return;
+
+            try
+            {
+                if (!_rtMask.IsCreated() && !_rtMask.Create()) return;
+
+                BitArray explored = null, exploredOthers = null;
+                if (_cfgRespectFog.Value)
+                {
+                    explored = _fiExplored != null ? _fiExplored.GetValue(_mm) as BitArray : null;
+                    exploredOthers = _fiExploredOthers != null ? _fiExploredOthers.GetValue(_mm) as BitArray : null;
+                }
+                bool flip = _cfgMapFlipY.Value;
+                _fogForest.Clear();
+
+                RenderTexture prev = RenderTexture.active;
+                Graphics.Blit(_vanillaMask, _rtMask);
+                RenderTexture.active = _rtMask;
+                GL.PushMatrix();
+                GL.LoadPixelMatrix(0f, _rtMask.width, 0f, _rtMask.height);
+                // red is the forest channel: multiply by zero to clear it, add one to set it
+                int clearedDrawn = 0, plantedDrawn = 0;
+                if (_cfgShowForest.Value && _clearedForest.Count > 0)
+                    clearedDrawn = DrawMaskPixels(_clearedForest, _glMatMask, new Color(0f, 1f, 1f, 1f), explored, exploredOthers, flip);
+                if (_cfgShowPlanted.Value && _plantedForest.Count > 0)
+                    plantedDrawn = DrawMaskPixels(_plantedForest, _glMatMaskAdd, new Color(1f, 0f, 0f, 0f), explored, exploredOthers, flip);
+                GL.PopMatrix();
+                RenderTexture.active = prev;
+
+                if (_cfgDebug.Value)
+                    Logger.LogInfo(string.Format("Forest mask rebuilt: {0} cleared, {1} planted, {2} held back by fog",
+                        clearedDrawn, plantedDrawn, _fogForest.Count));
+            }
+            catch (Exception e)
+            {
+                GpuFailed("forest mask rebuild", e);
+            }
+        }
+
+        private void GpuFailed(string where, Exception e)
+        {
+            RenderTexture.active = null;
+            _gpuUnavailable = true;
+            HandleError(where, e);
+            try
+            {
+                RestoreOriginalTextures();
+                ReleaseGpuLayer();
+            }
+            catch { }
+            Logger.LogWarning("The GPU map layer failed and was switched off; restart the world to fall back to CPU painting.");
         }
 
         private int DrawMaskPixels(HashSet<int> pixels, Material mat, Color c, BitArray explored, BitArray exploredOthers, bool flip)
@@ -2134,7 +2443,7 @@ namespace MapOverlay
             GL.Color(c);
             foreach (int idx in pixels)
             {
-                if (_cfgRespectFog.Value && !IsExplored(explored, exploredOthers, idx)) continue;
+                if (_cfgRespectFog.Value && !IsExplored(explored, exploredOthers, idx)) { _fogForest.Add(idx); continue; }
                 float x0 = idx % _texSize;
                 float y0 = idx / _texSize;
                 if (flip) y0 = mh - 1 - y0;
