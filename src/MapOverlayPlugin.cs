@@ -176,6 +176,8 @@ namespace MapOverlay
         private bool _zdoHavePrevOrigin;
         private bool _zdoAuthoritative;
         private int _zdoPasses, _zdoPassFrames, _zdoErrorCount;
+        private readonly System.Diagnostics.Stopwatch _sw = new System.Diagnostics.Stopwatch();   // main-thread time of one step
+        private double _zdoPassMs, _forestMs;
         private bool _zdoDisabled;
         private const int MaxZdoErrors = 10;
 
@@ -292,7 +294,7 @@ namespace MapOverlay
         private void BindConfig()
         {
             _cfgEnabled = Config.Bind("01 General", "Enabled", true, "Master switch.");
-            _cfgDebug = Config.Bind("01 General", "Debug", false, "Verbose logging.");
+            _cfgDebug = Config.Bind("01 General", "Debug", true, "Verbose logging, with timings of every scan and redraw.");
             _cfgDebugMarker = Config.Bind("01 General", "DebugMarker", false,
                 "Draw a magenta cross at your own position in the detailed overlay. Use it once to confirm the overlay lines up with the vanilla player arrow.");
 
@@ -319,7 +321,7 @@ namespace MapOverlay
             _cfgRespectFog = Config.Bind("02 Layers", "RespectFog", true, "Only draw on explored ground.");
             _cfgPaintMapTexture = Config.Bind("02 Layers", "PaintMapTexture", true,
                 "Draw straight into the map texture, so the result IS the map: it pans, zooms, fogs and layers under every marker exactly like vanilla, on both the big map and the minimap.");
-            _cfgMapScale = Config.Bind("02 Layers", "MapTextureScale", 2,
+            _cfgMapScale = Config.Bind("02 Layers", "MapTextureScale", 4,
                 new ConfigDescription(
                     "Resolution multiplier for the map texture. Vanilla 2048 is 12 m per pixel. 2 = 4096 = 6 m/px (~67 MB of video memory), 4 = 8192 = 3 m/px (~268 MB), 8 = 16384 = 1.5 m/px (~1 GB, only worth it on a card with plenty of VRAM). Video memory only, nothing is held in RAM. If the card refuses the size the mod steps down automatically.",
                     new AcceptableValueList<int>(1, 2, 4, 8)));
@@ -858,6 +860,7 @@ namespace MapOverlay
             float r2 = radius * radius;
 
             Heightmap cached = null;
+            _sw.Restart();
             int samples = 0, painted = 0;
             bool changed = false;
 
@@ -923,8 +926,8 @@ namespace MapOverlay
             }
 
             if (_cfgDebug.Value)
-                Logger.LogInfo(string.Format("Terrain scan: heightmaps={0}, samples={1}, painted={2}, stored={3}",
-                    maps.Count, samples, painted, _terrain.Count));
+                Logger.LogInfo(string.Format("Terrain scan: heightmaps={0}, samples={1}, painted={2}, stored={3}, {4:0.0} ms",
+                    maps.Count, samples, painted, _terrain.Count, _sw.Elapsed.TotalMilliseconds));
 
             return changed;
         }
@@ -997,11 +1000,13 @@ namespace MapOverlay
 
                 if (_zdoCursor >= 0)
                 {
+                    _sw.Restart();
                     int end = Mathf.Min(_zdoSnapshot.Count, _zdoCursor + Mathf.Clamp(_cfgZdoPerFrame.Value, 500, 50000));
                     _biomeLookupsThisFrame = 0;
                     for (; _zdoCursor < end && _biomeLookupsThisFrame < BiomeLookupsPerFrame; _zdoCursor++)
                         ExamineZdo(_zdoSnapshot[_zdoCursor]);
                     _zdoPassFrames++;
+                    _zdoPassMs += _sw.Elapsed.TotalMilliseconds;
 
                     if (_zdoCursor >= _zdoSnapshot.Count)
                     {
@@ -1045,6 +1050,7 @@ namespace MapOverlay
 
             _zdoCursor = 0;
             _zdoPassFrames = 0;
+            _zdoPassMs = 0.0;
             _zdoPassOrigin = pos;
             _zdoPassPieces = _cfgShowBuildings.Value;
             _zdoAuthoritative = ZNet.instance.IsServer();
@@ -1342,10 +1348,10 @@ namespace MapOverlay
 
             if (_zdoPasses == 1 || (_cfgDebug.Value && changed))
                 Logger.LogInfo(string.Format(
-                    "ZDO scan: {0} build pieces in {1} map pixels, {2}; {3} pixels updated, {4} cleared; forest check queued for {5} zones; {6} frames",
+                    "ZDO scan: {0} build pieces in {1} map pixels, {2}; {3} pixels updated, {4} cleared; forest check queued for {5} zones; {6} frames, {7:0.0} ms CPU",
                     fresh, seenPixels,
                     _zdoAuthoritative ? "host, the whole world" : "client, what the server has sent",
-                    replaced, removed, forestZones, _zdoPassFrames));
+                    replaced, removed, forestZones, _zdoPassFrames, _zdoPassMs));
         }
 
         // ------------------------------------------------------------------
@@ -1446,6 +1452,7 @@ namespace MapOverlay
             _forestChanged = false;
             _forestAdded = 0;
             _forestRemoved = 0;
+            _forestMs = 0.0;
             _forestSample.Clear();
             _pixelTrusted.SetAll(false);
             _trustedZoneScratch.Clear();
@@ -1574,12 +1581,14 @@ namespace MapOverlay
 
             try
             {
+                _sw.Restart();
                 float half = _texSize * 0.5f;
                 int r = Mathf.Max(1, Mathf.CeilToInt(_cfgForestRadius.Value / _pixelSize));
                 int maxTrees = Mathf.Max(0, _cfgForestMaxTrees.Value);
                 int end = Mathf.Min(_trustedZoneScratch.Count, _forestCursor + ForestZonesPerFrame);
                 for (; _forestCursor < end; _forestCursor++)
                     EvalForestZone(_trustedZoneScratch[_forestCursor], half, r, maxTrees);
+                _forestMs += _sw.Elapsed.TotalMilliseconds;
 
                 if (_forestCursor < _trustedZoneScratch.Count) return;
 
@@ -1589,8 +1598,8 @@ namespace MapOverlay
                     _storeChanged = true;
                     _maskDirty = true;
                     if (_cfgDebug.Value)
-                        Logger.LogInfo(string.Format("Cleared forest: {0} pixels (+{1}, -{2}) over {3} zones{4}",
-                            _clearedForest.Count, _forestAdded, _forestRemoved, _trustedZoneScratch.Count, SampleText()));
+                        Logger.LogInfo(string.Format("Cleared forest: {0} pixels (+{1}, -{2}) over {3} zones, {4:0.0} ms CPU{5}",
+                            _clearedForest.Count, _forestAdded, _forestRemoved, _trustedZoneScratch.Count, _forestMs, SampleText()));
                 }
             }
             catch (Exception e)
@@ -2061,6 +2070,7 @@ namespace MapOverlay
             try
             {
                 if (!_rt.IsCreated() && !_rt.Create()) return;
+                _sw.Restart();
 
                 // the vanilla map, upscaled on the card - no managed memory involved
                 Graphics.Blit(_vanillaTex, _rt);
@@ -2160,10 +2170,10 @@ namespace MapOverlay
                 _rtRebuilds++;
                 if (_rtRebuilds == 1 || (_cfgDebug.Value && _rtRebuilds % 20 == 1))
                     Logger.LogInfo(string.Format(
-                        "Map layer rebuilt on the GPU: {0}px ({1:0.##} m/px), {2} shapes drawn, {3} held back by fog, {4:0} MB of video memory, linear colours {5}",
+                        "Map layer rebuilt on the GPU: {0}px ({1:0.##} m/px), {2} shapes drawn, {3} held back by fog, {4:0} MB of video memory, linear colours {5}, {6:0.0} ms CPU",
                         _rt.width, _pixelSize / _rtScale, quads, _fogPieces.Count + _fogTerrain.Count,
                         (_rt.width * (long)_rt.height + (_rtMask != null ? _rtMask.width * (long)_rtMask.height : 0L)) * 4L / (1024f * 1024f),
-                        LinearColors ? "on" : "off"));
+                        LinearColors ? "on" : "off", _sw.Elapsed.TotalMilliseconds));
             }
             catch (Exception e)
             {
@@ -2183,6 +2193,7 @@ namespace MapOverlay
             try
             {
                 if (!_rt.IsCreated()) { _rtDirty = true; return; }
+                _sw.Restart();
 
                 BitArray explored = null, exploredOthers = null;
                 if (_cfgRespectFog.Value)
@@ -2253,8 +2264,8 @@ namespace MapOverlay
 
                 _rtIncrements++;
                 if (_cfgDebug.Value && (_rtIncrements == 1 || _rtIncrements % 20 == 0))
-                    Logger.LogInfo(string.Format("Map layer updated in place: {0} new pieces, {1} new cells, {2} quads (update #{3})",
-                        pieces, cells, quads, _rtIncrements));
+                    Logger.LogInfo(string.Format("Map layer updated in place: {0} new pieces, {1} new cells, {2} quads, {3:0.00} ms CPU (update #{4})",
+                        pieces, cells, quads, _sw.Elapsed.TotalMilliseconds, _rtIncrements));
             }
             catch (Exception e)
             {
@@ -2386,6 +2397,7 @@ namespace MapOverlay
             try
             {
                 if (!_rtMask.IsCreated() && !_rtMask.Create()) return;
+                _sw.Restart();
 
                 BitArray explored = null, exploredOthers = null;
                 if (_cfgRespectFog.Value)
@@ -2411,8 +2423,8 @@ namespace MapOverlay
                 RenderTexture.active = prev;
 
                 if (_cfgDebug.Value)
-                    Logger.LogInfo(string.Format("Forest mask rebuilt: {0} cleared, {1} planted, {2} held back by fog",
-                        clearedDrawn, plantedDrawn, _fogForest.Count));
+                    Logger.LogInfo(string.Format("Forest mask rebuilt: {0} cleared, {1} planted, {2} held back by fog, {3:0.0} ms CPU",
+                        clearedDrawn, plantedDrawn, _fogForest.Count, _sw.Elapsed.TotalMilliseconds));
             }
             catch (Exception e)
             {
