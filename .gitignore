@@ -32,6 +32,9 @@ SoftReferenceableAssets.dll
 BepInEx.dll
 0Harmony.dll
 
+# --- Пакеты для Thunderstore: артефакт релиза, собирается build.ps1 -Package ---
+build/*.zip
+
 # --- Мусор ОС ---
 Thumbs.db
 desktop.ini

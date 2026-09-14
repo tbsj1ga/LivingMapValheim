@@ -1,0 +1,9 @@
+{
+  "name": "MapOverlay",
+  "version_number": "0.0.0",
+  "website_url": "",
+  "description": "Buildings, hoe-made paths, clear-cuts and planted groves on the map and minimap. Reads the object database, so the host sees the whole world at once. Client-side, no Harmony patches.",
+  "dependencies": [
+    "denikson-BepInExPack_Valheim-5.4.2350"
+  ]
+}

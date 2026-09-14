@@ -20,10 +20,11 @@
 Папка — локальный git-репозиторий (ветка `main`, первая зафиксированная версия
 — тег `v0.8.0`).
 
-Что под версионированием: исходник, `.csproj`, `build.ps1`, документация и
-собранный `build\MapOverlay.dll`. Что нет — накопленные данные по мирам
-(`*.bin`), конфиг BepInEx, промежуточные `bin/`, `obj/` и дубликат DLL в корне
-папки; всё это перечислено в `.gitignore`.
+Что под версионированием: исходники, `.csproj`, скрипты сборки и проверки,
+документация, заготовка пакета Thunderstore и собранный `build\MapOverlay.dll`.
+Что нет — накопленные данные по мирам (`*.bin`), конфиг BepInEx, промежуточные
+`bin/`, `obj/`, zip-пакеты и дубликат DLL в корне папки; всё это перечислено в
+`.gitignore`.
 
 ## Установка
 
@@ -41,9 +42,27 @@
 |---|---|
 | Конфиг | `BepInEx\config\j1ga.mapoverlay.cfg` |
 | Накопленные данные по миру | `BepInEx\config\MapOverlay\<worldUID>.bin` |
-| Исходник | `src\MapOverlayPlugin.cs` |
+| Исходники | `src\MapOverlayPlugin*.cs` — один `partial class`, по файлу на область (см. ниже) |
 | Сборка | `build\MapOverlay.dll` |
-| Версия мода (одно место) | константа `Version` в `src\MapOverlayPlugin.cs` |
+| Версия мода (одно место) | константа `Version` в `src\MapOverlayPlugin.cs`; `build.ps1 -Package` подставляет её в `manifest.json` |
+| Проверка ссылок | `check-refs.ps1`, запускается сборкой |
+| Пакет Thunderstore | `thunderstore\` (manifest, icon 256×256, README) → `build\MapOverlay-<версия>.zip` |
+| Лицензия | `LICENSE`, MIT |
+
+Исходник разнесён по файлам одного `partial class MapOverlayPlugin`:
+
+| Файл | Что в нём |
+|---|---|
+| `MapOverlayPlugin.cs` | константы, `PieceRec`, общее состояние, `Awake`/`OnDestroy`, `Tick`, `Setup`/`Teardown`, общие помощники, обработка ошибок |
+| `.Config.cs` | все `ConfigEntry` и `BindConfig` |
+| `.Zdo.cs` | проход по `ZDOMan`: снимок, разбор префабов, footprint, слияние бакетов |
+| `.TerrainRecords.cs` | дорожки из записей `_TerrainCompiler` |
+| `.Forest.cs` | вырубленный и посаженный лес, маска `_MaskTex` |
+| `.Gpu.cs` | GPU-слой: полная пересборка, дорисовка, маска, туман войны |
+| `.Scan.cs` | старые сканеры: физика (`Physics.OverlapSphere`) и живой heightmap |
+| `.Cpu.cs` | CPU-фолбэк покраски ванильной текстуры |
+| `.Overlay.cs` | экранный слой `DetailedOverlay` |
+| `.Store.cs` | файл `<worldUID>.bin` |
 
 Файл данных привязан к UID мира. Формат менялся несколько раз; при
 несовпадении версии он просто игнорируется и набирается заново.
@@ -103,8 +122,10 @@
 ## Сборка
 
 ```
-powershell -ExecutionPolicy Bypass -File .\build.ps1            # -> build\MapOverlay.dll
-powershell -ExecutionPolicy Bypass -File .\build.ps1 -Install   # и сразу в plugins
+powershell -ExecutionPolicy Bypass -File .\build.ps1            # -> build\MapOverlay.dll + проверка ссылок
+powershell -ExecutionPolicy Bypass -File .\build.ps1 -Install   # ... и сразу в plugins
+powershell -ExecutionPolicy Bypass -File .\build.ps1 -Package   # ... и zip для Thunderstore в build\
+powershell -ExecutionPolicy Bypass -File .\build.ps1 -NoCheck   # без проверки ссылок
 ```
 
 Скрипт собирает `csc.exe` из .NET Framework — он есть на любой Windows, ставить
@@ -154,13 +175,27 @@ git commit -m "MapOverlay <версия>"
 git tag v<версия>
 ```
 
-## Проверка перед установкой
+## Проверка ссылок после сборки
 
-Полезная привычка, которая в этом проекте уже дважды ловила чужие баги: после
-сборки сверять все обращения мода в `assembly_valheim.dll` с тем, что реально
-есть в текущей версии игры. Именно так в этой сессии были найдены причины
-поломки AutoRepair и CraftFromContainers — они звали
-`Character.Message(MessageType, string, int, Sprite)`, а в игре у метода уже
-пять параметров. Несовпадение сигнатуры даёт `MissingMethodException` в
-рантайме, и компилятор о нём не предупреждает, если собирать против старых
-сборок.
+`check-refs.ps1` (запускается `build.ps1` автоматически) через `Mono.Cecil` из
+`BepInEx\core` резолвит каждую ссылку DLL на тип и член сборок игры и BepInEx,
+а также находит в IL цели рефлексии — `ldtoken` и `ldstr` перед
+`Type.GetField/GetMethod/GetProperty` — и проверяет, что такие члены у типа есть.
+Любое несовпадение валит сборку.
+
+Зачем: компилятор проверяет только против тех сборок, что лежали рядом при
+сборке; после обновления игры расхождение всплывает уже в рантайме как
+`MissingMethodException`. Именно так ломались AutoRepair и CraftFromContainers
+— они звали `Character.Message(MessageType, string, int, Sprite)`, а в игре у
+метода уже пять параметров. Цели рефлексии компилятор не видит вовсе.
+
+После обновления игры достаточно запустить `build.ps1` — если что-то
+переименовали, проверка скажет что именно.
+
+## Пакет для Thunderstore
+
+`build.ps1 -Package` собирает `build\MapOverlay-<версия>.zip`: `manifest.json`
+из `thunderstore\` с подставленной версией, `icon.png` (256×256, обязательное
+требование), `README.md` пакета (английский, для страницы мода), `CHANGELOG.md`
+и DLL в корне архива. Зависимость — `denikson-BepInExPack_Valheim`. Публиковать
+или нет — отдельное решение; заготовка просто лежит готовой.
