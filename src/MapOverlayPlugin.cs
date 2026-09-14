@@ -15,7 +15,7 @@ namespace MapOverlay
     {
         public const string Guid = "j1ga.mapoverlay";
         public const string Name = "Map Overlay";
-        public const string Version = "0.8.0";
+        public const string Version = "0.9.0";
 
         private const byte MatNone = 255;
         private const byte TerrainNone = 0;
@@ -54,6 +54,9 @@ namespace MapOverlay
         private ConfigEntry<float> _cfgMapRebuildInterval;
         private ConfigEntry<bool> _cfgHiRes;
 
+        private ConfigEntry<string> _cfgScanSource;
+        private ConfigEntry<float> _cfgZdoInterval;
+        private ConfigEntry<int> _cfgZdoPerFrame;
         private ConfigEntry<float> _cfgScanRadius;
         private ConfigEntry<float> _cfgMoveDelta;
         private ConfigEntry<float> _cfgScanInterval;
@@ -132,6 +135,30 @@ namespace MapOverlay
         private int _pieceLayerMask;
         private readonly Color32[] _onePixel = new Color32[1];
 
+        // ZDO scanner: the object database instead of the physics scene
+        private struct PrefabInfo
+        {
+            public bool IsPiece;
+            public byte Mat;
+            public Vector3 Min, Max;      // prefab-local AABB of its "piece"-layer colliders
+        }
+
+        private FieldInfo _fiObjectsByID;
+        private int _zdoPieceLayer = -1;
+        private readonly Dictionary<int, PrefabInfo> _prefabCache = new Dictionary<int, PrefabInfo>();
+        private readonly List<ZDO> _zdoSnapshot = new List<ZDO>();
+        private readonly Dictionary<int, List<PieceRec>> _zdoBuckets = new Dictionary<int, List<PieceRec>>();
+        private readonly Stack<List<PieceRec>> _listPool = new Stack<List<PieceRec>>();
+        private readonly List<int> _removeScratch = new List<int>();
+        private int _zdoCursor = -1;            // index into the snapshot, -1 = no pass running
+        private float _nextZdoPass;
+        private Vector3 _zdoPassOrigin, _zdoPrevOrigin;
+        private bool _zdoHavePrevOrigin;
+        private bool _zdoAuthoritative;
+        private int _zdoPasses, _zdoPassFrames, _zdoErrorCount;
+        private bool _zdoDisabled;
+        private const int MaxZdoErrors = 10;
+
         private Vector3 _lastScanPos;
         private float _nextScanTime, _lastScanTime, _nextFlushTime, _nextSaveTime, _nextRefogTime, _nextHiResTime;
         private const float RefogInterval = 15f;
@@ -177,6 +204,13 @@ namespace MapOverlay
             {
                 BindConfig();
                 _pieceLayerMask = LayerMask.GetMask("piece");
+                _zdoPieceLayer = LayerMask.NameToLayer("piece");
+
+                FieldInfo fiObjects = typeof(ZDOMan).GetField("m_objectsByID", BindingFlags.Instance | BindingFlags.NonPublic | BindingFlags.Public);
+                if (fiObjects != null && typeof(Dictionary<ZDOID, ZDO>).IsAssignableFrom(fiObjects.FieldType))
+                    _fiObjectsByID = fiObjects;
+                else
+                    Logger.LogWarning("ZDOMan.m_objectsByID was not found or has an unexpected type; build pieces will be scanned through physics instead.");
 
                 _fiExplored = typeof(Minimap).GetField("m_explored", BindingFlags.Instance | BindingFlags.NonPublic | BindingFlags.Public);
                 _fiExploredOthers = typeof(Minimap).GetField("m_exploredOthers", BindingFlags.Instance | BindingFlags.NonPublic | BindingFlags.Public);
@@ -231,8 +265,18 @@ namespace MapOverlay
             _cfgHiRes = Config.Bind("02 Layers", "DetailedOverlay", false,
                 "Extra layer drawn on top of the map in screen space. It is the sharpest option when zoomed right in, but it is a separate layer rather than part of the map. Off by default.");
 
+            _cfgScanSource = Config.Bind("03 Scanning", "BuildingScanSource", "ZDO",
+                new ConfigDescription(
+                    "Where build pieces are read from. ZDO walks the game's object database: on the host (single player, or the player hosting the game) that is every piece in the whole world at once, and pieces that were torn down disappear from the map; on a client of a dedicated server it is everything the server has sent this session. Physics is the old way: only colliders in the loaded zones around you. ZDO falls back to Physics on its own if the database cannot be read.",
+                    new AcceptableValueList<string>("ZDO", "Physics")));
+            _cfgZdoInterval = Config.Bind("03 Scanning", "ZdoScanInterval", 5f,
+                new ConfigDescription("Seconds between full passes over the object database.",
+                    new AcceptableValueRange<float>(1f, 120f)));
+            _cfgZdoPerFrame = Config.Bind("03 Scanning", "ZdoObjectsPerFrame", 4000,
+                new ConfigDescription("Objects examined per frame during a pass. A world of 70 000 objects takes about 18 frames at the default; raise it if you would rather have the map update sooner than smoother.",
+                    new AcceptableValueRange<int>(500, 50000)));
             _cfgScanRadius = Config.Bind("03 Scanning", "ScanRadius", 64f,
-                new ConfigDescription("Radius in metres scanned around the player. Objects exist only while their zone is loaded, so much above ~128 gains nothing.",
+                new ConfigDescription("Radius in metres scanned around the player: always for the path layer, and for build pieces only with BuildingScanSource = Physics. Objects exist only while their zone is loaded, so much above ~128 gains nothing.",
                     new AcceptableValueRange<float>(16f, 256f)));
             _cfgMoveDelta = Config.Bind("03 Scanning", "MoveDelta", 8f,
                 new ConfigDescription("Metres to move before the next scan.", new AcceptableValueRange<float>(1f, 64f)));
@@ -376,6 +420,8 @@ namespace MapOverlay
                 else _nextScanTime = now + 0.25f;
             }
 
+            if (_cfgShowBuildings.Value && UseZdoScan) StepZdoScan(now, pos);
+
             if (_deferredByFog.Count > 0 && now >= _nextRefogTime)
             {
                 _nextRefogTime = now + RefogInterval;
@@ -452,6 +498,10 @@ namespace MapOverlay
 
             if (_cfgPersist.Value) LoadStore();
 
+            ResetZdoPass();
+            _zdoHavePrevOrigin = false;
+            _nextZdoPass = 0f;
+
             if (_cfgPaintMapTexture.Value)
             {
                 bool gpu = false;
@@ -500,11 +550,12 @@ namespace MapOverlay
             _ready = true;
 
             Logger.LogInfo(string.Format(
-                "Attached to map: vanilla {0}px at {1} m/px; map layer {2}; world={3}, restored pieces={4}, terrain cells={5}",
+                "Attached to map: vanilla {0}px at {1} m/px; map layer {2}; buildings via {3}; world={4}, restored pieces={5}, terrain cells={6}",
                 _texSize, _pixelSize.ToString("0.##"),
                 _rt != null
                     ? _rt.width + "px on the GPU = " + (_pixelSize / _rtScale).ToString("0.##") + " m/px"
                     : (_ourTex != null ? "CPU " + _texSize + "px" : "off"),
+                UseZdoScan ? "the object database (ZDO)" : "physics",
                 _worldUid, _pieceCount, _terrain.Count));
             return true;
         }
@@ -532,6 +583,7 @@ namespace MapOverlay
             _pieces.Clear(); _terrain.Clear(); _pieceCount = 0;
             _pending.Clear(); _deferredByFog.Clear(); _paintedPixels.Clear();
             _circleScratch.Clear(); _scanBuckets.Clear(); _terrainScratch.Clear(); _pendingScratch.Clear();
+            ResetZdoPass(); _prefabCache.Clear();
         }
 
         private void ApplyTextureToMap(Texture tex, bool rememberOriginals)
@@ -574,7 +626,7 @@ namespace MapOverlay
         private void Scan(Vector3 center)
         {
             bool changed = false;
-            if (_cfgShowBuildings.Value) changed |= ScanBuildings(center);
+            if (_cfgShowBuildings.Value && !UseZdoScan) changed |= ScanBuildings(center);
             if (_cfgShowPaths.Value && !_terrainDisabled) changed |= ScanTerrain(center);
             if (changed) { _storeChanged = true; _rtDirty = true; }
         }
@@ -785,6 +837,386 @@ namespace MapOverlay
             {
                 _terrainDisabled = true;
                 Logger.LogWarning("The path layer failed too often and is off for this session. Buildings keep working.");
+            }
+        }
+
+        // ------------------------------------------------------------------
+        // ZDO scanning - the object database instead of the physics scene
+        // ------------------------------------------------------------------
+        // Physics only sees colliders that exist, i.e. the loaded zones around the player.
+        // ZDOMan holds a ZDO for every networked object the client knows about: on the host
+        // that is the entire world, on a client of a dedicated server everything the server
+        // has sent this session. Persistent ZDOs stay in the dictionary after their zone is
+        // unloaded, and destruction is broadcast to every peer, so the set is authoritative
+        // for everything it contains. What it does NOT contain on a client are pieces seen in
+        // earlier sessions only, which is why removal is trusted only inside the active area.
+        private bool UseZdoScan
+        {
+            get
+            {
+                return !_zdoDisabled && _fiObjectsByID != null &&
+                       string.Equals(_cfgScanSource.Value, "ZDO", StringComparison.OrdinalIgnoreCase);
+            }
+        }
+
+        private void StepZdoScan(float now, Vector3 pos)
+        {
+            try
+            {
+                if (_zdoCursor < 0)
+                {
+                    if (now < _nextZdoPass) return;
+                    if (!BeginZdoPass(pos))
+                    {
+                        _nextZdoPass = now + _cfgZdoInterval.Value;
+                        return;
+                    }
+                }
+
+                int end = Mathf.Min(_zdoSnapshot.Count, _zdoCursor + Mathf.Clamp(_cfgZdoPerFrame.Value, 500, 50000));
+                for (; _zdoCursor < end; _zdoCursor++) ExamineZdo(_zdoSnapshot[_zdoCursor]);
+                _zdoPassFrames++;
+
+                if (_zdoCursor >= _zdoSnapshot.Count)
+                {
+                    FinishZdoPass();
+                    _nextZdoPass = now + _cfgZdoInterval.Value;
+                }
+            }
+            catch (Exception e)
+            {
+                ZdoError("pass", e);
+                ResetZdoPass();
+                _nextZdoPass = now + _cfgZdoInterval.Value;
+            }
+        }
+
+        private bool BeginZdoPass(Vector3 pos)
+        {
+            ZDOMan man = ZDOMan.instance;
+            if (man == null || ZNetScene.instance == null || ZNet.instance == null) return false;
+
+            Dictionary<ZDOID, ZDO> all = _fiObjectsByID.GetValue(man) as Dictionary<ZDOID, ZDO>;
+            if (all == null) throw new InvalidOperationException("ZDOMan.m_objectsByID is null");
+
+            ResetZdoPass();
+
+            // a snapshot of the references: the dictionary changes while we walk it over several frames
+            if (_zdoSnapshot.Capacity < all.Count) _zdoSnapshot.Capacity = all.Count;
+            foreach (ZDO zdo in all.Values) _zdoSnapshot.Add(zdo);
+
+            _zdoCursor = 0;
+            _zdoPassFrames = 0;
+            _zdoPassOrigin = pos;
+            _zdoAuthoritative = ZNet.instance.IsServer();
+            return true;
+        }
+
+        private void ResetZdoPass()
+        {
+            _zdoCursor = -1;
+            _zdoSnapshot.Clear();
+            foreach (KeyValuePair<int, List<PieceRec>> kv in _zdoBuckets) ReturnList(kv.Value);
+            _zdoBuckets.Clear();
+            _removeScratch.Clear();
+        }
+
+        private void ExamineZdo(ZDO zdo)
+        {
+            // a ZDO returned to the pool keeps its prefab hash; only the id and position are cleared
+            if (zdo == null || zdo.m_uid.IsNone() || !zdo.IsValid()) return;
+
+            int hash = zdo.GetPrefab();
+            if (hash == 0) return;
+
+            PrefabInfo info;
+            if (!_prefabCache.TryGetValue(hash, out info))
+            {
+                info = BuildPrefabInfo(hash);
+                _prefabCache[hash] = info;
+            }
+            if (!info.IsPiece) return;
+
+            Vector3 p = zdo.GetPosition();
+            Quaternion q = zdo.GetRotation();
+
+            float minX, minY, minZ, maxX, maxY, maxZ;
+            if (q.x == 0f && q.y == 0f && q.z == 0f)
+            {
+                minX = info.Min.x; minY = info.Min.y; minZ = info.Min.z;
+                maxX = info.Max.x; maxY = info.Max.y; maxZ = info.Max.z;
+            }
+            else
+            {
+                // rotate the prefab's box and take the axis-aligned footprint of the result
+                minX = minY = minZ = float.MaxValue;
+                maxX = maxY = maxZ = float.MinValue;
+                for (int c = 0; c < 8; c++)
+                {
+                    Vector3 v = q * new Vector3(
+                        (c & 1) == 0 ? info.Min.x : info.Max.x,
+                        (c & 2) == 0 ? info.Min.y : info.Max.y,
+                        (c & 4) == 0 ? info.Min.z : info.Max.z);
+                    if (v.x < minX) minX = v.x;
+                    if (v.x > maxX) maxX = v.x;
+                    if (v.y < minY) minY = v.y;
+                    if (v.y > maxY) maxY = v.y;
+                    if (v.z < minZ) minZ = v.z;
+                    if (v.z > maxZ) maxZ = v.z;
+                }
+            }
+
+            if (maxX - minX > MaxFootprint || maxZ - minZ > MaxFootprint) return;
+
+            PieceRec rec = new PieceRec();
+            rec.X0 = p.x + minX; rec.X1 = p.x + maxX;
+            rec.Z0 = p.z + minZ; rec.Z1 = p.z + maxZ;
+            rec.Y = p.y + maxY; rec.Mat = info.Mat;
+
+            int idx;
+            if (!WorldToIndex(new Vector3(rec.CX, 0f, rec.CZ), out idx)) return;
+
+            List<PieceRec> bucket;
+            if (!_zdoBuckets.TryGetValue(idx, out bucket))
+            {
+                bucket = RentList();
+                _zdoBuckets[idx] = bucket;
+            }
+            bucket.Add(rec);
+        }
+
+        private PrefabInfo BuildPrefabInfo(int hash)
+        {
+            PrefabInfo info = new PrefabInfo();
+            info.Mat = MatNone;
+
+            GameObject prefab = ZNetScene.instance.GetPrefab(hash);
+            if (prefab == null || prefab.GetComponent<Piece>() == null) return info;
+
+            WearNTear wnt = prefab.GetComponent<WearNTear>();
+            if (wnt != null)
+            {
+                int m = (int)wnt.m_materialType;
+                if (m >= 0 && m < MatNames.Length) info.Mat = (byte)m;
+            }
+
+            // the same colliders the physics scan used to see, measured once on the prefab and
+            // kept in its local space; the rotation of each placed object is applied later
+            Collider[] cols = prefab.GetComponentsInChildren<Collider>(true);
+            Matrix4x4 toRoot = prefab.transform.worldToLocalMatrix;
+            Vector3 min = new Vector3(float.MaxValue, float.MaxValue, float.MaxValue);
+            Vector3 max = new Vector3(float.MinValue, float.MinValue, float.MinValue);
+            bool any = false;
+
+            for (int i = 0; i < cols.Length; i++)
+            {
+                Collider col = cols[i];
+                if (col == null || !col.enabled || col.gameObject.layer != _zdoPieceLayer) continue;
+
+                Vector3 c, e;
+                if (!LocalBox(col, out c, out e)) continue;
+
+                Matrix4x4 m = toRoot * col.transform.localToWorldMatrix;
+                for (int k = 0; k < 8; k++)
+                {
+                    Vector3 v = m.MultiplyPoint3x4(new Vector3(
+                        (k & 1) == 0 ? c.x - e.x : c.x + e.x,
+                        (k & 2) == 0 ? c.y - e.y : c.y + e.y,
+                        (k & 4) == 0 ? c.z - e.z : c.z + e.z));
+                    min = Vector3.Min(min, v);
+                    max = Vector3.Max(max, v);
+                }
+                any = true;
+            }
+
+            // no "piece" collider at all (ships, carts, plants) or a stray oversized one: not a building
+            if (!any) return info;
+            if (max.x - min.x > MaxFootprint || max.z - min.z > MaxFootprint) return info;
+
+            info.IsPiece = true;
+            info.Min = min;
+            info.Max = max;
+            return info;
+        }
+
+        private static bool LocalBox(Collider col, out Vector3 center, out Vector3 extents)
+        {
+            BoxCollider box = col as BoxCollider;
+            if (box != null)
+            {
+                center = box.center;
+                extents = box.size * 0.5f;
+                return true;
+            }
+
+            SphereCollider sph = col as SphereCollider;
+            if (sph != null)
+            {
+                center = sph.center;
+                extents = new Vector3(sph.radius, sph.radius, sph.radius);
+                return true;
+            }
+
+            CapsuleCollider cap = col as CapsuleCollider;
+            if (cap != null)
+            {
+                float half = Mathf.Max(cap.radius, cap.height * 0.5f);
+                center = cap.center;
+                extents = new Vector3(cap.radius, cap.radius, cap.radius);
+                if (cap.direction == 0) extents.x = half;
+                else if (cap.direction == 1) extents.y = half;
+                else extents.z = half;
+                return true;
+            }
+
+            MeshCollider mesh = col as MeshCollider;
+            if (mesh != null && mesh.sharedMesh != null)
+            {
+                Bounds b = mesh.sharedMesh.bounds;
+                center = b.center;
+                extents = b.extents;
+                return true;
+            }
+
+            center = Vector3.zero;
+            extents = Vector3.zero;
+            return false;
+        }
+
+        private void FinishZdoPass()
+        {
+            bool changed = false;
+            int replaced = 0, removed = 0, fresh = 0;
+            int seenPixels = _zdoBuckets.Count;
+
+            // 1. Pixels we remember that the database does not mention. On the host they are
+            //    gone for real. On a client the server only keeps us current inside the active
+            //    area, and even there the sync takes a moment after arriving, so a pixel has to
+            //    have been inside it at the start of this pass AND the previous one.
+            bool trustNear = _zdoAuthoritative ||
+                             (_zdoHavePrevOrigin && ZoneSystem.instance != null && ZoneSystem.instance.IsActiveAreaLoaded());
+            if (trustNear)
+            {
+                float half = _texSize * 0.5f;
+                _removeScratch.Clear();
+                foreach (KeyValuePair<int, List<PieceRec>> kv in _pieces)
+                {
+                    int idx = kv.Key;
+                    if (_zdoBuckets.ContainsKey(idx)) continue;
+                    if (!_zdoAuthoritative)
+                    {
+                        Vector3 w = new Vector3((idx % _texSize - half) * _pixelSize, 0f, (idx / _texSize - half) * _pixelSize);
+                        if (!ZNetScene.InActiveArea(w, _zdoPassOrigin) || !ZNetScene.InActiveArea(w, _zdoPrevOrigin)) continue;
+                    }
+                    _removeScratch.Add(idx);
+                }
+                for (int i = 0; i < _removeScratch.Count; i++)
+                {
+                    int idx = _removeScratch[i];
+                    List<PieceRec> old = _pieces[idx];
+                    _pieceCount -= old.Count;
+                    ReturnList(old);
+                    _pieces.Remove(idx);
+                    _pending.Add(idx);
+                    changed = true;
+                    removed++;
+                }
+                _removeScratch.Clear();
+            }
+
+            // 2. Pixels this pass saw: replace the stored bucket when its contents differ
+            foreach (KeyValuePair<int, List<PieceRec>> kv in _zdoBuckets)
+            {
+                int idx = kv.Key;
+                List<PieceRec> list = kv.Value;
+                fresh += list.Count;
+
+                List<PieceRec> old;
+                bool had = _pieces.TryGetValue(idx, out old);
+                if (had && SameBucket(old, list))
+                {
+                    ReturnList(list);
+                    continue;
+                }
+
+                int oldN = had ? old.Count : 0;
+                if (_pieceCount - oldN + list.Count > _cfgMaxPieces.Value)
+                {
+                    LogOnce("piececap", "Reached MaxPieces (" + _cfgMaxPieces.Value + "), no more build pieces are recorded.");
+                    ReturnList(list);
+                    continue;
+                }
+
+                _pieces[idx] = list;
+                _pieceCount += list.Count - oldN;
+                if (had) ReturnList(old);
+                _pending.Add(idx);
+                changed = true;
+                replaced++;
+            }
+            _zdoBuckets.Clear();       // its lists now live in _pieces or went back to the pool
+            _zdoSnapshot.Clear();
+            _zdoCursor = -1;
+            _zdoPrevOrigin = _zdoPassOrigin;
+            _zdoHavePrevOrigin = true;
+            _zdoPasses++;
+
+            if (changed) { _storeChanged = true; _rtDirty = true; }
+
+            if (_zdoPasses == 1 || (_cfgDebug.Value && changed))
+                Logger.LogInfo(string.Format(
+                    "ZDO scan: {0} build pieces in {1} map pixels, {2}; {3} pixels updated, {4} cleared, {5} frames",
+                    fresh, seenPixels,
+                    _zdoAuthoritative ? "host, the whole world" : "client, what the server has sent",
+                    replaced, removed, _zdoPassFrames));
+        }
+
+        private List<PieceRec> RentList()
+        {
+            return _listPool.Count > 0 ? _listPool.Pop() : new List<PieceRec>();
+        }
+
+        private void ReturnList(List<PieceRec> list)
+        {
+            if (list == null) return;
+            list.Clear();
+            if (_listPool.Count < 4096) _listPool.Push(list);
+        }
+
+        private static bool SameBucket(List<PieceRec> a, List<PieceRec> b)
+        {
+            if (a.Count != b.Count) return false;
+            // order-independent, so the dictionary handing us objects in a different order
+            // does not count as a change and trigger a rebuild of the whole map layer
+            return Signature(a) == Signature(b);
+        }
+
+        private static long Signature(List<PieceRec> list)
+        {
+            long sum = 0;
+            for (int i = 0; i < list.Count; i++)
+            {
+                PieceRec r = list[i];
+                int h = r.X0.GetHashCode();
+                h = h * 31 + r.X1.GetHashCode();
+                h = h * 31 + r.Z0.GetHashCode();
+                h = h * 31 + r.Z1.GetHashCode();
+                h = h * 31 + r.Y.GetHashCode();
+                h = h * 31 + r.Mat;
+                sum += h;
+            }
+            return sum;
+        }
+
+        private void ZdoError(string where, Exception e)
+        {
+            _zdoErrorCount++;
+            HandleError("zdo: " + where, e);
+            if (_zdoErrorCount >= MaxZdoErrors && !_zdoDisabled)
+            {
+                _zdoDisabled = true;
+                ResetZdoPass();
+                Logger.LogWarning("Reading the object database failed too often; build pieces are scanned through physics for the rest of this session.");
             }
         }
 
