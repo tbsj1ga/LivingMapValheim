@@ -8,14 +8,14 @@ using BepInEx.Configuration;
 using UnityEngine;
 using UnityEngine.UI;
 
-namespace MapOverlay
+namespace LivingMap
 {
     [BepInPlugin(Guid, Name, Version)]
-    public partial class MapOverlayPlugin : BaseUnityPlugin
+    public partial class LivingMapPlugin : BaseUnityPlugin
     {
-        public const string Guid = "j1ga.mapoverlay";
-        public const string Name = "Map Overlay";
-        public const string Version = "0.12.0";
+        public const string Guid = "j1ga.livingmap";
+        public const string Name = "Living Map";
+        public const string Version = "0.13.0";
 
         private const byte MatNone = 255;
         private const byte TerrainNone = 0;
@@ -84,6 +84,7 @@ namespace MapOverlay
         {
             try
             {
+                MigrateFromMapOverlay();
                 BindConfig();
                 _pieceLayerMask = LayerMask.GetMask("piece");
                 _zdoPieceLayer = LayerMask.NameToLayer("piece");
@@ -149,6 +150,8 @@ namespace MapOverlay
 
         private void Tick()
         {
+            if (!_oldPluginChecked && OldPluginLoaded()) return;
+
             Minimap mm = Minimap.instance;
 
             if (mm == null || ZNet.instance == null)
@@ -321,7 +324,7 @@ namespace MapOverlay
                     catch (Exception e) { HandleError("Setup/GetPixels32", e); return false; }
 
                     Texture2D copy = new Texture2D(vanilla.width, vanilla.height, TextureFormat.RGBA32, false);
-                    copy.name = "MapOverlay_MapTexture";
+                    copy.name = "LivingMap_MapTexture";
                     copy.filterMode = vanilla.filterMode;
                     copy.wrapMode = vanilla.wrapMode;
                     copy.anisoLevel = vanilla.anisoLevel;
@@ -508,6 +511,63 @@ namespace MapOverlay
         }
 
         // ------------------------------------------------------------------
+        // the old name: this mod was MapOverlay (j1ga.mapoverlay) up to 0.12.0
+        // ------------------------------------------------------------------
+        private const string OldGuid = "j1ga.mapoverlay";
+        private const string OldFolder = "MapOverlay";
+        private bool _oldPluginChecked;
+
+        // The config file is named after the GUID and the data folder after the mod, so both
+        // moved with the rename. Old files are copied, never deleted, on the first start.
+        private void MigrateFromMapOverlay()
+        {
+            try
+            {
+                string oldCfg = Path.Combine(Paths.ConfigPath, OldGuid + ".cfg");
+                if (!File.Exists(Config.ConfigFilePath) && File.Exists(oldCfg))
+                {
+                    File.Copy(oldCfg, Config.ConfigFilePath);
+                    Config.Reload();
+                    Logger.LogInfo("Copied the MapOverlay settings to " + Path.GetFileName(Config.ConfigFilePath) + ".");
+                }
+            }
+            catch (Exception e)
+            {
+                Logger.LogWarning("Could not carry the MapOverlay settings over: " + e.Message);
+            }
+        }
+
+        private void MigrateStoreFromMapOverlay(string path)
+        {
+            try
+            {
+                string old = Path.Combine(Path.Combine(Paths.ConfigPath, OldFolder), _worldUid + ".bin");
+                if (File.Exists(path) || !File.Exists(old)) return;
+                string dir = Path.GetDirectoryName(path);
+                if (!string.IsNullOrEmpty(dir) && !Directory.Exists(dir)) Directory.CreateDirectory(dir);
+                File.Copy(old, path);
+                Logger.LogInfo("Copied the MapOverlay data for this world to " + path + ".");
+            }
+            catch (Exception e)
+            {
+                Logger.LogWarning("Could not carry the MapOverlay data over: " + e.Message);
+            }
+        }
+
+        // Both plugins would fight over the map texture. The old DLL has to go.
+        private bool OldPluginLoaded()
+        {
+            _oldPluginChecked = true;
+            bool old = false;
+            try { old = BepInEx.Bootstrap.Chainloader.PluginInfos.ContainsKey(OldGuid); } catch { }
+            if (!old) return false;
+            _disabledByErrors = true;
+            Logger.LogError("The old MapOverlay plugin is loaded as well. Living Map is the same mod renamed; " +
+                            "remove BepInEx\\plugins\\MapOverlay\\MapOverlay.dll. Living Map stays inert until then.");
+            return true;
+        }
+
+        // ------------------------------------------------------------------
         // errors
         // ------------------------------------------------------------------
         private void LogOnce(string key, string message)
@@ -524,7 +584,7 @@ namespace MapOverlay
             if (_errorCount >= MaxErrors && !_disabledByErrors)
             {
                 _disabledByErrors = true;
-                Logger.LogError("Too many errors, Map Overlay is switching itself off for this session. The game is unaffected.");
+                Logger.LogError("Too many errors, Living Map is switching itself off for this session. The game is unaffected.");
                 try { Teardown(true); } catch { }
             }
         }

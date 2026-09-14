@@ -2,8 +2,8 @@
 
   <PropertyGroup>
     <TargetFramework>net472</TargetFramework>
-    <AssemblyName>MapOverlay</AssemblyName>
-    <RootNamespace>MapOverlay</RootNamespace>
+    <AssemblyName>LivingMap</AssemblyName>
+    <RootNamespace>LivingMap</RootNamespace>
     <LangVersion>latest</LangVersion>
     <AllowUnsafeBlocks>false</AllowUnsafeBlocks>
     <GenerateAssemblyInfo>false</GenerateAssemblyInfo>

@@ -1,4 +1,4 @@
-# MapOverlay
+# LivingMap
 
 Client-side map mod for Valheim. It draws onto the map texture itself, so everything
 below is part of the map: it pans, zooms, hides under the fog of war and under every
@@ -23,7 +23,7 @@ it was.
 
 ## Settings
 
-`BepInEx\config\j1ga.mapoverlay.cfg`. The ones worth knowing:
+`BepInEx\config\j1ga.livingmap.cfg`. The ones worth knowing:
 
 | Setting | Meaning |
 |---|---|

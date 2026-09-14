@@ -20,7 +20,7 @@ obj/
 
 # --- Локальные данные мода (привязаны к конкретному миру/машине) ---
 *.bin
-j1ga.mapoverlay.cfg
+j1ga.livingmap.cfg
 
 # --- Ссылки на сборки игры, если вдруг скопируешь их сюда ---
 lib/
@@ -40,5 +40,6 @@ Thumbs.db
 desktop.ini
 .DS_Store
 
-# --- Дубликат сборки в корне: источник правды — build/MapOverlay.dll ---
+# --- Дубликат сборки в корне: источник правды — build/LivingMap.dll ---
+/LivingMap.dll
 /MapOverlay.dll

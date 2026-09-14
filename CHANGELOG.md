@@ -1,6 +1,14 @@
 # История изменений
 
-Версия задаётся в одном месте — `MapOverlayPlugin.Version` в `src/MapOverlayPlugin.cs`.
+Версия задаётся в одном месте — `LivingMapPlugin.Version` в `src/LivingMapPlugin.cs`.
+
+## 0.13.0
+
+- **Переименование: MapOverlay → LivingMap.** GUID `j1ga.livingmap`, имя
+  «Living Map», сборка `LivingMap.dll`, namespace и класс `LivingMapPlugin`,
+  пакет `LivingMap`. При первом запуске настройки и данные по мирам копируются
+  из старых файлов, старые не трогаются. Если старый `MapOverlay.dll` всё ещё
+  загружен, мод бездействует и пишет об этом в лог.
 
 ## 0.12.0
 
@@ -70,7 +78,7 @@
   `ZdoScanInterval`, `ZdoObjectsPerFrame`. Физический сканер остаётся запасным
   вариантом: включается настройкой или сам, если поле `m_objectsByID` не
   найдено либо чтение базы падает.
-- `build.ps1` — сборка в `build\MapOverlay.dll` штатным `csc.exe` из .NET
+- `build.ps1` — сборка в `build\LivingMap.dll` штатным `csc.exe` из .NET
   Framework, `-Install` копирует в plugins. В `.csproj` и список ссылок добавлен
   `assembly_utils` (тип `Vector2s` в сигнатуре `ZNetScene.InActiveArea`).
 

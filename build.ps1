@@ -1,4 +1,4 @@
-# Сборка build\MapOverlay.dll.
+# Сборка build\LivingMap.dll.
 #
 #   powershell -ExecutionPolicy Bypass -File .\build.ps1            # собрать и проверить ссылки
 #   powershell -ExecutionPolicy Bypass -File .\build.ps1 -Install   # ... и положить в plugins
@@ -7,7 +7,7 @@
 #
 # Компилятор — csc.exe из .NET Framework, который есть на любой Windows. Он понимает
 # только C# 5, и исходник намеренно написан в этих рамках (без out var, ?., $"" и
-# nameof). Если появится dotnet SDK, можно собирать и через src\MapOverlay.csproj,
+# nameof). Если появится dotnet SDK, можно собирать и через src\LivingMap.csproj,
 # результат тот же. Ссылки берутся прямо из установленной игры и профиля r2modman,
 # поэтому сборка идёт против ровно той версии игры, в которой мод будет работать.
 #
@@ -22,10 +22,10 @@ $root    = $PSScriptRoot
 $managed = "D:\SteamLibrary\steamapps\common\Valheim\valheim_Data\Managed"
 $profile = "$env:APPDATA\r2modmanPlus-local\Valheim\profiles\Valheim"
 $core    = "$profile\BepInEx\core"
-$plugins = "$profile\BepInEx\plugins\MapOverlay"
-$out     = "$root\build\MapOverlay.dll"
+$plugins = "$profile\BepInEx\plugins\LivingMap"
+$out     = "$root\build\LivingMap.dll"
 $src     = Get-ChildItem "$root\src\*.cs" | Sort-Object Name | ForEach-Object { $_.FullName }
-$main    = "$root\src\MapOverlayPlugin.cs"
+$main    = "$root\src\LivingMapPlugin.cs"
 
 $csc = "$env:WINDIR\Microsoft.NET\Framework64\v4.0.30319\csc.exe"
 if (-not (Test-Path $csc)) { $csc = "$env:WINDIR\Microsoft.NET\Framework\v4.0.30319\csc.exe" }
@@ -58,7 +58,7 @@ if (-not $NoCheck) {
 
 if ($Install) {
     New-Item -ItemType Directory -Force $plugins | Out-Null
-    Copy-Item $out "$plugins\MapOverlay.dll" -Force
+    Copy-Item $out "$plugins\LivingMap.dll" -Force
     Write-Host "Installed to $plugins"
 }
 
@@ -66,8 +66,8 @@ if ($Package) {
     # Пакет Thunderstore: manifest.json (версия подставляется из исходника), icon.png
     # 256x256, README.md, CHANGELOG.md и DLL в корне архива.
     $ts   = "$root\thunderstore"
-    $tmp  = Join-Path ([System.IO.Path]::GetTempPath()) ("MapOverlay-pkg-" + [guid]::NewGuid().ToString("N"))
-    $zip  = "$root\build\MapOverlay-$ver.zip"
+    $tmp  = Join-Path ([System.IO.Path]::GetTempPath()) ("LivingMap-pkg-" + [guid]::NewGuid().ToString("N"))
+    $zip  = "$root\build\LivingMap-$ver.zip"
     New-Item -ItemType Directory -Force $tmp | Out-Null
     try {
         $manifest = Get-Content "$ts\manifest.json" -Raw -Encoding UTF8
@@ -76,7 +76,7 @@ if ($Package) {
         Copy-Item "$ts\icon.png"   "$tmp\icon.png"
         Copy-Item "$ts\README.md"  "$tmp\README.md"
         Copy-Item "$root\CHANGELOG.md" "$tmp\CHANGELOG.md"
-        Copy-Item $out "$tmp\MapOverlay.dll"
+        Copy-Item $out "$tmp\LivingMap.dll"
         if (Test-Path $zip) { Remove-Item $zip -Force }
         Compress-Archive -Path "$tmp\*" -DestinationPath $zip
         Write-Host "Packaged $zip ($((Get-Item $zip).Length) bytes)"

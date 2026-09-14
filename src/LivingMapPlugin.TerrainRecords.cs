@@ -8,9 +8,9 @@ using BepInEx.Configuration;
 using UnityEngine;
 using UnityEngine.UI;
 
-namespace MapOverlay
+namespace LivingMap
 {
-    public partial class MapOverlayPlugin
+    public partial class LivingMapPlugin
     {
         // paths from the terrain records in the database
         private readonly List<ZDO> _tcZdos = new List<ZDO>();                          // records seen by the current pass

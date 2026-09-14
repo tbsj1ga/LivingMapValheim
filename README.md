@@ -1,8 +1,14 @@
-# MapOverlay
+# LivingMap
 
-Клиентский мод для Valheim: рисует на карте постройки и обработанную мотыгой
-землю. Ничего не патчит через Harmony, ничего не передаёт по сети, игроку без
-мода не мешает никак.
+Клиентский мод для Valheim: карта показывает мир таким, каким его сделали
+люди — постройки, обработанную мотыгой землю, вырубки и посаженные рощи, и
+меняется вместе с ним. Ничего не патчит через Harmony, ничего не передаёт по
+сети, игроку без мода не мешает никак.
+
+До 0.13.0 мод назывался **MapOverlay** (GUID `j1ga.mapoverlay`); имя перестало
+соответствовать сути с тех пор, как слой стал частью текстуры карты, а не
+наложением. Это не форк [AzuMapDetails](https://thunderstore.io/c/valheim/p/Azumatt/AzuMapDetails/)
+и не производная от него — независимая реализация с другим механизмом.
 
 Постройки читаются из базы объектов игры (`ZDOMan`), а не из физической сцены:
 на хосте это сразу весь мир, снесённое исчезает с карты само. Из той же базы
@@ -21,39 +27,47 @@
 — тег `v0.8.0`).
 
 Что под версионированием: исходники, `.csproj`, скрипты сборки и проверки,
-документация, заготовка пакета Thunderstore и собранный `build\MapOverlay.dll`.
+документация, заготовка пакета Thunderstore и собранный `build\LivingMap.dll`.
 Что нет — накопленные данные по мирам (`*.bin`), конфиг BepInEx, промежуточные
 `bin/`, `obj/`, zip-пакеты и дубликат DLL в корне папки; всё это перечислено в
 `.gitignore`.
 
 ## Установка
 
-Файл `build/MapOverlay.dll` кладётся в
+Файл `build/LivingMap.dll` кладётся в
 
 ```
-%AppData%\r2modmanPlus-local\Valheim\profiles\Valheim\BepInEx\plugins\MapOverlay\
+%AppData%\r2modmanPlus-local\Valheim\profiles\Valheim\BepInEx\plugins\LivingMap\
 ```
 
-Он уже там лежит — эта папка просто копия исходников и сборки.
+При переходе с MapOverlay старый `plugins\MapOverlay\MapOverlay.dll` (и папку
+`plugins\Unknown-MapOverlay.dll\`, если r2modman её создал) нужно удалить: у
+двух плагинов разные GUID, BepInEx загрузит оба, и они начнут делить текстуру
+карты. Living Map это замечает и на первом же кадре уходит в бездействие с
+ошибкой в логе, пока старый DLL не убран.
+
+Настройки и накопленные данные переезжают сами: при первом запуске мод копирует
+`j1ga.mapoverlay.cfg` → `j1ga.livingmap.cfg` и `config\MapOverlay\<мир>.bin` →
+`config\LivingMap\<мир>.bin`, если новых файлов ещё нет. Старые не удаляются.
 
 ## Где что лежит
 
 | Что | Где |
 |---|---|
-| Конфиг | `BepInEx\config\j1ga.mapoverlay.cfg` |
-| Накопленные данные по миру | `BepInEx\config\MapOverlay\<worldUID>.bin` |
-| Исходники | `src\MapOverlayPlugin*.cs` — один `partial class`, по файлу на область (см. ниже) |
-| Сборка | `build\MapOverlay.dll` |
-| Версия мода (одно место) | константа `Version` в `src\MapOverlayPlugin.cs`; `build.ps1 -Package` подставляет её в `manifest.json` |
+| Конфиг | `BepInEx\config\j1ga.livingmap.cfg` |
+| Накопленные данные по миру | `BepInEx\config\LivingMap\<worldUID>.bin` |
+| Исходники | `src\LivingMapPlugin*.cs` — один `partial class`, по файлу на область (см. ниже) |
+| Сборка | `build\LivingMap.dll` |
+| Версия мода (одно место) | константа `Version` в `src\LivingMapPlugin.cs`; `build.ps1 -Package` подставляет её в `manifest.json` |
 | Проверка ссылок | `check-refs.ps1`, запускается сборкой |
-| Пакет Thunderstore | `thunderstore\` (manifest, icon 256×256, README) → `build\MapOverlay-<версия>.zip` |
+| Пакет Thunderstore | `thunderstore\` (manifest, icon 256×256, README) → `build\LivingMap-<версия>.zip` |
 | Лицензия | `LICENSE`, MIT |
 
-Исходник разнесён по файлам одного `partial class MapOverlayPlugin`:
+Исходник разнесён по файлам одного `partial class LivingMapPlugin`:
 
 | Файл | Что в нём |
 |---|---|
-| `MapOverlayPlugin.cs` | константы, `PieceRec`, общее состояние, `Awake`/`OnDestroy`, `Tick`, `Setup`/`Teardown`, общие помощники, обработка ошибок |
+| `LivingMapPlugin.cs` | константы, `PieceRec`, общее состояние, `Awake`/`OnDestroy`, `Tick`, `Setup`/`Teardown`, общие помощники, обработка ошибок |
 | `.Config.cs` | все `ConfigEntry` и `BindConfig` |
 | `.Zdo.cs` | проход по `ZDOMan`: снимок, разбор префабов, footprint, слияние бакетов |
 | `.TerrainRecords.cs` | дорожки из записей `_TerrainCompiler` |
@@ -122,7 +136,7 @@
 ## Сборка
 
 ```
-powershell -ExecutionPolicy Bypass -File .\build.ps1            # -> build\MapOverlay.dll + проверка ссылок
+powershell -ExecutionPolicy Bypass -File .\build.ps1            # -> build\LivingMap.dll + проверка ссылок
 powershell -ExecutionPolicy Bypass -File .\build.ps1 -Install   # ... и сразу в plugins
 powershell -ExecutionPolicy Bypass -File .\build.ps1 -Package   # ... и zip для Thunderstore в build\
 powershell -ExecutionPolicy Bypass -File .\build.ps1 -NoCheck   # без проверки ссылок
@@ -138,13 +152,13 @@ powershell -ExecutionPolicy Bypass -File .\build.ps1 -NoCheck   # без про�
 Если есть dotnet SDK, можно и через проект:
 
 ```
-dotnet build src\MapOverlay.csproj -c Release
+dotnet build src\LivingMap.csproj -c Release
 ```
 
 Вариант через mono (так собирался DLL до 0.9.0):
 
 ```
-mcs -target:library -out:MapOverlay.dll -sdk:4.5 -langversion:latest \
+mcs -target:library -out:LivingMap.dll -sdk:4.5 -langversion:latest \
   -r:<Managed>/assembly_valheim.dll \
   -r:<Managed>/assembly_utils.dll \
   -r:<Managed>/UnityEngine.dll \
@@ -156,7 +170,7 @@ mcs -target:library -out:MapOverlay.dll -sdk:4.5 -langversion:latest \
   -r:<Managed>/SoftReferenceableAssets.dll \
   -r:<BepInEx>/core/BepInEx.dll \
   -r:<BepInEx>/core/0Harmony.dll \
-  MapOverlayPlugin.cs
+  LivingMapPlugin.cs
 ```
 
 ## Git
@@ -171,7 +185,7 @@ mcs -target:library -out:MapOverlay.dll -sdk:4.5 -langversion:latest \
 git init -b main
 git config core.autocrlf false
 git add -A
-git commit -m "MapOverlay <версия>"
+git commit -m "LivingMap <версия>"
 git tag v<версия>
 ```
 
@@ -194,7 +208,7 @@ git tag v<версия>
 
 ## Пакет для Thunderstore
 
-`build.ps1 -Package` собирает `build\MapOverlay-<версия>.zip`: `manifest.json`
+`build.ps1 -Package` собирает `build\LivingMap-<версия>.zip`: `manifest.json`
 из `thunderstore\` с подставленной версией, `icon.png` (256×256, обязательное
 требование), `README.md` пакета (английский, для страницы мода), `CHANGELOG.md`
 и DLL в корне архива. Зависимость — `denikson-BepInExPack_Valheim`. Публиковать

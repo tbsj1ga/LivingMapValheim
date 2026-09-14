@@ -8,9 +8,9 @@ using BepInEx.Configuration;
 using UnityEngine;
 using UnityEngine.UI;
 
-namespace MapOverlay
+namespace LivingMap
 {
-    public partial class MapOverlayPlugin
+    public partial class LivingMapPlugin
     {
         // detailed overlays, one per map view
         private class Layer
@@ -242,7 +242,7 @@ namespace MapOverlay
             if (layer.Tex == null)
             {
                 layer.Tex = new Texture2D(size, size, TextureFormat.RGBA32, false);
-                layer.Tex.name = "MapOverlay_" + layer.Name;
+                layer.Tex.name = "LivingMap_" + layer.Name;
                 layer.Tex.wrapMode = TextureWrapMode.Clamp;
                 layer.Buf = new Color32[size * size];
                 layer.Redraws = 0;
@@ -255,7 +255,7 @@ namespace MapOverlay
 
             if (layer.Go == null)
             {
-                layer.Go = new GameObject("MapOverlay_" + layer.Name,
+                layer.Go = new GameObject("LivingMap_" + layer.Name,
                     typeof(RectTransform), typeof(CanvasRenderer), typeof(RawImage));
 
                 // A child of the map image: it inherits the map's mask and transform, sits right

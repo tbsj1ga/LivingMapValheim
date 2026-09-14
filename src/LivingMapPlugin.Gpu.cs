@@ -8,9 +8,9 @@ using BepInEx.Configuration;
 using UnityEngine;
 using UnityEngine.UI;
 
-namespace MapOverlay
+namespace LivingMap
 {
-    public partial class MapOverlayPlugin
+    public partial class LivingMapPlugin
     {
         // GPU map layer: the map texture itself, rendered on the graphics card
         private RenderTexture _rt;
@@ -66,7 +66,7 @@ namespace MapOverlay
             {
                 int size = _texSize * scale;
                 RenderTexture rt = new RenderTexture(size, size, 0, RenderTextureFormat.ARGB32);
-                rt.name = "MapOverlay_MapTexture";
+                rt.name = "LivingMap_MapTexture";
                 rt.useMipMap = false;
                 rt.autoGenerateMips = false;
                 rt.filterMode = _vanillaTex.filterMode;
@@ -105,7 +105,7 @@ namespace MapOverlay
                 try
                 {
                     RenderTexture mask = new RenderTexture(_texSize, _texSize, 0, RenderTextureFormat.ARGB32);
-                    mask.name = "MapOverlay_ForestMask";
+                    mask.name = "LivingMap_ForestMask";
                     mask.useMipMap = false;
                     mask.autoGenerateMips = false;
                     mask.filterMode = _vanillaMask.filterMode;

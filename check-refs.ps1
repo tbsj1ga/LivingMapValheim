@@ -18,7 +18,7 @@
 #
 # Инструмент — Mono.Cecil.dll из BepInEx\core, ничего ставить не нужно.
 
-param([string]$Dll = "$PSScriptRoot\build\MapOverlay.dll")
+param([string]$Dll = "$PSScriptRoot\build\LivingMap.dll")
 
 $ErrorActionPreference = "Stop"
 $managed = "D:\SteamLibrary\steamapps\common\Valheim\valheim_Data\Managed"

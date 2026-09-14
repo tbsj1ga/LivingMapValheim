@@ -8,9 +8,9 @@ using BepInEx.Configuration;
 using UnityEngine;
 using UnityEngine.UI;
 
-namespace MapOverlay
+namespace LivingMap
 {
-    public partial class MapOverlayPlugin
+    public partial class LivingMapPlugin
     {
         // ------------------------------------------------------------------
         // config

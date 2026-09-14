@@ -8,9 +8,9 @@ using BepInEx.Configuration;
 using UnityEngine;
 using UnityEngine.UI;
 
-namespace MapOverlay
+namespace LivingMap
 {
-    public partial class MapOverlayPlugin
+    public partial class LivingMapPlugin
     {
         private long _worldUid;
         private bool _storeChanged;
@@ -20,7 +20,7 @@ namespace MapOverlay
         // ------------------------------------------------------------------
         private string StorePath()
         {
-            return Path.Combine(Path.Combine(Paths.ConfigPath, "MapOverlay"), _worldUid + ".bin");
+            return Path.Combine(Path.Combine(Paths.ConfigPath, "LivingMap"), _worldUid + ".bin");
         }
 
         private void LoadStore()
@@ -29,6 +29,7 @@ namespace MapOverlay
             {
                 if (_worldUid == 0L) return;
                 string path = StorePath();
+                MigrateStoreFromMapOverlay(path);
                 if (!File.Exists(path)) return;
 
                 using (FileStream fs = new FileStream(path, FileMode.Open, FileAccess.Read))
