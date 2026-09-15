@@ -208,7 +208,7 @@ namespace LivingMap
 
                     if (kind == TerrainNone)
                     {
-                        if (had) { _terrain.Remove(key); _rtDirty = true; _tcRemoved++; MarkPixelDirty((gx + 0.5f) * grid, (gz + 0.5f) * grid); }
+                        if (had) { _terrain.Remove(key); _rtDirty = true; _tcRemoved++; }
                         continue;
                     }
                     if (had && cur == kind) continue;
@@ -220,7 +220,6 @@ namespace LivingMap
                     _terrain[key] = kind;
                     if (had) { _rtDirty = true; _tcChanged++; }
                     else { _addTerrain.Add(key); _tcAdded++; }
-                    MarkPixelDirty((gx + 0.5f) * grid, (gz + 0.5f) * grid);
                 }
             }
 

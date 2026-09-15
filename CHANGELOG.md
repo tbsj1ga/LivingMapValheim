@@ -2,6 +2,12 @@
 
 Версия задаётся в одном месте — `LivingMapPlugin.Version` в `src/LivingMapPlugin.cs`.
 
+## 0.14.0
+
+- **Уборка.** Удалены CPU-путь покраски и экранный слой `DetailedOverlay` с их
+  десятью настройками. Слой только на GPU; без него мод бездействует, а не
+  красит по-старому.
+
 ## 0.13.0
 
 - **Переименование: MapOverlay → LivingMap.** GUID `j1ga.livingmap`, имя

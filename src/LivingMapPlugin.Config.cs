@@ -22,7 +22,6 @@ namespace LivingMap
         private ConfigEntry<bool> _cfgShowBuildings;
         private ConfigEntry<bool> _cfgShowPaths;
         private ConfigEntry<bool> _cfgRespectFog;
-        private ConfigEntry<bool> _cfgPaintMapTexture;
         private ConfigEntry<int> _cfgMapScale;
         private ConfigEntry<bool> _cfgMapFlipY;
         private ConfigEntry<bool> _cfgLinearFix;
@@ -31,7 +30,6 @@ namespace LivingMap
         private ConfigEntry<Color> _cfgOutlineColor;
         private ConfigEntry<float> _cfgMapRebuildInterval;
         private ConfigEntry<bool> _cfgIncremental;
-        private ConfigEntry<bool> _cfgHiRes;
 
         private ConfigEntry<string> _cfgScanSource;
         private ConfigEntry<string> _cfgPathSource;
@@ -43,15 +41,6 @@ namespace LivingMap
         private ConfigEntry<float> _cfgIdleRescan;
         private ConfigEntry<float> _cfgTerrainGrid;
 
-        private ConfigEntry<float> _cfgFlushInterval;
-        private ConfigEntry<int> _cfgPixelsPerFlush;
-
-        private ConfigEntry<int> _cfgHiResSize;
-        private ConfigEntry<int> _cfgMinimapSize;
-        private ConfigEntry<bool> _cfgMinimapOverlay;
-        private ConfigEntry<float> _cfgOverlayOpacity;
-        private ConfigEntry<bool> _cfgSmoothOverlay;
-        private ConfigEntry<float> _cfgHiResInterval;
         private ConfigEntry<float> _cfgPieceSize;
 
         private ConfigEntry<bool> _cfgPersist;
@@ -84,7 +73,7 @@ namespace LivingMap
             _cfgEnabled = Config.Bind("01 General", "Enabled", true, "Master switch.");
             _cfgDebug = Config.Bind("01 General", "Debug", false, "Verbose logging, with timings of every scan and redraw, and a self-check of terrain records against the loaded terrain.");
             _cfgDebugMarker = Config.Bind("01 General", "DebugMarker", false,
-                "Draw a magenta cross at your own position in the detailed overlay. Use it once to confirm the overlay lines up with the vanilla player arrow.");
+                "Draw a magenta cross at your own position on the map. Use it once to confirm the layer lines up with the vanilla player arrow; while it is on, every update is a full rebuild.");
 
             _cfgShowBuildings = Config.Bind("02 Layers", "ShowBuildings", true, "Show build pieces.");
             _cfgShowPaths = Config.Bind("02 Layers", "ShowPaths", true,
@@ -107,8 +96,6 @@ namespace LivingMap
             _cfgPlantedAnyBiome = Config.Bind("02 Layers", "PlantedForestAnyBiome", false,
                 "Draw forest in biomes where the vanilla map never does: swamps, mountains, Mistlands, Ashlands. Their natural woods then get the forest pattern as well, which changes the look of the whole map.");
             _cfgRespectFog = Config.Bind("02 Layers", "RespectFog", true, "Only draw on explored ground.");
-            _cfgPaintMapTexture = Config.Bind("02 Layers", "PaintMapTexture", true,
-                "Draw straight into the map texture, so the result IS the map: it pans, zooms, fogs and layers under every marker exactly like vanilla, on both the big map and the minimap.");
             _cfgMapScale = Config.Bind("02 Layers", "MapTextureScale", 4,
                 new ConfigDescription(
                     "Resolution multiplier for the map texture. Vanilla 2048 is 12 m per pixel. 2 = 4096 = 6 m/px (~67 MB of video memory), 4 = 8192 = 3 m/px (~268 MB), 8 = 16384 = 1.5 m/px (~1 GB, only worth it on a card with plenty of VRAM). Video memory only, nothing is held in RAM. If the card refuses the size the mod steps down automatically.",
@@ -122,8 +109,6 @@ namespace LivingMap
                 "Draw new shapes on top of the existing map texture instead of rebuilding it from scratch; a full rebuild happens only when something disappeared. Off = always rebuild the whole texture, as before 0.11.0.");
             _cfgMapFlipY = Config.Bind("02 Layers", "MapLayerFlipY", false,
                 "Flip the drawn shapes vertically. Only needed if the graphics API renders the map layer upside down - set it once and the whole layer lines up.");
-            _cfgHiRes = Config.Bind("02 Layers", "DetailedOverlay", false,
-                "Extra layer drawn on top of the map in screen space. It is the sharpest option when zoomed right in, but it is a separate layer rather than part of the map. Off by default.");
 
             _cfgScanSource = Config.Bind("03 Scanning", "BuildingScanSource", "ZDO",
                 new ConfigDescription(
@@ -152,26 +137,6 @@ namespace LivingMap
                 new ConfigDescription("Metres per terrain sample. Smaller is sharper but costs more per scan.",
                     new AcceptableValueRange<float>(0.5f, 8f)));
 
-            _cfgFlushInterval = Config.Bind("04 Rendering", "FlushInterval", 0.5f,
-                new ConfigDescription("Minimum seconds between map-texture uploads.", new AcceptableValueRange<float>(0.1f, 10f)));
-            _cfgPixelsPerFlush = Config.Bind("04 Rendering", "PixelsPerFlush", 2000,
-                new ConfigDescription("Maximum coarse pixels written per upload.", new AcceptableValueRange<int>(64, 100000)));
-            _cfgMinimapOverlay = Config.Bind("02 Layers", "MinimapOverlay", true,
-                "Draw the detailed overlay on the small minimap as well.");
-            _cfgOverlayOpacity = Config.Bind("04 Rendering", "OverlayOpacity", 0.85f,
-                new ConfigDescription("Opacity of the detailed overlay. Lower values let the map show through so it reads as part of the map rather than a sticker.",
-                    new AcceptableValueRange<float>(0.1f, 1f)));
-            _cfgSmoothOverlay = Config.Bind("04 Rendering", "SmoothOverlay", true,
-                "Filter the overlay smoothly instead of hard pixels, which blends better with the blurry map.");
-            _cfgMinimapSize = Config.Bind("04 Rendering", "MinimapOverlayResolution", 512,
-                new ConfigDescription("Pixel size of the minimap overlay texture. The minimap redraws constantly, so keep this small.",
-                    new AcceptableValueList<int>(256, 512, 1024)));
-            _cfgHiResSize = Config.Bind("04 Rendering", "DetailedOverlayResolution", 1024,
-                new ConfigDescription("Pixel size of the detailed overlay texture. 2048 is sharper and uses 16 MB instead of 4 MB.",
-                    new AcceptableValueList<int>(512, 1024, 1536, 2048)));
-            _cfgHiResInterval = Config.Bind("04 Rendering", "DetailedOverlayInterval", 0.05f,
-                new ConfigDescription("Minimum seconds between redraws of the detailed overlay. 0.05 keeps it glued to the map while dragging.",
-                    new AcceptableValueRange<float>(0.02f, 2f)));
             _cfgPieceSize = Config.Bind("04 Rendering", "MinPieceSizeMeters", 2f,
                 new ConfigDescription("Smallest size, in metres, that a build piece is drawn at. Pieces use their real footprint; this is the floor so thin walls stay visible however sharp the map texture is. Raise it if buildings read as too faint.",
                     new AcceptableValueRange<float>(0.1f, 8f)));

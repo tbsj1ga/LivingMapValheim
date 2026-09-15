@@ -102,7 +102,6 @@ namespace LivingMap
                 if (newN == 0)
                 {
                     _pieces.Remove(idx);
-                    _pending.Add(idx);
                     changed = true;
                     continue;
                 }
@@ -116,7 +115,6 @@ namespace LivingMap
 
                 _pieces[idx] = fresh;
                 _pieceCount += newN;
-                _pending.Add(idx);
                 changed = true;
             }
 
@@ -176,7 +174,7 @@ namespace LivingMap
 
                         if (kind == TerrainNone)
                         {
-                            if (had) { _terrain.Remove(key); changed = true; _rtDirty = true; MarkPixelDirty(wx, wz); }
+                            if (had) { _terrain.Remove(key); changed = true; _rtDirty = true; }
                             continue;
                         }
 
@@ -191,7 +189,6 @@ namespace LivingMap
                         changed = true;
                         if (had) _rtDirty = true;           // a different paint under the old one: repaint everything
                         else _addTerrain.Add(key);
-                        MarkPixelDirty(wx, wz);
                     }
                 }
             }

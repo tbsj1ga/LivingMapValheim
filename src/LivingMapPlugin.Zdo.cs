@@ -381,7 +381,6 @@ namespace LivingMap
                     _pieceCount -= old.Count;
                     ReturnList(old);
                     _pieces.Remove(idx);
-                    _pending.Add(idx);
                     changed = true;
                     _rtDirty = true;
                     removed++;
@@ -418,7 +417,6 @@ namespace LivingMap
                 _pieces[idx] = list;
                 _pieceCount += list.Count - oldN;
                 if (had) ReturnList(old);
-                _pending.Add(idx);
                 changed = true;
                 replaced++;
             }

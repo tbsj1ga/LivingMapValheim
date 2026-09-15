@@ -15,7 +15,7 @@ namespace LivingMap
     {
         public const string Guid = "j1ga.livingmap";
         public const string Name = "Living Map";
-        public const string Version = "0.13.0";
+        public const string Version = "0.14.0";
 
         private const byte MatNone = 255;
         private const byte TerrainNone = 0;
@@ -44,19 +44,12 @@ namespace LivingMap
         // terrain, on its own metric grid: key = (gx << 32) | gz
         private readonly Dictionary<long, byte> _terrain = new Dictionary<long, byte>();
 
-        // coarse layer bookkeeping
-        private readonly HashSet<int> _pending = new HashSet<int>();
-        private readonly HashSet<int> _deferredByFog = new HashSet<int>();
-        private readonly List<int> _pendingScratch = new List<int>();
-        private readonly HashSet<int> _paintedPixels = new HashSet<int>();
-
         private readonly List<int> _circleScratch = new List<int>();
         private readonly Dictionary<int, List<PieceRec>> _scanBuckets = new Dictionary<int, List<PieceRec>>();
         private readonly List<long> _terrainScratch = new List<long>();
 
         private Minimap _mm;
         private Texture2D _vanillaTex;
-        private Texture2D _ourTex;
         private Texture _origSmallTex;
         private Texture _origLargeTex;
         private int _texSize;
@@ -64,12 +57,11 @@ namespace LivingMap
         private bool _ready;
 
         private Vector3 _lastScanPos;
-        private float _nextScanTime, _lastScanTime, _nextFlushTime, _nextSaveTime, _nextRefogTime, _nextHiResTime;
+        private float _nextScanTime, _lastScanTime, _nextSaveTime, _nextRefogTime;
         private const float RefogInterval = 15f;
         private const float MaxFootprint = 32f;
 
         private FieldInfo _fiExplored, _fiExploredOthers;
-        private MethodInfo _miWorldToMapPoint, _miMapPointToLocalGuiPos;
 
         private int _errorCount, _terrainErrorCount;
         private bool _disabledByErrors, _terrainDisabled;
@@ -103,18 +95,6 @@ namespace LivingMap
 
                 _fiExplored = typeof(Minimap).GetField("m_explored", BindingFlags.Instance | BindingFlags.NonPublic | BindingFlags.Public);
                 _fiExploredOthers = typeof(Minimap).GetField("m_exploredOthers", BindingFlags.Instance | BindingFlags.NonPublic | BindingFlags.Public);
-
-                const BindingFlags bf = BindingFlags.Instance | BindingFlags.NonPublic | BindingFlags.Public;
-                _miWorldToMapPoint = typeof(Minimap).GetMethod("WorldToMapPoint", bf,
-                    null, new[] { typeof(Vector3), typeof(float).MakeByRefType(), typeof(float).MakeByRefType() }, null);
-                _miMapPointToLocalGuiPos = typeof(Minimap).GetMethod("MapPointToLocalGuiPos", bf,
-                    null, new[] { typeof(float), typeof(float), typeof(RawImage) }, null);
-
-                if (_miWorldToMapPoint == null || _miMapPointToLocalGuiPos == null)
-                {
-                    _hiResDisabled = true;
-                    Logger.LogWarning("Could not find the map projection methods, the detailed overlay is off.");
-                }
 
                 Logger.LogInfo(Name + " " + Version + " loaded. No Harmony patches are applied.");
             }
@@ -166,7 +146,7 @@ namespace LivingMap
             }
             if (Player.m_localPlayer == null) return;
 
-            bool mapLayerMissing = _cfgPaintMapTexture.Value && _ourTex == null && _rt == null;
+            bool mapLayerMissing = _rt == null;
             bool forestToggled = _rt != null && ForestWanted != (_rtMask != null);
             if (!_ready || _mm != mm || mapLayerMissing || forestToggled || mm.m_mapTexture == null ||
                 _texSize != mm.m_textureSize || _vanillaTex != mm.m_mapTexture)
@@ -193,12 +173,9 @@ namespace LivingMap
 
             if (UseZdoScan && (_cfgShowBuildings.Value || _treeCount != null || (UseZdoPaths && _cfgShowPaths.Value))) StepZdoScan(now, pos);
 
-            if (now >= _nextRefogTime &&
-                (_deferredByFog.Count > 0 || _fogPieces.Count > 0 || _fogTerrain.Count > 0 || _fogForest.Count > 0))
+            if (now >= _nextRefogTime && (_fogPieces.Count > 0 || _fogTerrain.Count > 0 || _fogForest.Count > 0))
             {
                 _nextRefogTime = now + RefogInterval;
-                foreach (int idx in _deferredByFog) _pending.Add(idx);
-                _deferredByFog.Clear();
                 ReleaseFromFog();
             }
 
@@ -225,24 +202,6 @@ namespace LivingMap
                         _maskDirty = false;
                         RebuildMask();
                     }
-                }
-            }
-            else if (_cfgPaintMapTexture.Value && _ourTex != null && _pending.Count > 0 && now >= _nextFlushTime)
-            {
-                _nextFlushTime = now + _cfgFlushInterval.Value;
-                Flush();
-            }
-
-            if (!_hiResDisabled && now >= _nextHiResTime)
-            {
-                _nextHiResTime = now + _cfgHiResInterval.Value;
-                try { UpdateOverlays(); }
-                catch (Exception e)
-                {
-                    HandleError("detailed overlay", e);
-                    _hiResDisabled = true;
-                    DestroyHiRes();
-                    Logger.LogWarning("The detailed overlay failed and was switched off. The coarse layer keeps working.");
                 }
             }
 
@@ -279,9 +238,6 @@ namespace LivingMap
             _pieces.Clear();
             _terrain.Clear();
             _pieceCount = 0;
-            _pending.Clear();
-            _deferredByFog.Clear();
-            _paintedPixels.Clear();
             _storeChanged = false;
 
             if (_cfgPersist.Value) LoadStore();
@@ -291,65 +247,44 @@ namespace LivingMap
             _nextZdoPass = 0f;
             InitForestLayer();
 
-            if (_cfgPaintMapTexture.Value)
+            // The map layer lives on the graphics card and nowhere else. Without it there is
+            // nothing to draw into, so the mod stays out of the way for the session.
+            bool gpu = false;
+            if (!_gpuUnavailable)
             {
-                bool gpu = false;
-                if (!_gpuUnavailable)
+                try { gpu = InitGpuLayer(); }
+                catch (Exception e)
                 {
-                    try { gpu = InitGpuLayer(); }
-                    catch (Exception e)
-                    {
-                        _gpuUnavailable = true;
-                        ReleaseGpuLayer();
-                        HandleError("GPU map layer", e);
-                    }
-                }
-
-                if (gpu)
-                {
-                    ApplyTextureToMap(_rt, true);
-                    if (_rtMask != null) ApplyMaskToMap(_rtMask, true);
-                    else DropForestData();
-                    PokeMinimap();
-                    _rtDirty = true;
-                    _maskDirty = _rtMask != null;
-                    _nextRtRebuild = 0f;
-                }
-                else
-                {
-                    DropForestData();
-                    // fall back to painting pixels on the CPU at vanilla resolution
-                    Color32[] baseColors;
-                    try { baseColors = vanilla.GetPixels32(); }
-                    catch (Exception e) { HandleError("Setup/GetPixels32", e); return false; }
-
-                    Texture2D copy = new Texture2D(vanilla.width, vanilla.height, TextureFormat.RGBA32, false);
-                    copy.name = "LivingMap_MapTexture";
-                    copy.filterMode = vanilla.filterMode;
-                    copy.wrapMode = vanilla.wrapMode;
-                    copy.anisoLevel = vanilla.anisoLevel;
-                    copy.SetPixels32(baseColors);
-                    copy.Apply(false);
-                    _ourTex = copy;
-
-                    ApplyTextureToMap(_ourTex, true);
-                    PokeMinimap();
-                    QueueAllPixels();
-                    Logger.LogWarning("Falling back to CPU map painting at vanilla resolution.");
+                    _gpuUnavailable = true;
+                    ReleaseGpuLayer();
+                    HandleError("GPU map layer", e);
                 }
             }
+            if (!gpu)
+            {
+                Logger.LogWarning("The map layer could not be created on the graphics card; Living Map is off for this session and the vanilla map is untouched.");
+                Teardown(true);
+                _disabledByErrors = true;
+                return false;
+            }
+
+            ApplyTextureToMap(_rt, true);
+            if (_rtMask != null) ApplyMaskToMap(_rtMask, true);
+            else DropForestData();
+            PokeMinimap();
+            _rtDirty = true;
+            _maskDirty = _rtMask != null;
+            _nextRtRebuild = 0f;
 
             _lastScanPos = new Vector3(float.MinValue, 0f, float.MinValue);
-            _nextScanTime = 0f; _lastScanTime = 0f; _nextFlushTime = 0f; _nextHiResTime = 0f;
+            _nextScanTime = 0f; _lastScanTime = 0f;
             _nextSaveTime = Time.realtimeSinceStartup + _cfgSaveInterval.Value;
             _ready = true;
 
             Logger.LogInfo(string.Format(
                 "Attached to map: vanilla {0}px at {1} m/px; map layer {2}; buildings via {3}; forest layers {4}; world={5}, restored pieces={6}, terrain cells={7}, forest pixels cleared={8} planted={9}",
                 _texSize, _pixelSize.ToString("0.##"),
-                _rt != null
-                    ? _rt.width + "px on the GPU = " + (_pixelSize / _rtScale).ToString("0.##") + " m/px"
-                    : (_ourTex != null ? "CPU " + _texSize + "px" : "off"),
+                _rt.width + "px on the GPU = " + (_pixelSize / _rtScale).ToString("0.##") + " m/px",
                 UseZdoScan ? "the object database (ZDO)" : "physics",
                 (_treeCount != null ? "on" : "off") + "; paths via " + (UseZdoPaths ? "terrain records (ZDO)" : "loaded heightmaps"),
                 _worldUid, _pieceCount, _terrain.Count, _clearedForest.Count, _plantedForest.Count));
@@ -364,14 +299,7 @@ namespace LivingMap
                 catch (Exception e) { Logger.LogWarning("Could not restore the vanilla map texture: " + e.Message); }
             }
 
-            DestroyHiRes();
             ReleaseGpuLayer();
-
-            if (_ourTex != null)
-            {
-                try { UnityEngine.Object.Destroy(_ourTex); } catch { }
-                _ourTex = null;
-            }
 
             _mm = null; _vanillaTex = null; _origSmallTex = null; _origLargeTex = null;
             _vanillaMask = null; _origSmallMask = null; _origLargeMask = null;
@@ -379,8 +307,7 @@ namespace LivingMap
             _colliderBuf = null; _texSize = 0; _pixelSize = 0f; _ready = false;
 
             _pieces.Clear(); _terrain.Clear(); _pieceCount = 0;
-            _pending.Clear(); _deferredByFog.Clear(); _paintedPixels.Clear();
-            _circleScratch.Clear(); _scanBuckets.Clear(); _terrainScratch.Clear(); _pendingScratch.Clear();
+            _circleScratch.Clear(); _scanBuckets.Clear(); _terrainScratch.Clear();
             ResetZdoPass(); _prefabCache.Clear();
         }
 
