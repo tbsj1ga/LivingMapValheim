@@ -139,6 +139,7 @@ namespace LivingMap
             _zdoPassMs = 0.0;
             _zdoPassOrigin = pos;
             _zdoPassPieces = _cfgShowBuildings.Value;
+            if (_cfgOnlyPlayerBuilt.Value != _piecesOnlyPlayerBuilt) DropPieces("the OnlyPlayerBuilt switch changed");
             _zdoAuthoritative = ZNet.instance.IsServer();
             return true;
         }
@@ -190,6 +191,8 @@ namespace LivingMap
                 return;
             }
             if (!info.IsPiece || !_zdoPassPieces) return;
+            // a location's pieces were never placed by anyone
+            if (_cfgOnlyPlayerBuilt.Value && zdo.GetLong(ZDOVars.s_creator, 0L) == 0L) return;
 
             Vector3 p = zdo.GetPosition();
             Quaternion q = zdo.GetRotation();
@@ -455,6 +458,22 @@ namespace LivingMap
                     fresh, seenPixels,
                     _zdoAuthoritative ? "host, the whole world" : "client, what the server has sent",
                     replaced, removed, forestZones, _zdoPassFrames, _zdoPassMs));
+        }
+
+        // the rule the stored pieces were collected under; a change means they must be recollected
+        private bool _piecesOnlyPlayerBuilt;
+
+        private void DropPieces(string why)
+        {
+            foreach (KeyValuePair<int, List<PieceRec>> kv in _pieces) ReturnList(kv.Value);
+            _pieces.Clear();
+            _pieceCount = 0;
+            _addPieces.Clear();
+            _fogPieces.Clear();
+            _piecesOnlyPlayerBuilt = _cfgOnlyPlayerBuilt.Value;
+            _rtDirty = true;
+            _storeChanged = true;
+            Logger.LogInfo("Stored build pieces dropped (" + why + "); they are collected again from the object database.");
         }
 
         private List<PieceRec> RentList()

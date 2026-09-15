@@ -62,6 +62,7 @@ namespace LivingMap
         private ConfigEntry<bool> _cfgShowPlanted;
         private ConfigEntry<int> _cfgPlantedMinTrees;
         private ConfigEntry<bool> _cfgPlantedAnyBiome;
+        private ConfigEntry<bool> _cfgOnlyPlayerBuilt;
 
         private static readonly string[] MatNames =
         {
@@ -93,6 +94,8 @@ namespace LivingMap
             _cfgPlantedMinTrees = Config.Bind("03 Scanning", "PlantedForestMinTrees", 6,
                 new ConfigDescription("Trees a map pixel (12 x 12 m at vanilla map resolution) must hold to be drawn as forest. A planted grove has 15 or more; the edge of a natural wood that the mask cuts off mid-pixel has up to about 5.",
                     new AcceptableValueRange<int>(1, 30)));
+            _cfgOnlyPlayerBuilt = Config.Bind("02 Layers", "OnlyPlayerBuilt", false,
+                "Show only pieces placed by players. Pieces that came with a location - ruins, draugr villages, dvergr outposts, stone circles - carry no creator and are skipped. Switching it drops the stored pieces and collects them again: the host has them all within seconds, a client of a dedicated server gets pieces from earlier sessions back only by passing by them.");
             _cfgPlantedAnyBiome = Config.Bind("02 Layers", "PlantedForestAnyBiome", false,
                 "Draw forest in biomes where the vanilla map never does: swamps, mountains, Mistlands, Ashlands. Their natural woods then get the forest pattern as well, which changes the look of the whole map.");
             _cfgRespectFog = Config.Bind("02 Layers", "RespectFog", true, "Only draw on explored ground.");

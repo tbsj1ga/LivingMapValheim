@@ -45,6 +45,7 @@ namespace LivingMap
                 if (piece == null) continue;
                 ZNetView nview = piece.GetComponentInParent<ZNetView>();
                 if (nview == null || !nview.IsValid()) continue;
+                if (_cfgOnlyPlayerBuilt.Value && nview.GetZDO().GetLong(ZDOVars.s_creator, 0L) == 0L) continue;
 
                 Bounds b = col.bounds;
                 Vector3 p = b.center;

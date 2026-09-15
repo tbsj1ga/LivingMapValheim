@@ -240,6 +240,7 @@ namespace LivingMap
             _pieceCount = 0;
             _storeChanged = false;
 
+            _piecesOnlyPlayerBuilt = _cfgOnlyPlayerBuilt.Value;
             if (_cfgPersist.Value) LoadStore();
 
             ResetZdoPass();

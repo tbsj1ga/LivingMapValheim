@@ -37,7 +37,7 @@ namespace LivingMap
                 {
                     if (br.ReadUInt32() != 0x334F4D4Du) return;   // "MMO3"
                     int version = br.ReadInt32();
-                    if (version < 3 || version > 5) return;
+                    if (version < 3 || version > 6) return;
                     long uid = br.ReadInt64();
                     int texSize = br.ReadInt32();
                     float pixelSize = br.ReadSingle();
@@ -99,6 +99,11 @@ namespace LivingMap
                             if (idx >= 0 && idx < maxIdx) _plantedForest.Add(idx);
                         }
                     }
+
+                    // pieces were collected under a rule; older files knew no rule, i.e. everything
+                    bool onlyPlayerBuilt = version >= 6 && br.ReadBoolean();
+                    _piecesOnlyPlayerBuilt = onlyPlayerBuilt;
+                    if (onlyPlayerBuilt != _cfgOnlyPlayerBuilt.Value) DropPieces("the file was collected with OnlyPlayerBuilt " + (onlyPlayerBuilt ? "on" : "off"));
                 }
             }
             catch (Exception e)
@@ -126,7 +131,7 @@ namespace LivingMap
                 using (BinaryWriter bw = new BinaryWriter(fs))
                 {
                     bw.Write(0x334F4D4Du);
-                    bw.Write(5);
+                    bw.Write(6);
                     bw.Write(_worldUid);
                     bw.Write(_texSize);
                     bw.Write(_pixelSize);
@@ -158,6 +163,8 @@ namespace LivingMap
 
                     bw.Write(_plantedForest.Count);
                     foreach (int idx in _plantedForest) bw.Write(idx);
+
+                    bw.Write(_piecesOnlyPlayerBuilt);
                 }
 
                 if (File.Exists(path)) File.Delete(path);
