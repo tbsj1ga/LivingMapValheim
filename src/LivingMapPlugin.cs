@@ -78,6 +78,7 @@ namespace LivingMap
             {
                 MigrateFromMapOverlay();
                 BindConfig();
+                RegisterCommands();
                 _pieceLayerMask = LayerMask.GetMask("piece");
                 _zdoPieceLayer = LayerMask.NameToLayer("piece");
 
