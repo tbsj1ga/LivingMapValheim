@@ -231,3 +231,10 @@ git tag v<версия>
 требование), `README.md` пакета (английский, для страницы мода), `CHANGELOG.md`
 и DLL в корне архива. Зависимость — `denikson-BepInExPack_Valheim`. Публиковать
 или нет — отдельное решение; заготовка просто лежит готовой.
+
+## AI assistance
+
+This mod was developed with the help of an AI assistant (Claude by Anthropic).
+The code and the documentation were written together with it and checked
+against the game's IL; the design decisions, in-game testing and releases are
+the author's.

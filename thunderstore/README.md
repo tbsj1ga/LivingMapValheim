@@ -36,3 +36,7 @@ it was.
 | `Debug` | Verbose log with timings. |
 
 Colours are configurable per material and per path type.
+
+*Developed with the help of an AI assistant (Claude by Anthropic); the design
+decisions, verification against the game code and in-game testing are the
+author's.*
