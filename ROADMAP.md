@@ -1,286 +1,295 @@
-# LivingMap — состояние и план
+# LivingMap — state and plans
 
-Мод для Valheim: показывает на карте постройки (по материалу) и обработанную
-мотыгой землю (тропы, мощение, культиватор). Без Harmony-патчей, только клиент,
-ничего не синхронизирует по сети.
+A Valheim mod: shows buildings (by material) and hoe-worked ground (paths,
+paving, cultivator) on the map. No Harmony patches, client-side only, nothing
+synchronised over the network.
 
-Текущая версия: **0.14.0** (тег `v0.14.0`), запускалась в игре. Игра: Valheim
+Current version: **0.14.0** (tag `v0.14.0`), started in the game. Game: Valheim
 1.0.14, BepInEx 5.4.23.5.
 
 ---
 
-## Сделано
+## Done
 
-- [x] **Слой рисуется прямо в текстуру карты.** `RenderTexture` + `Graphics.Blit`
-      ванильной карты + отрисовка фигур через `GL` со встроенным шейдером
-      `Hidden/Internal-Colored`. Результат *является* картой: панорамируется,
-      зумится, попадает под туман войны и под все маркеры, работает и на
-      миникарте. В оперативной памяти не держится ничего.
-- [x] **Разрешение выше ванильного.** `MapTextureScale`: 2048 (12 м/px, 16 МБ) →
-      4096 (6 м/px, 67 МБ) → 8192 (3 м/px, 268 МБ) → 16384 (1.5 м/px, ~1 ГБ).
-      Только видеопамять. Если карта отказывает — автоматический шаг вниз.
-- [x] **Постройки настоящими footprint'ами.** Берётся `collider.bounds` каждого
-      коллайдера, рисуется реальный прямоугольник, а не квадрат фиксированного
-      размера. Ограничение 32 м на сторону от случайных гигантских коллайдеров.
-- [x] **Сканирование через ZDO вместо физики** (0.9.0). Раз в
-      `ZdoScanInterval` снимок `ZDOMan.m_objectsByID` (рефлексия по полю,
-      тип проверяется) обходится порциями по `ZdoObjectsPerFrame` за кадр.
-      Кэш «хэш префаба → материал + локальный AABB коллайдеров слоя `piece`»
-      строится по префабу из `ZNetScene`, поворот применяется к каждому объекту
-      по `ZDO.GetRotation()`. Семантика слияния: на хосте (`ZNet.IsServer()`)
-      набор авторитетен для всего мира — отсутствующее в базе удаляется; на
-      клиенте выделенного сервера в базе есть всё, что сервер прислал за
-      сессию (persistent-ZDO не выбрасываются при выгрузке зоны, а удаление
-      рассылается всем пирам), поэтому пиксель с данными всегда перезаписывается,
-      а пустой пиксель очищается только внутри активной области
-      (`ZNetScene.InActiveArea`) и только если он был в ней и на предыдущем
-      проходе — иначе на подгрузке зоны карта мигала бы. Сравнение бакетов по
-      сигнатуре, не зависящей от порядка, чтобы проход без изменений не пересобирал
-      GPU-слой. При ошибках (10 штук) или отсутствии поля — откат на физику,
-      `BuildingScanSource = Physics` включает её принудительно.
-- [x] **Вырубленный лес** (0.10.0). Ванильный лес на карте — статичная маска
-      из генератора (`_MaskTex`, канал R: Meadows и Plains по forest factor,
-      Black Forest целиком; G — туман Мистлендс, B — лава). Дерево — только
-      `TreeBase` (то, что падает и даёт брёвна); пни, кусты и молодняк —
-      `Destructible`, часть из них с типом попадания `Tree`, но на вырубке их
-      полно, и лесом они не являются. Во время ZDO-прохода считаются деревья
-      на пиксель карты (`byte[]`, 4 МБ); пиксель — вырубка, если маска говорит
-      «лес», в окне `ClearedForestRadius` (по умолчанию 3×3 пикселя) не больше
-      `ClearedForestMaxTrees` деревьев и всё окно лежит в зонах с полными данными: на хосте
-      `ZoneSystem.m_generatedZones` (рефлексия), на клиенте зоны, побывавшие в
-      активной области два прохода подряд (накапливаются за сессию, результат
-      сохраняется в файл, формат v4). Оценка идёт второй фазой прохода по 150
-      зон за кадр. Рисуется в копию маски мультипликативным блендом
-      `(0,1,1,1)` — гаснет только R, ванильный шейдер сам перестаёт рисовать
-      лес. Память: два битовых набора по 512 КБ и 4 МБ счётчиков. Только
-      GPU-слой. Первый прогон в игре показал, что окно 5×5 без единого дерева
-      было слишком строгим: 12 срабатываний на мир и ни одного у базы; отсюда
-      бюджет деревьев на окно и окно 3×3 по умолчанию.
-- [x] **Дорожки из записей ландшафта** (0.12.0). Каждая зона с правками
-      мотыги хранит ZDO `_TerrainCompiler` (компонент `TerrainComp`), в
-      `ZDOVars.s_TCData` — GZip-блоб: `int version, int ops, Vector3, float,
+- [x] **The layer is drawn straight into the map texture.** `RenderTexture` +
+      `Graphics.Blit` of the vanilla map + shapes drawn through `GL` with the
+      built-in `Hidden/Internal-Colored` shader. The result *is* the map: it
+      pans, zooms, goes under the fog of war and under every marker, works on
+      the minimap. Nothing is held in RAM.
+- [x] **Resolution above vanilla.** `MapTextureScale`: 2048 (12 m/px, 16 MB) →
+      4096 (6 m/px, 67 MB) → 8192 (3 m/px, 268 MB) → 16384 (1.5 m/px, ~1 GB).
+      Video memory only. If the card refuses, the size steps down automatically.
+- [x] **Buildings with real footprints.** `collider.bounds` of every collider,
+      drawn as the real rectangle rather than a fixed-size square. A 32 m
+      per-side cap against stray giant colliders.
+- [x] **Scanning through ZDO instead of physics** (0.9.0). Every
+      `ZdoScanInterval` a snapshot of `ZDOMan.m_objectsByID` (reflection on the
+      field, type checked) is walked in slices of `ZdoObjectsPerFrame` per
+      frame. A cache of "prefab hash → material + local AABB of the `piece`-layer
+      colliders" is built from the prefab in `ZNetScene`; each object's rotation
+      is applied from `ZDO.GetRotation()`. Merge semantics: on the host
+      (`ZNet.IsServer()`) the set is authoritative for the whole world — what is
+      missing from the database is removed; on a client of a dedicated server
+      the database holds everything the server has sent this session
+      (persistent ZDOs are not dropped when a zone unloads, and destruction is
+      broadcast to every peer), so a pixel with data is always overwritten while
+      an empty pixel is cleared only inside the active area
+      (`ZNetScene.InActiveArea`) and only if it was inside it on the previous
+      pass too — otherwise the map would flicker while zones load. Buckets are
+      compared by an order-independent signature so a pass with no changes does
+      not rebuild the GPU layer. On errors (10 of them) or a missing field, the
+      physics fallback takes over; `BuildingScanSource = Physics` forces it.
+- [x] **Cleared forest** (0.10.0). The vanilla forest on the map is a static
+      mask from the generator (`_MaskTex`, R channel: Meadows and Plains by
+      forest factor, the whole Black Forest; G is the Mistlands fog, B is lava).
+      A tree is a `TreeBase` only (what falls and gives logs); stumps, bushes and
+      saplings are `Destructible`, some with the `Tree` hit type, but a clearing
+      is full of them and they are not forest. During the ZDO pass trees are
+      counted per map pixel (`byte[]`, 4 MB); a pixel is cleared when the mask
+      says forest, the `ClearedForestRadius` window (3×3 pixels by default)
+      holds no more than `ClearedForestMaxTrees` trees, and the whole window
+      lies in zones with complete data: on the host `ZoneSystem.m_generatedZones`
+      (reflection), on a client the zones that sat inside the active area two
+      passes in a row (accumulated over the session, the result saved to the
+      file, format v4). Evaluation is the second phase of the pass, 150 zones per
+      frame. Drawn into a copy of the mask with a multiplicative `(0,1,1,1)`
+      blend — only R goes dark, and the vanilla shader stops drawing forest by
+      itself. Memory: two 512 KB bit sets and 4 MB of counters. GPU layer only.
+      The first in-game run showed a 5×5 window with no tree at all was too
+      strict: 12 hits per world and none near the base — hence the tree budget
+      per window and the 3×3 default.
+- [x] **Paths from terrain records** (0.12.0). Every zone with hoe edits
+      carries a `_TerrainCompiler` ZDO (the `TerrainComp` component); in
+      `ZDOVars.s_TCData` is a GZip blob: `int version, int ops, Vector3, float,
       int n, [bool modifiedHeight, (float, float)]×n, int m,
-      [bool modifiedPaint, (r,g,b,a)]×m`, сетка 65×65 с шагом 1 м, вершина
-      `(x, z)` в мире `центр_зоны + (x − 32, z − 32)`. Записи собираются во
-      время ZDO-прохода и разбираются третьей фазой по 4 зоны за кадр, но
-      только те, у которых изменился `ZDO.DataRevision` — в тихом мире фаза
-      ничего не стоит. Клетка берётся у той же вершины, которую читал старый
-      скан (`Heightmap.WorldToVertexMask`, запрос в `центр − 0.5`), поэтому оба
-      источника совпадают до метра. Запись авторитетна для своей зоны: клетки
-      без покраски удаляются. `ShowClearedGround` теперь опирается и на
-      `modifiedHeight`. Откат на `Heightmap` при 10 ошибках или по настройке
-      `PathScanSource`.
-- [x] **Инкрементальная перерисовка** (0.11.0). Текстура слоя живёт между
-      обновлениями; всё новое (постройки из diff бакетов ZDO-прохода, клетки
-      дорожек из сканера ландшафта, то, что вышло из тумана войны) копится в
-      очереди и дорисовывается поверх раз в `MapRebuildInterval`. Порядок
-      слоёв восстанавливается локально: после обводки новой фигуры заново
-      заливаются все фигуры, чьи прямоугольники пересекает её ореол (поиск по
-      бакетам ±2 пикселя); новая клетка дорожки перерисовывает стоящие на ней
-      постройки. Полная пересборка (`Blit` + всё заново) — только когда что-то
-      исчезло или сменилось (снесённая постройка, перекрашенная земля),
-      потерялась текстура, переключили слой в конфиге, включён `DebugMarker`
-      или новых фигур больше 1500 за раз. Маска леса — отдельный дешёвый слой
-      (`_maskDirty`), пересобирается целиком только при изменении леса. Туман
-      войны: пропущенные фигуры лежат в отложенных списках и раз в 15 с
-      проверяются на разведанность — раньше на GPU-пути они появлялись только
-      при следующем изменении.
-- [x] **Ручной сброс области и точечный сброс леса** (0.14.0) — консольная
-      команда `livingmap reset [buildings|paths|forest] [метры|all]` в
-      `Commands.cs` (`Terminal.ConsoleCommand`, регистрируется в `Awake`;
-      конструктор просто кладёт команду в статический словарь). Забывает
-      выбранные слои в радиусе (по умолчанию 100 м) или во всём мире, сбрасывает
-      ревизии записей ландшафта и доверенные зоны леса и запускает проход
-      заново. `livingmap status` — что карта помнит и откуда.
-- [x] **Только построенное игроками** (0.14.0) — `OnlyPlayerBuilt`,
-      выключено. `ZDO.GetLong(ZDOVars.s_creator, 0) == 0` → постройка локации,
-      пропускается (и в ZDO-проходе, и в физическом сканере). У `PieceRec` нет
-      создателя, поэтому смена правила сбрасывает накопленные постройки; чтобы
-      клиент не терял их при каждом старте, правило записано в файл (формат v6,
-      один байт в конце; v3–v5 читаются как «правило выключено»).
-- [x] **Уборка** (0.14.0). Удалены CPU-путь покраски ванильной текстуры
-      (`Flush`, `_pending` и очереди) и экранный слой `DetailedOverlay` вместе с
-      их настройками (`PaintMapTexture`, `DetailedOverlay`, `MinimapOverlay`,
-      `FlushInterval`, `PixelsPerFlush`, `OverlayOpacity`, `SmoothOverlay`,
-      `MinimapOverlayResolution`, `DetailedOverlayResolution`,
-      `DetailedOverlayInterval`) и двумя целями рефлексии. Слой живёт только на
-      GPU; если `RenderTexture` создать не удалось, мод пишет предупреждение и
-      бездействует до конца сессии, ванильная карта не трогается. Физический
-      сканер и живой heightmap остались как автоматические запасные варианты.
-      Осиротевшие ключи в старом `.cfg` BepInEx сохраняет, они безвредны.
-- [x] **Посаженный лес** (0.10.0) — обратный случай тем же механизмом: пиксель
-      вне ванильной маски, в котором стоит ≥ `PlantedForestMinTrees` деревьев,
-      получает R=1 аддитивным блендом `(1,0,0,0)`, и шейдер рисует свой узор.
-      Маркера «посажено» у выросшего дерева в игре нет (`Plant.Grow` просто
-      инстанцирует взрослый префаб), поэтому отличие от природы — только
-      плотность и биом: по умолчанию считаются лишь Meadows / Black Forest /
-      Plains (`WorldGenerator.GetBiome`, кэш на пиксель, не больше 600 первых
-      запросов за кадр), `PlantedForestAnyBiome` снимает ограничение. Добавление
-      не требует доверия к зоне (дерево в базе — существует), удаление — как у
-      построек. Хранится в файле, формат v5 (v3/v4 читаются).
-- [x] **Цвет по материалу.** `WearNTear.MaterialType`, все 9 значений
+      [bool modifiedPaint, (r,g,b,a)]×m`, a 65×65 grid at 1 m, vertex `(x, z)`
+      at `zoneCentre + (x − 32, z − 32)` in the world. Records are collected
+      during the ZDO pass and parsed in a third phase, 4 zones per frame, but
+      only those whose `ZDO.DataRevision` changed — in a quiet world the phase
+      costs nothing. A cell is taken at the same vertex the old scan read
+      (`Heightmap.WorldToVertexMask`, queried at `centre − 0.5`), so both
+      sources agree to the metre. A record is authoritative for its zone: cells
+      without paint are removed. `ShowClearedGround` now also uses
+      `modifiedHeight`. Falls back to `Heightmap` after 10 errors or by the
+      `PathScanSource` setting.
+- [x] **Incremental redraw** (0.11.0). The layer texture lives between
+      updates; everything new (buildings from the diff of the ZDO pass buckets,
+      path cells from the terrain scanner, whatever came out of the fog of war)
+      is queued and drawn on top every `MapRebuildInterval`. The layer order is
+      restored locally: after a new shape's outline, every shape whose rectangle
+      its halo touches is filled again (bucket lookup ±2 pixels); a new path
+      cell redraws the buildings standing on it. A full rebuild (`Blit` +
+      everything again) happens only when something disappeared or changed (a
+      demolished piece, repainted ground), the texture was lost, a layer was
+      switched in the config, `DebugMarker` is on, or more than 1500 new shapes
+      arrived at once. The forest mask is a separate cheap layer (`_maskDirty`),
+      rebuilt whole only when the forest changes. Fog of war: skipped shapes
+      wait in deferred lists and are checked for exploration every 15 s — on the
+      GPU path they used to appear only at the next change.
+- [x] **Manual area reset and targeted forest reset** (0.14.0) — the
+      `livingmap reset [buildings|paths|forest] [metres|all]` console command in
+      `Commands.cs` (`Terminal.ConsoleCommand`, registered in `Awake`; the
+      constructor just puts the command into a static dictionary). Forgets the
+      chosen layers within a radius (100 m by default) or across the whole
+      world, resets the terrain record revisions and the trusted forest zones,
+      and starts a pass again. `livingmap status` — what the map remembers and
+      where from.
+- [x] **Player-built only** (0.14.0) — `OnlyPlayerBuilt`, off.
+      `ZDO.GetLong(ZDOVars.s_creator, 0) == 0` → a location's piece, skipped
+      (in the ZDO pass and in the physics scanner alike). `PieceRec` carries no
+      creator, so changing the rule drops the stored pieces; so that a client
+      does not lose them on every start the rule is written to the file (format
+      v6, one byte at the end; v3–v5 read as "rule off").
+- [x] **Cleanup** (0.14.0). Removed the CPU path that painted the vanilla
+      texture (`Flush`, `_pending` and the queues) and the `DetailedOverlay`
+      screen-space layer together with their settings (`PaintMapTexture`,
+      `DetailedOverlay`, `MinimapOverlay`, `FlushInterval`, `PixelsPerFlush`,
+      `OverlayOpacity`, `SmoothOverlay`, `MinimapOverlayResolution`,
+      `DetailedOverlayResolution`, `DetailedOverlayInterval`) and two reflection
+      targets. The layer lives on the GPU only; if the `RenderTexture` cannot be
+      created the mod logs a warning and stays idle for the session, leaving the
+      vanilla map alone. The physics scanner and the live heightmap remain as
+      automatic fallbacks. Orphaned keys in an old `.cfg` are kept by BepInEx
+      and are harmless.
+- [x] **Planted forest** (0.10.0) — the reverse case through the same
+      mechanism: a pixel outside the vanilla mask holding ≥ `PlantedForestMinTrees`
+      trees gets R=1 with an additive `(1,0,0,0)` blend, and the shader draws its
+      pattern. The game has no "planted" marker on a grown tree (`Plant.Grow`
+      simply instantiates the adult prefab), so the only difference from nature
+      is density and biome: by default only Meadows / Black Forest / Plains
+      count (`WorldGenerator.GetBiome`, cached per pixel, at most 600 first-time
+      lookups per frame); `PlantedForestAnyBiome` lifts the restriction. Adding
+      needs no zone trust (a tree in the database exists); removal follows the
+      building rules. Stored in the file, format v5 (v3/v4 still read).
+- [x] **Colour by material.** `WearNTear.MaterialType`, all 9 values
       (Wood, Stone, Iron, HardWood, Marble, Ashstone, Ancient, Ice, Timberwood).
-- [x] **Тёмная обводка построек.** Отдельный проход перед заливкой, чтобы дом
-      отделялся от выровненной площадки под ним.
-- [x] **Дорожки по всем трём каналам paint-маски.** `PaintType` в игре — это
-      `{ Dirt = красный, Cultivate = зелёный, Paved = синий }`; альфа это маска
-      растительности и к типу покраски отношения не имеет. Плюс опциональный
-      слой просто выровненной земли (`ShowClearedGround`).
-- [x] **Туман войны уважается** — ничего не рисуется там, где игрок не был.
-- [x] **Накопление и сохранение.** Свой файл на мир в
-      `BepInEx/config/LivingMap/<worldUID>.bin`. Прошёл один раз — осталось
-      навсегда, перепроходить не нужно.
-- [x] **Коррекция цветового пространства** (`LinearColorFix`) — иначе цвета
-      вымываются при linear-рендере.
-- [x] **Минимальный размер фигуры в метрах, а не в пикселях текстуры.** Без
-      этого повышение `MapTextureScale` делало мелкие куски *менее* заметными.
-- [x] **Безопасность.** Ноль Harmony-патчей; всё в try/catch; дедупликация
-      ошибок в логе; глобальный предохранитель (после 25 ошибок мод сам себя
-      выключает и возвращает ванильную текстуру); отдельная деградация слоя
-      ландшафта; потолки на объём хранимых данных; `OverlapSphereNonAlloc` с
-      переиспользуемым буфером.
+- [x] **Dark building outline.** A separate pass before the fill, so a house
+      separates from the levelled ground under it.
+- [x] **Paths from all three channels of the paint mask.** `PaintType` in the
+      game is `{ Dirt = red, Cultivate = green, Paved = blue }`; alpha is the
+      vegetation mask and has nothing to do with the paint type. Plus an
+      optional layer for merely levelled ground (`ShowClearedGround`).
+- [x] **Fog of war respected** — nothing is drawn where the player has not been.
+- [x] **Accumulation and persistence.** A file per world in
+      `BepInEx/config/LivingMap/<worldUID>.bin`. Walked once — kept forever, no
+      need to walk again.
+- [x] **Colour-space correction** (`LinearColorFix`) — otherwise the colours
+      wash out under linear rendering.
+- [x] **Minimum shape size in metres, not texture pixels.** Without it, raising
+      `MapTextureScale` made small pieces *less* visible.
+- [x] **Safety.** Zero Harmony patches; everything in try/catch; deduplicated
+      errors in the log; a global fuse (after 25 errors the mod switches itself
+      off and restores the vanilla texture); separate degradation of the terrain
+      layer; caps on the stored data; `OverlapSphereNonAlloc` with a reused
+      buffer.
 
 ---
 
-## Известные ограничения (не баги)
+## Known limitations (not bugs)
 
-- **Потолок точности — 1.5 м/пиксель.** Карта покрывает 24.6 км; при
-  максимальном размере текстуры у видеокарты (16384) это и есть предел. Резче
-  можно только отдельным слоем в экранном пространстве.
-- **В режиме `PathScanSource = Heightmap` дорожки видны только там, где ты
-  побывал** — ландшафт грузится позонно. В режиме `ZDO` (по умолчанию) на
-  хосте видны все, на клиенте — присланные за сессию, как и постройки.
-- **На клиенте выделенного сервера постройки могут устареть.** База объектов
-  клиента содержит только то, что сервер прислал за эту сессию. Постройка,
-  снесённая пока тебя не было в игре, и стоявшая одна в своём пикселе карты,
-  останется до визита в её зону. На хосте этого ограничения нет.
-- **Вырубка — это «нет деревьев в окне», а не «кто-то рубил».** Поляны вокруг
-  локаций и естественные прогалины шире `ClearedForestRadius` (чаще всего в
-  редколесье Plains) тоже проявятся. Это честно относительно местности, но не
-  отличает вырубку от поляны. Край вырубки на карте — с точностью до пикселя
-  ванильной маски (12 м), и он «съезжает» внутрь на радиус окна.
-
----
-
-## Перед новыми задачами
-
-- В `main` лежит 0.10.0; в игре проверена 0.12.0. Версии 0.13 (переименование,
-  миграция, защита от старого DLL) и 0.14 (уборка, `OnlyPlayerBuilt`, команда)
-  не запускались ни разу — одна сессия по чек-листу, и `main` двигается на
-  0.14 одним fast-forward.
-- **Клиентский путь не проверен вообще**: доверие к активной области,
-  `_trustedZones`, записи ландшафта на клиенте, миграция — написано по IL и
-  ни разу не выполнялось, потому что ты всегда хост. Один подключившийся с
-  модом и его лог закрыли бы самую большую слепую зону.
-- Репозиторий существует только на этом диске. `git push` в приватный GitHub
-  — и это перестаёт быть риском, а у манифеста появится `website_url`.
-
-## План
-
-### 1. `livingmap reload` — перечитать конфиг без перезапуска
-BepInEx читает `.cfg` один раз при старте; без Configuration Manager любая
-правка требует перезахода. Большинство переключателей уже отслеживаются на
-лету (`ShowBuildings/ShowPaths/BuildingOutline` → полная пересборка,
-`ShowClearedForest` → `Setup`, `OnlyPlayerBuilt` → сброс построек), так что
-достаточно `Config.Reload()` в `Commands.cs` плюс сообщение, что изменилось.
-Не подхватываются без перезахода только `MapTextureScale` и цвета (цвета —
-потому что уже нарисованное не перекрашивается; после `reload` можно просто
-ставить `_rtDirty`, и они подхватятся полной пересборкой). ~20 строк.
-
-### 2. Корабли и телеги пинами
-Проход по ZDO уже идёт; префабы с компонентом `Ship` или `Vagon` — ещё одна
-ветка в `BuildPrefabInfo` (`IsVehicle`). Это не текстура, а пины: они
-двигаются, и рисовать их в слой нельзя. Механизм — `Minimap.AddPin(pos,
-PinType, name, save: false, isChecked: false)` возвращает `PinData`, у которого
-открытое `m_pos`; пин обновляется на месте, `RemovePin(PinData)` когда ZDO
-исчез. Словарь `ZDOID → PinData`, обновление в `FinishZdoPass`, то есть раз в
-`ZdoScanInterval`; корабль в пути будет отставать до 5 с — для карты
-нормально. Иконка: свой спрайт (`PinData.m_icon`), иначе `PinType.Icon0..4`
-— ванильные значки. Имя — префаб (`Karve`, `VikingShip`, `Cart`), для ковчега
-с именем — его имя из ZDO, если оно там есть (проверить `ZDOVars`). На хосте
-видны все корабли мира, на клиенте — присланные; `RespectFog` — не показывать в
-неразведанном. Настройка `ShowVehicles`, выключено по умолчанию: это единственный
-слой, который меняет ванильный набор пинов. `save: false` — пины не попадают
-в профиль игрока и не остаются после отключения мода.
-
-### 3. `livingmap export [размер]` — карта в PNG
-`_rt` уже содержит готовую карту с нашими слоями; лес поверх неё рисует
-шейдер по `_rtMask`, а туман — по `m_fogTexture`, так что честный экспорт
-«как на экране» невозможен без повторения шейдера. Экспортируется `_rt` как
-есть (постройки, дорожки, ванильная подложка) — этого достаточно, чтобы
-поделиться картой. Механизм: `RenderTexture.active = _rt`, `Texture2D.ReadPixels`,
-`EncodeToPNG` (нужна ссылка на `UnityEngine.ImageConversionModule.dll` в
-`build.ps1` и `.csproj`). На масштабе 8 это 16384² = 1 ГБ управляемой памяти
-на `ReadPixels` — сначала `Graphics.Blit` в временный `RenderTexture` нужного
-размера (по умолчанию 4096, аргумент команды), потом чтение. Файл —
-`BepInEx\config\LivingMap\<мир>-<дата>.png`, путь в ответе команды.
-Опция: `export map` — только ванильная карта, для сравнения.
-
-## Идеи
-
-Без сроков; по мере появления реальной потребности.
-
-- **Цвет по владельцу.** В ZDO лежат `creator` и `creatorName`; режим «кто
-  построил» вместо «из чего» — на общем мире сразу видно, где чья база. Цена:
-  байт-индекс владельца в `PieceRec`, таблица владельцев в файле (формат v7),
-  палитра, настройка режима. Единственная идея, которая меняет, *что* карта
-  показывает.
-- **`ShowOnMinimap`** — рисовать только на большой карте. Дёшево, если у
-  `m_mapImageSmall` и `m_mapImageLarge` разные материалы (ваниль ставит
-  текстуры на оба по отдельности — похоже, что да; проверить).
-- **`TerrainGridSize = 1`.** Записи ландшафта хранят 1 м, мод берёт 2 м; на
-  масштабе 8 разница видна. Уже есть в конфиге, по CPU теперь бесплатно —
-  только ×4 клеток в памяти и файле. Скорее заметка, чем задача.
-- **Разделение `Gpu.cs`** на пересборку и дорисовку, если продолжит расти.
-- **Серверная половина для клиентов.** Клиент видел бы весь мир, как хост.
-  Сетевой мод с синхронизацией версий — раздел «сознательно не делаем»,
-  двигать только по явному запросу.
+- **The precision ceiling is 1.5 m per pixel.** The map covers 24.6 km; at the
+  card's maximum texture size (16384) that is the limit. Sharper is possible
+  only with a separate screen-space layer.
+- **With `PathScanSource = Heightmap`, paths are visible only where you have
+  been** — the terrain loads zone by zone. In `ZDO` mode (the default) the host
+  sees all of them, a client the ones sent this session, same as buildings.
+- **On a client of a dedicated server buildings can go stale.** The client's
+  object database holds only what the server has sent this session. A piece
+  demolished while you were offline, and standing alone in its map pixel, stays
+  until you visit its zone. The host has no such limitation.
+- **A clearing is "no trees in the window", not "someone felled them".**
+  Clearings around locations and natural gaps wider than `ClearedForestRadius`
+  (mostly in the sparse Plains woods) show up too. That is honest about the
+  terrain, but it does not tell a clear-cut from a glade. The edge of a clearing
+  on the map is accurate to a vanilla mask pixel (12 m) and "creeps" inward by
+  the window radius.
 
 ---
 
-## Инфраструктура проекта
+## Before new tasks
 
-Не про функциональность мода, но про то, чтобы с ним было удобно работать
-дальше.
+- **The client path has never been exercised**: trust in the active area,
+  `_trustedZones`, terrain records on a client, the migration — all written from
+  the game's IL and never run, because the author is always the host. One
+  player who joins with the mod and sends a log would close the biggest blind
+  spot.
+- The repository exists on this disk only. One `git push` to a private GitHub
+  and that risk is gone, and the manifest gets a `website_url`.
 
-- [x] Локальный git-репозиторий (`.gitignore`, `.gitattributes`; создан
-      14.09.2026, первый коммит — тег `v0.8.0`)
-- [x] `CHANGELOG.md` с историей версий
-- [x] **Сборка одной командой в `build\` и копирование в plugins** —
-      `build.ps1` / `build.ps1 -Install` (0.9.0). Собирает legacy `csc.exe`
-      из .NET Framework, потому что на этой машине нет ни dotnet SDK, ни mono;
-      отсюда же ограничение «исходник в рамках C# 5». `.csproj` теперь тоже
-      пишет в `build\` (`OutputPath`, без deps/pdb) и берёт все `src\*.cs`
-      по умолчанию SDK-стиля — на этой машине не проверялось (нет dotnet).
-- [x] **Автопроверка сигнатур после сборки** — `check-refs.ps1`, `build.ps1`
-      зовёт его сам (`-NoCheck` отключает). `Mono.Cecil` резолвит каждую
-      ссылку на тип и член сборок игры/BepInEx (124 типа, 377 членов), а цели
-      рефлексии вылавливаются из IL: `ldstr` с именем и `ldtoken` с типом
-      перед `Type.GetField/GetMethod/GetProperty` (6 штук). Проверено
-      негативным тестом: подмена имени поля в строке рефлексии и имени метода в
-      таблице ссылок — обе ловятся.
-- [x] **`LICENSE`** — MIT, автор из `git config user.name`; поправить, если
-      подпись должна быть другой.
-- [x] **Переименование в LivingMap** (0.13.0). Старое имя описывало
-      наложение поверх карты, которого с 0.7.0 нет; «MapOverlay» к тому же
-      совпадает с термином из API Jötunn. Папка репозитория осталась
-      `MapOverlay` — git имени папки не знает, переименовать можно в любой
-      момент. Миграция конфига и данных — в `LivingMapPlugin.cs`, раздел
-      «the old name»; через несколько версий её можно удалить.
-- [x] **Пакет для Thunderstore** — `thunderstore\{manifest.json, icon.png,
-      README.md}`, `build.ps1 -Package` подставляет версию из исходника и
-      собирает `build\LivingMap-<версия>.zip` (в `.gitignore`). Иконка
-      256×256 нарисована скриптом — фрагмент такой карты, какую мод рисует.
-      `website_url` пустой: заполнить, если появится публичный репозиторий.
-- [x] **Разбиение `LivingMapPlugin.cs`** — 10 файлов одного `partial class`
-      по областям (см. таблицу в README). Нарезка механическая, по строкам;
-      верифицировано через Cecil: 90 методов и 194 поля совпадают по именам,
-      сигнатурам и размеру IL со сборкой до разбиения.
+## Plan
+
+### 1. `livingmap reload` — re-read the config without a restart
+BepInEx reads the `.cfg` once at start; without Configuration Manager any edit
+means re-entering the world. Most switches are already tracked on the fly
+(`ShowBuildings/ShowPaths/BuildingOutline` → full rebuild, `ShowClearedForest`
+→ `Setup`, `OnlyPlayerBuilt` → dropping the pieces), so `Config.Reload()` in
+`Commands.cs` plus a message about what changed is enough. Only
+`MapTextureScale` and the colours are not picked up without a re-enter (the
+colours because what is already drawn is not repainted; after `reload` simply
+setting `_rtDirty` makes a full rebuild pick them up). ~20 lines.
+
+### 2. Ships and carts as pins
+The ZDO pass already runs; prefabs with a `Ship` or `Vagon` component are one
+more branch in `BuildPrefabInfo` (`IsVehicle`). Not texture but pins: they move,
+so they cannot be drawn into the layer. Mechanism — `Minimap.AddPin(pos,
+PinType, name, save: false, isChecked: false)` returns a `PinData` with a
+public `m_pos`; the pin is updated in place, `RemovePin(PinData)` when the ZDO
+is gone. A `ZDOID → PinData` dictionary, updated in `FinishZdoPass`, i.e. every
+`ZdoScanInterval`; a ship under way lags by up to 5 s — fine for a map. Icon:
+a custom sprite (`PinData.m_icon`), otherwise `PinType.Icon0..4` — the vanilla
+markers. Name — the prefab (`Karve`, `VikingShip`, `Cart`); for a named ship,
+its name from the ZDO if it is there (check `ZDOVars`). The host sees every ship
+in the world, a client the ones sent; `RespectFog` — not shown in unexplored
+areas. Setting `ShowVehicles`, off by default: it is the only layer that
+changes the vanilla set of pins. `save: false` — the pins do not enter the
+player profile and do not survive the mod being removed.
+
+### 3. `livingmap export [size]` — the map as PNG
+`_rt` already holds the finished map with our layers; the forest on top of it is
+drawn by the shader from `_rtMask`, and the fog from `m_fogTexture`, so an
+honest "as on screen" export is impossible without repeating the shader. What
+gets exported is `_rt` as it is (buildings, paths, the vanilla base) — enough
+to share a map. Mechanism: `RenderTexture.active = _rt`, `Texture2D.ReadPixels`,
+`EncodeToPNG` (needs a reference to `UnityEngine.ImageConversionModule.dll` in
+`build.ps1` and the `.csproj`). At scale 8 that is 16384² = 1 GB of managed
+memory for `ReadPixels` — first `Graphics.Blit` into a temporary
+`RenderTexture` of the wanted size (4096 by default, a command argument), then
+read. The file — `BepInEx\config\LivingMap\<world>-<date>.png`, the path in
+the command's reply. Option: `export map` — the vanilla map only, for
+comparison.
+
+## Ideas
+
+No dates; as real need appears.
+
+- **Colour by owner.** The ZDO holds `creator` and `creatorName`; a "who built
+  it" mode instead of "what of" — on a shared world it shows at once whose base
+  is where. Cost: an owner index byte in `PieceRec`, an owner table in the file
+  (format v7), a palette, a mode setting. The only idea that changes *what* the
+  map shows.
+- **`ShowOnMinimap`** — draw on the big map only. Cheap if `m_mapImageSmall`
+  and `m_mapImageLarge` have different materials (vanilla sets the textures on
+  both separately — it looks like they do; verify).
+- **`TerrainGridSize = 1`.** The terrain records store 1 m, the mod takes 2 m;
+  at scale 8 the difference shows. Already in the config, now free on the CPU —
+  only ×4 cells in memory and in the file. A note rather than a task.
+- **Splitting `Gpu.cs`** into the rebuild and the incremental draw, if it keeps
+  growing.
+- **A server half for clients.** A client would see the whole world like the
+  host. A networked mod with version synchronisation — the "deliberately not
+  doing" section; move it only on an explicit request.
 
 ---
 
-### Сознательно не делаем
-- **Синхронизация между игроками.** Решено на этапе плана: мод локальный.
-  Дописывать что-либо в блоб стола картографа нельзя — любой ванильный игрок,
-  записав в стол свою карту, стёр бы наши данные, а сам блоб уже ~4 МБ до
-  сжатия.
+## Project infrastructure
+
+Not about the mod's functionality, but about keeping it convenient to work on.
+
+- [x] Local git repository (`.gitignore`, `.gitattributes`; created
+      2026-09-14, the first commit is tag `v0.8.0`)
+- [x] `CHANGELOG.md` with the version history
+- [x] **One-command build into `build\` and copy into plugins** —
+      `build.ps1` / `build.ps1 -Install` (0.9.0). Builds with the legacy
+      `csc.exe` from the .NET Framework, because this machine has neither a
+      dotnet SDK nor mono; hence the "source within C# 5" constraint. The
+      `.csproj` now also writes to `build\` (`OutputPath`, no deps/pdb) and takes
+      every `src\*.cs` by the SDK-style default — not verified on this machine
+      (no dotnet). Build paths can be overridden with the `VALHEIM_MANAGED` and
+      `BEPINEX_PROFILE` environment variables (the `.csproj` reads
+      `VALHEIM_MANAGED` and `BEPINEX_CORE`).
+- [x] **Automatic signature check after the build** — `check-refs.ps1`,
+      called by `build.ps1` (`-NoCheck` disables it). `Mono.Cecil` resolves
+      every reference to a type and member of the game's/BepInEx's assemblies,
+      and the reflection targets are fished out of the IL: an `ldstr` with the
+      name and an `ldtoken` with the type before `Type.GetField/GetMethod/GetProperty`.
+      Verified with a negative test: a swapped field name in a reflection string
+      and a swapped method name in the reference table — both caught.
+- [x] **`LICENSE`** — MIT, the author from `git config user.name`; adjust if
+      the signature should differ.
+- [x] **Rename to LivingMap** (0.13.0). The old name described an overlay on
+      top of the map, gone since 0.7.0; "MapOverlay" also collides with a term
+      in the Jötunn API. The repository folder was renamed to `LivingMap` on
+      2026-09-19. The config and data migration lives in `LivingMapPlugin.cs`,
+      section "the old name"; it can be removed a few versions on.
+- [x] **Thunderstore package** — `thunderstore\{manifest.json, icon.png,
+      README.md}`; `build.ps1 -Package` fills in the version from the source and
+      builds `build\LivingMap-<version>.zip` (in `.gitignore`). The 256×256
+      icon was drawn by a script — a fragment of the kind of map the mod draws.
+      `website_url` is empty: fill it in if a public repository appears.
+      Committing the manifest, icon and README while leaving the zip out
+      matches common practice (JotunnModStub `Package/`, JereKuusela's
+      `publish/`, searica's `Package/`).
+- [x] **Splitting `LivingMapPlugin.cs`** — 10 files of one `partial class` by
+      area (see the table in README). The cut was mechanical, by lines;
+      verified with Cecil: 90 methods and 194 fields match by name, signature
+      and IL size against the build before the split.
+- [x] **Documentation in English** with Russian copies (`*-RU.md`); every
+      comment in the scripts, the `.csproj` and the git config files is English.
+
+---
+
+### Deliberately not doing
+- **Synchronisation between players.** Decided at the planning stage: the mod
+  is local. Writing anything into the cartography table's blob is out — any
+  vanilla player saving their map to the table would wipe our data, and the
+  blob is already ~4 MB before compression.

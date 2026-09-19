@@ -1,179 +1,178 @@
 # LivingMap
 
-Клиентский мод для Valheim: карта показывает мир таким, каким его сделали
-люди — постройки, обработанную мотыгой землю, вырубки и посаженные рощи, и
-меняется вместе с ним. Ничего не патчит через Harmony, ничего не передаёт по
-сети, игроку без мода не мешает никак.
+Client-side Valheim mod: the map shows the world the way people have shaped
+it — buildings, hoe-worked ground, clear-cuts and planted groves — and changes
+along with it. No Harmony patches, nothing sent over the network, no effect on
+players without the mod.
 
-До 0.13.0 мод назывался **MapOverlay** (GUID `j1ga.mapoverlay`); имя перестало
-соответствовать сути с тех пор, как слой стал частью текстуры карты, а не
-наложением. Это не форк [AzuMapDetails](https://thunderstore.io/c/valheim/p/Azumatt/AzuMapDetails/)
-и не производная от него — независимая реализация с другим механизмом.
+It is not a fork of [AzuMapDetails](https://thunderstore.io/c/valheim/p/Azumatt/AzuMapDetails/)
+nor derived from it — an independent implementation with a different mechanism.
 
-Постройки читаются из базы объектов игры (`ZDOMan`), а не из физической сцены:
-на хосте это сразу весь мир, снесённое исчезает с карты само. Из той же базы
-берутся деревья: там, где ванильная карта рисует лес, а деревьев уже нет,
-лесной узор стирается, а там, где деревья стоят, но карта их не знает
-(посаженная роща), узор появляется — тот же ванильный, потому что рисует его
-сам шейдер карты по нашей копии маски леса. Дорожки тоже читаются из базы:
-каждая зона, где кто-то работал мотыгой, хранит запись `_TerrainCompiler` со
-всей покраской земли — на хосте это сразу весь мир.
+Buildings are read from the game's object database (`ZDOMan`) rather than from
+the physics scene: on the host that is the whole world at once, and anything
+torn down disappears from the map on its own. Trees come from the same
+database: where the vanilla map draws forest but the trees are gone, the forest
+pattern is erased, and where trees stand but the map does not know them (a
+planted grove) the pattern appears — the vanilla one, because the map shader
+draws it from our copy of the forest mask. Paths are read from the database
+too: every zone anyone has hoed carries a `_TerrainCompiler` record with all
+of its ground paint — on the host, again, the whole world at once.
 
-Состояние и план работ — в `ROADMAP.md`, история версий — в `CHANGELOG.md`.
+State and plans are in `ROADMAP.md`, version history in `CHANGELOG.md`.
+Russian versions: `README-RU.md`, `ROADMAP-RU.md`, `CHANGELOG-RU.md`.
 
-## Репозиторий
+## Repository
 
-Папка — локальный git-репозиторий (ветка `main`, первая зафиксированная версия
-— тег `v0.8.0`).
+The folder is a local git repository (branch `main`; the first recorded
+version is tag `v0.8.0`).
 
-Что под версионированием: исходники, `.csproj`, скрипты сборки и проверки,
-документация, заготовка пакета Thunderstore и собранный `build\LivingMap.dll`.
-Что нет — накопленные данные по мирам (`*.bin`), конфиг BepInEx, промежуточные
-`bin/`, `obj/`, zip-пакеты и дубликат DLL в корне папки; всё это перечислено в
-`.gitignore`.
+Under version control: the sources, `.csproj`, the build and check scripts,
+the documentation, the Thunderstore package skeleton and the built
+`build\LivingMap.dll`. Not under version control: the per-world data
+(`*.bin`), the BepInEx config, intermediate `bin/` and `obj/`, zip packages
+and a stray DLL copy in the root — all listed in `.gitignore`.
 
-## Установка
+## Installation
 
-Файл `build/LivingMap.dll` кладётся в
+`build/LivingMap.dll` goes into
 
 ```
 %AppData%\r2modmanPlus-local\Valheim\profiles\Valheim\BepInEx\plugins\LivingMap\
 ```
 
-При переходе с MapOverlay старый `plugins\MapOverlay\MapOverlay.dll` (и папку
-`plugins\Unknown-MapOverlay.dll\`, если r2modman её создал) нужно удалить: у
-двух плагинов разные GUID, BepInEx загрузит оба, и они начнут делить текстуру
-карты. Living Map это замечает и на первом же кадре уходит в бездействие с
-ошибкой в логе, пока старый DLL не убран.
+(Thunderstore Mod Manager keeps its profiles under
+`%AppData%\Thunderstore Mod Manager\DataFolder\Valheim\profiles\` instead.)
+The mod has no runtime dependencies on paths: BepInEx tells it where the config
+folder is, and the game's assemblies come with the game.
 
-Настройки и накопленные данные переезжают сами: при первом запуске мод копирует
-`j1ga.mapoverlay.cfg` → `j1ga.livingmap.cfg` и `config\MapOverlay\<мир>.bin` →
-`config\LivingMap\<мир>.bin`, если новых файлов ещё нет. Старые не удаляются.
+## Where things are
 
-## Где что лежит
-
-| Что | Где |
+| What | Where |
 |---|---|
-| Конфиг | `BepInEx\config\j1ga.livingmap.cfg` |
-| Накопленные данные по миру | `BepInEx\config\LivingMap\<worldUID>.bin` |
-| Исходники | `src\LivingMapPlugin*.cs` — один `partial class`, по файлу на область (см. ниже) |
-| Сборка | `build\LivingMap.dll` |
-| Версия мода (одно место) | константа `Version` в `src\LivingMapPlugin.cs`; `build.ps1 -Package` подставляет её в `manifest.json` |
-| Проверка ссылок | `check-refs.ps1`, запускается сборкой |
-| Пакет Thunderstore | `thunderstore\` (manifest, icon 256×256, README) → `build\LivingMap-<версия>.zip` |
-| Лицензия | `LICENSE`, MIT |
+| Config | `BepInEx\config\j1ga.livingmap.cfg` |
+| Accumulated per-world data | `BepInEx\config\LivingMap\<worldUID>.bin` |
+| Sources | `src\LivingMapPlugin*.cs` — one `partial class`, a file per area (see below) |
+| Build | `build\LivingMap.dll` |
+| Mod version (one place) | the `Version` constant in `src\LivingMapPlugin.cs`; `build.ps1 -Package` writes it into `manifest.json` |
+| Reference check | `check-refs.ps1`, run by the build |
+| Thunderstore package | `thunderstore\` (manifest, 256×256 icon, README) → `build\LivingMap-<version>.zip` |
+| Licence | `LICENSE`, MIT |
 
-Исходник разнесён по файлам одного `partial class LivingMapPlugin`:
+The source is split into files of one `partial class LivingMapPlugin`:
 
-| Файл | Что в нём |
+| File | Contents |
 |---|---|
-| `LivingMapPlugin.cs` | константы, `PieceRec`, общее состояние, `Awake`/`OnDestroy`, `Tick`, `Setup`/`Teardown`, общие помощники, обработка ошибок |
-| `.Config.cs` | все `ConfigEntry` и `BindConfig` |
-| `.Zdo.cs` | проход по `ZDOMan`: снимок, разбор префабов, footprint, слияние бакетов |
-| `.TerrainRecords.cs` | дорожки из записей `_TerrainCompiler` |
-| `.Forest.cs` | вырубленный и посаженный лес, маска `_MaskTex` |
-| `.Gpu.cs` | GPU-слой: полная пересборка, дорисовка, маска, туман войны |
-| `.Scan.cs` | запасные сканеры: физика (`Physics.OverlapSphere`) и живой heightmap |
-| `.Store.cs` | файл `<worldUID>.bin` |
-| `.Commands.cs` | консольная команда `livingmap` |
+| `LivingMapPlugin.cs` | constants, `PieceRec`, shared state, `Awake`/`OnDestroy`, `Tick`, `Setup`/`Teardown`, shared helpers, error handling |
+| `.Config.cs` | every `ConfigEntry` and `BindConfig` |
+| `.Zdo.cs` | the `ZDOMan` pass: snapshot, prefab classification, footprints, bucket merging |
+| `.TerrainRecords.cs` | paths from `_TerrainCompiler` records |
+| `.Forest.cs` | cleared and planted forest, the `_MaskTex` mask |
+| `.Gpu.cs` | the GPU layer: full rebuild, incremental drawing, the mask, fog of war |
+| `.Scan.cs` | the fallback scanners: physics (`Physics.OverlapSphere`) and the live heightmap |
+| `.Store.cs` | the `<worldUID>.bin` file |
+| `.Commands.cs` | the `livingmap` console command |
 
-Файл данных привязан к UID мира. Формат менялся несколько раз; при
-несовпадении версии он просто игнорируется и набирается заново.
+The data file is bound to the world UID. Its format has changed several times;
+on a version mismatch it is simply ignored and collected afresh.
 
-## Основные настройки
+## Main settings
 
-| Параметр | Смысл |
+| Setting | Meaning |
 |---|---|
-| `MapTextureScale` | 1 / 2 / 4 / 8 → 2048 / 4096 / 8192 / 16384 пикселей, то есть 12 / 6 / 3 / 1.5 метра на пиксель; 67 МБ / 268 МБ / 1 ГБ видеопамяти. По умолчанию 4. Нужен именно он: это разрешение самой текстуры карты, от него зависит, насколько резко видны постройки. |
-| `Debug` | Подробный лог: время каждого скана и перерисовки, координаты добавленных пикселей леса, самопроверка записей ландшафта против загруженного. |
-| `MapRebuildInterval` | Минимум секунд между обновлениями слоя. |
-| `IncrementalRedraw` | Новые фигуры дорисовываются поверх готовой текстуры, полная пересборка — только когда что-то исчезло. Выключить = всегда пересобирать целиком, как до 0.11.0. |
-| `MinPieceSizeMeters` | Минимальный размер куска постройки на карте, в метрах. Именно в метрах, чтобы рост разрешения не делал мелочь незаметнее. |
-| `BuildingOutline` | Тёмная обводка вокруг построек, чтобы дом отделялся от площадки под ним. |
-| `OnlyPlayerBuilt` | Показывать только то, что поставили игроки: у построек из локаций (руины, деревни драугров, аванпосты двергов) нет создателя, они пропускаются. Переключение сбрасывает накопленные постройки и собирает заново: хост — за секунды, клиент выделенного сервера вернёт постройки из прошлых сессий, только проходя мимо. Выключено. |
-| `BuildingScanSource` | Откуда брать постройки. `ZDO` (по умолчанию) — база объектов игры: на хосте весь мир сразу, на клиенте выделенного сервера всё, что сервер прислал за сессию. `Physics` — старый способ, только коллайдеры в загруженных зонах вокруг игрока. При недоступности базы мод сам откатывается на `Physics`. |
-| `ZdoScanInterval` | Секунд между полными проходами по базе объектов. |
-| `ZdoObjectsPerFrame` | Сколько объектов просматривать за кадр. Мир на 70 000 объектов при значении по умолчанию обходится за ~18 кадров. |
-| `PathScanSource` | Откуда брать дорожки. `ZDO` (по умолчанию) — записи ландшафта из базы объектов: на хосте все изменённые зоны мира сразу, на клиенте — присланные за сессию; перечитываются только записи с изменившейся ревизией. `Heightmap` — старый способ, выборка загруженного ландшафта в `ScanRadius`. При недоступности записей мод сам откатывается на `Heightmap`. |
-| `ScanRadius` | Радиус сканирования вокруг игрока для режимов `Heightmap` / `Physics`. Выше ~128 м смысла нет: объекты существуют только в загруженных зонах. |
-| `TerrainGridSize` | Шаг выборки ландшафта в метрах. 1.0 точнее, но вчетверо больше выборок. |
-| `LinearColorFix` | Коррекция цвета под linear-рендер. Если цвета выглядят слишком тёмными — выключить. |
-| `MapLayerFlipY` | Аварийный переворот слоя по вертикали, если графический API отрисует его зеркально. |
-| `ShowClearedGround` | Показывать просто выровненную мотыгой землю (без покраски). По умолчанию выключено — закрашивает всю террасированную площадь. |
-| `ShowClearedForest` | Стирать лесной узор карты там, где деревьев больше нет. Ванильный лес — статичная маска из генератора мира; мод сверяет её с деревьями в базе объектов. На хосте проверяются все сгенерированные зоны, на клиенте выделенного сервера — зоны, в которых ты побывал за сессию (результат запоминается между сессиями). Поляны вокруг локаций тоже проявятся. Только GPU-слой и `BuildingScanSource = ZDO`. |
-| `ClearedForestRadius` | Радиус окна в метрах, в котором считаются деревья вокруг пикселя. 12 = пиксель и соседи, окно 36×36 м. Больше — не реагирует на естественные прогалины, меньше — точнее повторяет край вырубки. |
-| `ClearedForestMaxTrees` | Сколько деревьев в этом окне ещё допустимо для вырубки. В природном лесу их 6–40 на окно 36×36 м, на вырубке с парой оставленных деревьев — 1–2. |
-| `ShowPlantedForest` | Рисовать ванильный лесной узор там, где деревья стоят, а карта леса не знает: посаженная роща или лес, который маска генератора пропустила. Только в биомах, где ваниль вообще рисует лес (Meadows, Black Forest, Plains), иначе см. `PlantedForestAnyBiome`. |
-| `PlantedForestMinTrees` | Сколько деревьев должно стоять в пикселе карты (12×12 м), чтобы он стал лесом. Посадка с шагом 2–3 м даёт 15+, опушка природного леса, которую маска срезала посреди пикселя, — до 5. |
-| `PlantedForestAnyBiome` | Рисовать лес и в биомах, где ваниль его не рисует никогда (болота, горы, Мистлендс, Эшлендс). Тогда узор получат и их природные леса — вид всей карты изменится. |
-| `DebugMarker` | Пурпурный крестик в позиции персонажа — для проверки, что слой совпадает с картой. Пока включён, каждое обновление — полная пересборка. |
+| `MapTextureScale` | 1 / 2 / 4 / 8 → 2048 / 4096 / 8192 / 16384 pixels, i.e. 12 / 6 / 3 / 1.5 m per pixel; 67 MB / 268 MB / 1 GB of video memory. Default 4. This one matters: it is the resolution of the map texture itself, and it decides how sharp the buildings are. |
+| `Debug` | Verbose log: the time of every scan and redraw, coordinates of newly added forest pixels, a self-check of terrain records against the loaded terrain. |
+| `MapRebuildInterval` | Minimum seconds between layer updates. |
+| `IncrementalRedraw` | New shapes are drawn on top of the existing texture; a full rebuild happens only when something disappeared. Off = always rebuild everything, as before 0.11.0. |
+| `MinPieceSizeMeters` | Smallest size a build piece is drawn at, in metres. Metres on purpose, so a sharper texture does not make small pieces fainter. |
+| `BuildingOutline` | A dark halo around buildings, so a house separates from the levelled ground under it. |
+| `OnlyPlayerBuilt` | Show only what players placed: pieces that came with a location (ruins, draugr villages, dvergr outposts) carry no creator and are skipped. Switching it drops the stored pieces and collects them again — the host in seconds, a client of a dedicated server gets pieces from earlier sessions back only by passing by them. Off. |
+| `BuildingScanSource` | Where buildings come from. `ZDO` (default) — the game's object database: on the host the whole world at once, on a client of a dedicated server everything the server has sent this session. `Physics` — the old way, only colliders in the loaded zones around the player. If the database cannot be read the mod falls back to `Physics` on its own. |
+| `ZdoScanInterval` | Seconds between full passes over the object database. |
+| `ZdoObjectsPerFrame` | Objects examined per frame. A world of 70 000 objects takes about 18 frames at the default. |
+| `PathScanSource` | Where paths come from. `ZDO` (default) — the terrain records in the object database: on the host every modified zone of the world at once, on a client the zones sent this session; only records whose revision changed are re-read. `Heightmap` — the old way, sampling the loaded terrain within `ScanRadius`. If the records cannot be read the mod falls back to `Heightmap` on its own. |
+| `ScanRadius` | Scan radius around the player for the `Heightmap` / `Physics` modes. Above ~128 m gains nothing: objects exist only in loaded zones. |
+| `TerrainGridSize` | Terrain sampling step in metres. 1.0 is sharper but four times the samples. |
+| `LinearColorFix` | Colour correction for linear rendering. If the colours look too dark, turn it off. |
+| `MapLayerFlipY` | Emergency vertical flip of the layer, should the graphics API render it mirrored. |
+| `ShowClearedGround` | Show ground that was merely levelled with the hoe (no paint). Off by default — it paints every terraced area. |
+| `ShowClearedForest` | Erase the map's forest pattern where the trees are gone. The vanilla forest is a static mask from the world generator; the mod compares it with the trees in the object database. On the host every generated zone is checked, on a client of a dedicated server the zones you have been in this session (remembered between sessions). Clearings around locations show up too. GPU layer and `BuildingScanSource = ZDO` only. |
+| `ClearedForestRadius` | Radius in metres of the window in which trees around a pixel are counted. 12 = the pixel and its neighbours, a 36×36 m window. Larger ignores natural gaps, smaller follows the edge of a clearing more closely. |
+| `ClearedForestMaxTrees` | How many trees that window may still hold for the pixel to count as cleared. A natural wood has 6–40 per 36×36 m window, a clearing with a couple of trees left standing 1–2. |
+| `ShowPlantedForest` | Draw the vanilla forest pattern where trees stand but the map knows no forest: a planted grove, or woods the generator's mask missed. Only in biomes where vanilla draws forest at all (Meadows, Black Forest, Plains); otherwise see `PlantedForestAnyBiome`. |
+| `PlantedForestMinTrees` | Trees a map pixel (12×12 m) must hold to become forest. A planting at 2–3 m spacing gives 15+; the edge of a natural wood that the mask cuts mid-pixel gives up to 5. |
+| `PlantedForestAnyBiome` | Draw forest in biomes where vanilla never does (swamps, mountains, Mistlands, Ashlands). Their natural woods then get the pattern as well — the look of the whole map changes. |
+| `DebugMarker` | A magenta cross at the character's position, to confirm the layer lines up with the map. While it is on, every update is a full rebuild. |
 
-После смены `MapTextureScale` нужен перезаход в мир.
+Changing `MapTextureScale` needs a world re-enter.
 
-## Консольная команда
+## Console command
 
-Консоль игры (F5):
+The game console (F5):
 
 ```
-livingmap status                                  что карта помнит, источники, размер текстуры, время прохода
-livingmap reset                                   забыть всё в 100 м вокруг и собрать заново
-livingmap reset 300                               то же в 300 м
-livingmap reset forest                            только лес, 100 м
-livingmap reset paths all                         дорожки по всему миру
-livingmap reset buildings forest 50               постройки и лес в 50 м
+livingmap status                                  what the map remembers, sources, texture size, pass timing
+livingmap reset                                   forget everything within 100 m and collect again
+livingmap reset 300                               the same within 300 m
+livingmap reset forest                            forest only, 100 m
+livingmap reset paths all                         paths across the whole world
+livingmap reset buildings forest 50               buildings and forest within 50 m
 ```
 
-Слои: `buildings`, `paths`, `forest`; без слоя — все три; `all` — весь мир
-вместо радиуса. Хосту это почти не нужно — его база авторитетна; команда для
-клиента выделенного сервера, у которого накопленное в прошлых сессиях могло
-устареть, и для отладки: сброс леса больше не требует удалять файл мира вместе
-с дорожками.
+Layers: `buildings`, `paths`, `forest`; no layer means all three; `all` means
+the whole world instead of a radius. The host hardly needs it — its database is
+authoritative; the command is for a client of a dedicated server, whose data
+from earlier sessions may have gone stale, and for debugging: resetting the
+forest no longer means deleting the world file and the paths with it.
 
-## Производительность
+## Performance
 
-Всё считается в главном потоке Unity; ниже — что и как часто. Точные числа
-пишутся в лог при `Debug = true` (`… ms CPU` в конце строк).
+Everything runs on Unity's main thread; below is what happens and how often.
+Exact numbers go to the log with `Debug = true` (`… ms CPU` at the end of the
+lines).
 
-| Что | Когда | Стоимость |
+| What | When | Cost |
 |---|---|---|
-| `Tick` | каждый кадр | несколько сравнений времени, ничего |
-| Скан ландшафта (дорожки), режим `Heightmap` | раз в `ScanInterval` при сдвиге на `MoveDelta`, иначе раз в `IdleRescanInterval` | ~2600 выборок `GetPaintMask` в радиусе 58 м, порядка 0.5–1 мс |
-| ZDO-проход | раз в `ZdoScanInterval` | снимок ссылок (76k → ~0.3 мс), затем `ZdoObjectsPerFrame` объектов за кадр: ~0.2–0.4 мс × 20 кадров; слияние ~0.1 мс |
-| Оценка леса | второй фазой того же прохода | 150 зон за кадр, ~0.5 мс × (зоны/150) кадров |
-| Записи ландшафта (дорожки), режим `ZDO` | третьей фазой того же прохода | только записи с изменившейся ревизией: распаковка GZip + разбор 65×65 вершин ≈ 0.5 мс на зону, 4 зоны за кадр; в тихом мире — ноль |
-| Дорисовка слоя | при новых фигурах, не чаще `MapRebuildInterval` | единицы–десятки квадов, доли мс |
-| Полная пересборка | что-то исчезло, потерялась текстура, переключён слой | `Blit` всей текстуры (268 МБ на масштабе 4, 1 ГБ на 8 — это GPU, 1–4 мс) + все фигуры через `GL.Vertex3` (~48k вызовов на 5300 построек, 2–5 мс CPU) |
-| Маска леса | при изменении леса | `Blit` 16 МБ + сотни квадов, <1 мс |
-| Сохранение | раз в `SaveInterval` при изменениях | файл ~200 КБ, доли мс |
-| Старт мира | один раз | чтение маски леса 16 МБ, загрузка файла, первая пересборка и первый проход; на большом мире первый проход растягивается лимитом 600 запросов биома за кадр |
+| `Tick` | every frame | a few time comparisons, nothing |
+| Terrain scan (paths), `Heightmap` mode | every `ScanInterval` after moving `MoveDelta`, otherwise every `IdleRescanInterval` | ~2600 `GetPaintMask` samples within 58 m, about 0.5–1 ms |
+| ZDO pass | every `ZdoScanInterval` | reference snapshot (76k → ~0.3 ms), then `ZdoObjectsPerFrame` objects per frame: ~0.2–0.4 ms × 20 frames; merge ~0.1 ms |
+| Forest evaluation | second phase of the same pass | 150 zones per frame, ~0.5 ms × (zones/150) frames |
+| Terrain records (paths), `ZDO` mode | third phase of the same pass | only records whose revision changed: GZip inflate + parsing 65×65 vertices ≈ 0.5 ms per zone, 4 zones per frame; in a quiet world, nothing |
+| Incremental draw | on new shapes, at most every `MapRebuildInterval` | a handful of quads, fractions of a millisecond |
+| Full rebuild | something disappeared, the texture was lost, a layer was switched | `Blit` of the whole texture (268 MB at scale 4, 1 GB at 8 — GPU work, 1–4 ms) + every shape through `GL.Vertex3` (~48k calls for 5300 pieces, 2–5 ms CPU) |
+| Forest mask | when the forest changes | 16 MB `Blit` + a few hundred quads, <1 ms |
+| Save | every `SaveInterval` when something changed | a ~200 KB file, fractions of a millisecond |
+| World start | once | reading the 16 MB forest mask, loading the file, the first rebuild and the first pass; on a big world the first pass is stretched by the limit of 600 biome lookups per frame |
 
-Память: ~6–7 МБ RAM (4 МБ счётчики деревьев, два битовых набора по 512 КБ,
-снимок ZDO ~600 КБ, постройки и кэши — остальное). Видеопамять — см.
-`MapTextureScale`, плюс 16 МБ на маску леса.
+Memory: ~6–7 MB RAM (4 MB tree counters, two 512 KB bit sets, a ~600 KB ZDO
+snapshot, buildings and caches for the rest). Video memory — see
+`MapTextureScale`, plus 16 MB for the forest mask.
 
-## Сборка
+## Building
 
 ```
-powershell -ExecutionPolicy Bypass -File .\build.ps1            # -> build\LivingMap.dll + проверка ссылок
-powershell -ExecutionPolicy Bypass -File .\build.ps1 -Install   # ... и сразу в plugins
-powershell -ExecutionPolicy Bypass -File .\build.ps1 -Package   # ... и zip для Thunderstore в build\
-powershell -ExecutionPolicy Bypass -File .\build.ps1 -NoCheck   # без проверки ссылок
+powershell -ExecutionPolicy Bypass -File .\build.ps1            # -> build\LivingMap.dll + reference check
+powershell -ExecutionPolicy Bypass -File .\build.ps1 -Install   # ... and straight into plugins
+powershell -ExecutionPolicy Bypass -File .\build.ps1 -Package   # ... and a Thunderstore zip in build\
+powershell -ExecutionPolicy Bypass -File .\build.ps1 -NoCheck   # skip the reference check
 ```
 
-Скрипт собирает `csc.exe` из .NET Framework — он есть на любой Windows, ставить
-ничего не нужно. Он понимает только C# 5, и исходник намеренно написан в этих
-рамках (без `out var`, `?.`, `$""`, `nameof`). Ссылки берутся из установленной
-игры и профиля r2modman, так что сборка идёт против ровно той версии игры, в
-которой мод будет работать. Пути прописаны в начале `build.ps1`; если игра
-переедет — поправить там (и в `.csproj`).
+The script builds with `csc.exe` from the .NET Framework — present on every
+Windows, nothing to install. It only knows C# 5, and the source is deliberately
+written within that (no `out var`, `?.`, `$""`, `nameof`). References are read
+from the installed game and the r2modman profile, so the build is against
+exactly the game version the mod will run in. The paths are build-time only;
+on another machine set the `VALHEIM_MANAGED` (the game's `valheim_Data\Managed`)
+and `BEPINEX_PROFILE` (the profile holding `BepInEx\core`) environment variables
+instead of editing the scripts.
 
-Если есть dotnet SDK, можно и через проект:
+With a dotnet SDK the project works as well (same environment variables, or
+`-p:ValheimManaged=… -p:BepInExCore=…`):
 
 ```
 dotnet build src\LivingMap.csproj -c Release
 ```
 
-Вариант через mono (так собирался DLL до 0.9.0):
+With mono:
 
 ```
 mcs -target:library -out:LivingMap.dll -sdk:4.5 -langversion:latest \
@@ -188,49 +187,30 @@ mcs -target:library -out:LivingMap.dll -sdk:4.5 -langversion:latest \
   -r:<Managed>/SoftReferenceableAssets.dll \
   -r:<BepInEx>/core/BepInEx.dll \
   -r:<BepInEx>/core/0Harmony.dll \
-  LivingMapPlugin.cs
+  LivingMapPlugin*.cs
 ```
 
-## Git
+## Reference check after the build
 
-Репозиторий уже создан. `core.autocrlf` в нём выключен намеренно — переводами
-строк управляет `.gitattributes`, иначе они конфликтуют и дают шумные диффы.
-Каждая версия помечается тегом `vX.Y.Z`.
+`check-refs.ps1` (run by `build.ps1` automatically) uses `Mono.Cecil` from
+`BepInEx\core` to resolve every reference the DLL makes to a type or member of
+the game's and BepInEx's assemblies, and finds the reflection targets in the IL
+— `ldtoken` and `ldstr` before `Type.GetField/GetMethod/GetProperty` — checking
+that the type really has such a member. Any mismatch fails the build.
 
-Если репозиторий придётся создавать заново (новая машина, потерянный `.git`):
+Why: the compiler only checks against the assemblies present at build time;
+after a game update a mismatch surfaces at runtime as a
+`MissingMethodException`.
 
-```
-git init -b main
-git config core.autocrlf false
-git add -A
-git commit -m "LivingMap <версия>"
-git tag v<версия>
-```
+After a game update, running `build.ps1` is enough — if something was renamed,
+the check says what.
 
-## Проверка ссылок после сборки
+## Thunderstore package
 
-`check-refs.ps1` (запускается `build.ps1` автоматически) через `Mono.Cecil` из
-`BepInEx\core` резолвит каждую ссылку DLL на тип и член сборок игры и BepInEx,
-а также находит в IL цели рефлексии — `ldtoken` и `ldstr` перед
-`Type.GetField/GetMethod/GetProperty` — и проверяет, что такие члены у типа есть.
-Любое несовпадение валит сборку.
-
-Зачем: компилятор проверяет только против тех сборок, что лежали рядом при
-сборке; после обновления игры расхождение всплывает уже в рантайме как
-`MissingMethodException`. Именно так ломались AutoRepair и CraftFromContainers
-— они звали `Character.Message(MessageType, string, int, Sprite)`, а в игре у
-метода уже пять параметров. Цели рефлексии компилятор не видит вовсе.
-
-После обновления игры достаточно запустить `build.ps1` — если что-то
-переименовали, проверка скажет что именно.
-
-## Пакет для Thunderstore
-
-`build.ps1 -Package` собирает `build\LivingMap-<версия>.zip`: `manifest.json`
-из `thunderstore\` с подставленной версией, `icon.png` (256×256, обязательное
-требование), `README.md` пакета (английский, для страницы мода), `CHANGELOG.md`
-и DLL в корне архива. Зависимость — `denikson-BepInExPack_Valheim`. Публиковать
-или нет — отдельное решение; заготовка просто лежит готовой.
+`build.ps1 -Package` produces `build\LivingMap-<version>.zip`: `manifest.json`
+from `thunderstore\` with the version filled in, `icon.png` (256×256, a hard
+requirement), the package `README.md` (the mod page), `CHANGELOG.md` and the DLL
+at the root of the archive. The dependency is `denikson-BepInExPack_Valheim`.
 
 ## AI assistance
 

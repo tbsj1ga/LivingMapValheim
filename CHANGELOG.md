@@ -1,142 +1,147 @@
-# История изменений
+# Changelog
 
-Версия задаётся в одном месте — `LivingMapPlugin.Version` в `src/LivingMapPlugin.cs`.
+The version is set in one place — `LivingMapPlugin.Version` in `src/LivingMapPlugin.cs`.
 
 ## 0.14.0
 
-- **Консольная команда `livingmap`**: `status` — что карта помнит и откуда;
-  `reset [buildings|paths|forest] [метры|all]` — забыть слой в радиусе (по
-  умолчанию 100 м) или во всём мире и собрать заново. Сброс леса больше не
-  требует удалять файл мира вместе с дорожками.
-- **`OnlyPlayerBuilt`** — показывать только постройки игроков, без руин и
-  деревень из локаций (у них нет создателя в ZDO). Выключено. Переключение
-  сбрасывает накопленные постройки; правило запоминается в файле (v6).
-- **Уборка.** Удалены CPU-путь покраски и экранный слой `DetailedOverlay` с их
-  десятью настройками. Слой только на GPU; без него мод бездействует, а не
-  красит по-старому.
+- **`livingmap` console command**: `status` — what the map remembers and
+  where from; `reset [buildings|paths|forest] [metres|all]` — forget a layer
+  within a radius (100 m by default) or across the whole world and collect it
+  again. Resetting the forest no longer means deleting the world file and the
+  paths with it.
+- **`OnlyPlayerBuilt`** — show only what players built, without the ruins and
+  villages that come with locations (they carry no creator in the ZDO). Off.
+  Switching it drops the stored pieces; the rule is remembered in the file (v6).
+- **Cleanup.** The CPU painting path and the `DetailedOverlay` screen-space
+  layer are gone along with their ten settings. The layer lives on the GPU
+  only; without it the mod stays idle instead of painting the old way.
 
 ## 0.13.0
 
-- **Переименование: MapOverlay → LivingMap.** GUID `j1ga.livingmap`, имя
-  «Living Map», сборка `LivingMap.dll`, namespace и класс `LivingMapPlugin`,
-  пакет `LivingMap`. При первом запуске настройки и данные по мирам копируются
-  из старых файлов, старые не трогаются. Если старый `MapOverlay.dll` всё ещё
-  загружен, мод бездействует и пишет об этом в лог.
+- **Rename: MapOverlay → LivingMap.** GUID `j1ga.livingmap`, name "Living Map",
+  assembly `LivingMap.dll`, namespace and class `LivingMapPlugin`, package
+  `LivingMap`. On the first start the settings and the per-world data are
+  copied from the old files; the old files are left alone. If the old
+  `MapOverlay.dll` is still loaded, the mod stays idle and says so in the log.
 
 ## 0.12.0
 
-- **Дорожки по всей карте.** Покраска земли читается из записей
-  `_TerrainCompiler` в базе объектов (тот же блоб, что игра сохраняет), а не
-  с загруженного ландшафта вокруг игрока: на хосте сразу весь мир, на клиенте
-  выделенного сервера — зоны, присланные за сессию. Перечитываются только
-  записи с изменившейся ревизией. Клетки совпадают со старым сканом до метра.
-  Настройка: `PathScanSource` (`ZDO` / `Heightmap`). Отличие от старого
-  скана: покраска, которую локации наносят на ландшафт без записи (старые
-  `TerrainModifier`), в записях отсутствует и на карте больше не показывается.
-  В debug-режиме для загруженных зон пишется сверка записи с живым ландшафтом.
-- Инфраструктура: исходник разнесён на 10 файлов `partial class` по областям;
-  `check-refs.ps1` после каждой сборки сверяет ссылки и цели рефлексии с
-  текущей игрой; `build.ps1 -Package` собирает пакет для Thunderstore
-  (`thunderstore\`); `LICENSE` (MIT); `.csproj` пишет в `build\`.
+- **Paths across the whole map.** Ground paint is read from the
+  `_TerrainCompiler` records in the object database (the same blob the game
+  saves) instead of the loaded terrain around the player: on the host the whole
+  world at once, on a client of a dedicated server the zones sent this session.
+  Only records whose revision changed are re-read. Cells match the old scan to
+  the metre. Setting: `PathScanSource` (`ZDO` / `Heightmap`). One difference
+  from the old scan: paint that locations apply to the terrain without a record
+  (the old `TerrainModifier`) is absent from the records and no longer shown.
+  In debug mode, loaded zones get a check of the record against the live
+  terrain.
+- Infrastructure: the source is split into 10 `partial class` files by area;
+  `check-refs.ps1` compares references and reflection targets with the current
+  game after every build; `build.ps1 -Package` builds the Thunderstore package
+  (`thunderstore\`); `LICENSE` (MIT); the `.csproj` writes to `build\`.
 
 ## 0.11.0
 
-- **Инкрементальная перерисовка.** Новые постройки, клетки дорожек и всё, что
-  вышло из тумана войны, дорисовываются поверх готовой текстуры; порядок слоёв
-  (дорожки → обводки → заливки) восстанавливается локально перезаливкой
-  соседей. Полная пересборка — только когда что-то исчезло или сменилось,
-  потерялась текстура или переключили слой. На масштабе 8 это разница между
-  гигабайтом за раз и парой десятков квадов.
-- Маска леса пересобирается отдельно и только при изменении леса.
-- Туман войны на GPU-пути: фигуры в неразведанных местах теперь появляются в
-  течение 15 с после разведки, а не при следующем изменении карты.
-- Физический сканер построек больше не пересобирает слой, если в радиусе
-  ничего не изменилось.
-- Настройка: `IncrementalRedraw` (выключить = старое поведение).
-- Дефолт `MapTextureScale` 2 → 4. В debug-лог добавлено время каждого шага
-  (`… ms CPU`).
+- **Incremental redraw.** New buildings, path cells and everything that comes
+  out of the fog of war are drawn on top of the existing texture; the layer
+  order (paths → outlines → fills) is restored locally by refilling the
+  neighbours. A full rebuild happens only when something disappeared or
+  changed, the texture was lost or a layer was switched. At scale 8 that is the
+  difference between a gigabyte at a time and a couple of dozen quads.
+- The forest mask is rebuilt separately and only when the forest changes.
+- Fog of war on the GPU path: shapes in unexplored places now appear within
+  15 s of exploring, not at the next map change.
+- The physics building scanner no longer rebuilds the layer when nothing in
+  its radius changed.
+- Setting: `IncrementalRedraw` (off = the old behaviour).
+- Default `MapTextureScale` 2 → 4. The debug log now carries the time of every
+  step (`… ms CPU`).
 
 ## 0.10.0
 
-- **Вырубленный лес.** Там, где ванильная карта рисует лес, а в базе объектов
-  в окне `ClearedForestRadius` осталось не больше `ClearedForestMaxTrees`
-  деревьев (`TreeBase`; пни, кусты и молодняк не считаются), лесной узор стирается —
-  вырубки вокруг базы и поляны вокруг локаций видны как есть. Деревья
-  считаются во время того же ZDO-прохода; на хосте проверяются все
-  сгенерированные зоны (`ZoneSystem.m_generatedZones`), на клиенте выделенного
-  сервера — зоны, побывавшие в активной области, результат запоминается в
-  файле (формат v4, старые v3 читаются). Рисуется в копию маски `_MaskTex`
-  мультипликативным блендом, так что ванильный шейдер сам убирает лес.
-  Настройки: `ShowClearedForest`, `ClearedForestRadius`,
-  `ClearedForestMaxTrees`. Только GPU-слой.
-- **Посаженный лес.** Там, где карта леса не знает, а в пикселе стоит
-  `PlantedForestMinTrees` и больше деревьев, лесной узор появляется — тот же
-  ванильный, аддитивным блендом в ту же копию маски. Только в биомах, где
-  ваниль вообще рисует лес, если не включён `PlantedForestAnyBiome`.
-  Настройки: `ShowPlantedForest`, `PlantedForestMinTrees`,
-  `PlantedForestAnyBiome`. Формат файла v5 (v3/v4 читаются).
-- ZDO-проход теперь работает и при выключенных `ShowBuildings` (он нужен
-  слою леса), постройки при этом не трогаются.
+- **Cleared forest.** Where the vanilla map draws forest but the object
+  database holds no more than `ClearedForestMaxTrees` trees within the
+  `ClearedForestRadius` window (`TreeBase` only; stumps, bushes and saplings do
+  not count), the forest pattern is erased — clear-cuts around a base and
+  clearings around locations show as they are. Trees are counted during the
+  same ZDO pass; on the host every generated zone is checked
+  (`ZoneSystem.m_generatedZones`), on a client of a dedicated server the zones
+  that were inside the active area, with the result remembered in the file
+  (format v4; v3 still reads). Drawn into a copy of the `_MaskTex` mask with a
+  multiplicative blend, so the vanilla shader removes the forest itself.
+  Settings: `ShowClearedForest`, `ClearedForestRadius`, `ClearedForestMaxTrees`.
+  GPU layer only.
+- **Planted forest.** Where the map knows no forest but a pixel holds
+  `PlantedForestMinTrees` trees or more, the forest pattern appears — the
+  vanilla one, with an additive blend into the same mask copy. Only in biomes
+  where vanilla draws forest at all, unless `PlantedForestAnyBiome` is on.
+  Settings: `ShowPlantedForest`, `PlantedForestMinTrees`,
+  `PlantedForestAnyBiome`. File format v5 (v3/v4 still read).
+- The ZDO pass now runs with `ShowBuildings` off as well (the forest layer
+  needs it); buildings are left alone then.
 
 ## 0.9.0
 
-- **Постройки читаются из базы объектов игры (`ZDOMan`), а не из физики.**
-  На хосте это сразу весь мир без обхода ногами, снесённые постройки исчезают с
-  карты сами; на клиенте выделенного сервера — всё, что сервер прислал за
-  сессию, а очистка пустых пикселей доверяется только внутри активной области.
-  Footprint считается по коллайдерам слоя `piece` из префаба (`ZNetScene`) с
-  учётом поворота объекта; кэш по хэшу префаба. Обход базы порциями по кадрам,
-  без аллокаций между проходами (пул списков, снимок ссылок переиспользуется).
-  Новые настройки: `BuildingScanSource` (`ZDO` / `Physics`),
-  `ZdoScanInterval`, `ZdoObjectsPerFrame`. Физический сканер остаётся запасным
-  вариантом: включается настройкой или сам, если поле `m_objectsByID` не
-  найдено либо чтение базы падает.
-- `build.ps1` — сборка в `build\LivingMap.dll` штатным `csc.exe` из .NET
-  Framework, `-Install` копирует в plugins. В `.csproj` и список ссылок добавлен
-  `assembly_utils` (тип `Vector2s` в сигнатуре `ZNetScene.InActiveArea`).
+- **Buildings are read from the game's object database (`ZDOMan`), not from
+  physics.** On the host that is the whole world at once, no walking needed,
+  and demolished pieces disappear from the map on their own; on a client of a
+  dedicated server it is everything the server has sent this session, and
+  clearing empty pixels is trusted only inside the active area. Footprints
+  come from the `piece`-layer colliders of the prefab (`ZNetScene`) with the
+  object's rotation applied; cached per prefab hash. The database is walked in
+  slices across frames with no allocations between passes (a list pool, a
+  reused reference snapshot). New settings: `BuildingScanSource`
+  (`ZDO` / `Physics`), `ZdoScanInterval`, `ZdoObjectsPerFrame`. The physics
+  scanner stays as the fallback: by setting, or on its own if the
+  `m_objectsByID` field is missing or reading the database fails.
+- `build.ps1` — builds `build\LivingMap.dll` with the stock `csc.exe` from the
+  .NET Framework; `-Install` copies into plugins. `assembly_utils` added to the
+  `.csproj` and the reference list (the `Vector2s` type in the signature of
+  `ZNetScene.InActiveArea`).
 
 ## 0.8.0
 
-- Минимальный размер фигуры задаётся в **метрах** (`MinPieceSizeMeters`), а не в
-  пикселях текстуры. До этого повышение `MapTextureScale` делало мелкие куски
-  построек *менее* заметными, а не более.
-- Контрастная палитра материалов + тёмная обводка построек
-  (`BuildingOutline`), чтобы дом отделялся от выровненной мотыгой площадки под
-  ним (раньше дерево и земляная тропа были почти одного коричневого цвета).
+- The minimum shape size is in **metres** (`MinPieceSizeMeters`), not texture
+  pixels. Before, raising `MapTextureScale` made small building pieces *less*
+  visible, not more.
+- A contrasting material palette plus a dark outline around buildings
+  (`BuildingOutline`), so a house separates from the hoe-levelled ground under
+  it (wood and a dirt path used to be almost the same brown).
 
 ## 0.7.0
 
-- Слой рисуется прямо в текстуру карты: `RenderTexture` + `Graphics.Blit`
-  ванильной текстуры + отрисовка через `GL` с шейдером
-  `Hidden/Internal-Colored`. Теперь это *часть карты*: панорамируется, зумится,
-  уходит под маркеры и под туман войны, работает на миникарте.
-- `MapTextureScale` 1/2/4/8 → 2048/4096/8192/16384 пикселей, со ступенчатым
-  откатом вниз при отказе выделения текстуры.
-- `LinearColorFix` — коррекция цветового пространства (`Color.linear`), иначе
-  цвета вымывались при linear-рендере.
-- Экранный слой (`DetailedOverlay`) переведён в выключенное по умолчанию
-  состояние.
+- The layer is drawn straight into the map texture: `RenderTexture` +
+  `Graphics.Blit` of the vanilla texture + drawing through `GL` with the
+  `Hidden/Internal-Colored` shader. It is now *part of the map*: it pans,
+  zooms, goes under markers and under the fog of war, works on the minimap.
+- `MapTextureScale` 1/2/4/8 → 2048/4096/8192/16384 pixels, stepping down when
+  the texture allocation is refused.
+- `LinearColorFix` — colour-space correction (`Color.linear`); otherwise the
+  colours washed out under linear rendering.
+- The screen-space layer (`DetailedOverlay`) is now off by default.
 
 ## 0.3.0
 
-- Исправлено положение экранного слоя: `Minimap.MapPointToLocalGuiPos` уже
-  возвращает `0..rect.width` от левого нижнего угла изображения, вычитать
-  `rect.xMin` было не нужно — из-за этого слой уезжал вправо-вверх на пол-экрана.
-- Убрано систематическое смещение ландшафта на ~0.5 м: `GetVegetationMask`
-  берёт выборку в `p - 0.5`, а `GetPaintMask(Vector3)` — нет.
+- Fixed the position of the screen-space layer: `Minimap.MapPointToLocalGuiPos`
+  already returns `0..rect.width` from the lower-left corner of the image, so
+  subtracting `rect.xMin` was wrong — the layer drifted up and right by half a
+  screen.
+- Removed a systematic ~0.5 m terrain offset: `GetVegetationMask` samples at
+  `p - 0.5`, `GetPaintMask(Vector3)` does not.
 
 ## 0.2.0
 
-- Дорожки, протоптанные мотыгой, наконец видны. Проверялись только зелёный и
-  синий каналы paint-маски, а `PaintType.Dirt` — это **красный**, и именно он
-  отвечает за самый частый способ делать дороги.
-- Добавлен опциональный слой просто выровненной земли (`ShowClearedGround`).
+- Hoe-made paths are finally visible. Only the green and blue channels of the
+  paint mask were checked, but `PaintType.Dirt` is **red**, and that is the most
+  common way of making roads.
+- An optional layer for merely levelled ground (`ShowClearedGround`).
 
 ## 0.1.0
 
-- Первая рабочая версия: сканирование построек через `Physics.OverlapSphere`,
-  цвет по `WearNTear.MaterialType`, накопление в файл на мир, уважение тумана
-  войны, предохранитель на 25 ошибок.
-- Исправлено сразу после выпуска: классификация покраски земли суммировала все
-  четыре канала маски, а альфа у всех масок равна 1 — из-за этого вся земля
-  вокруг игрока красилась как мощёная.
+- First working version: buildings scanned through `Physics.OverlapSphere`,
+  colour by `WearNTear.MaterialType`, accumulation in a per-world file, fog of
+  war respected, a 25-error fuse.
+- Fixed right after release: ground-paint classification summed all four mask
+  channels, and alpha is 1 in every mask — so all ground around the player was
+  painted as paved.

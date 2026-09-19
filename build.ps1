@@ -1,28 +1,33 @@
-# Сборка build\LivingMap.dll.
+# Builds build\LivingMap.dll.
 #
-#   powershell -ExecutionPolicy Bypass -File .\build.ps1            # собрать и проверить ссылки
-#   powershell -ExecutionPolicy Bypass -File .\build.ps1 -Install   # ... и положить в plugins
-#   powershell -ExecutionPolicy Bypass -File .\build.ps1 -Package   # ... и собрать zip для Thunderstore
-#   powershell -ExecutionPolicy Bypass -File .\build.ps1 -NoCheck   # без проверки ссылок
+#   powershell -ExecutionPolicy Bypass -File .\build.ps1            # build and check references
+#   powershell -ExecutionPolicy Bypass -File .\build.ps1 -Install   # ... and copy into plugins
+#   powershell -ExecutionPolicy Bypass -File .\build.ps1 -Package   # ... and zip for Thunderstore
+#   powershell -ExecutionPolicy Bypass -File .\build.ps1 -NoCheck   # skip the reference check
 #
-# Компилятор — csc.exe из .NET Framework, который есть на любой Windows. Он понимает
-# только C# 5, и исходник намеренно написан в этих рамках (без out var, ?., $"" и
-# nameof). Если появится dotnet SDK, можно собирать и через src\LivingMap.csproj,
-# результат тот же. Ссылки берутся прямо из установленной игры и профиля r2modman,
-# поэтому сборка идёт против ровно той версии игры, в которой мод будет работать.
+# The compiler is csc.exe from the .NET Framework, present on every Windows. It only
+# knows C# 5, and the source is deliberately written within that (no out var, ?., $""
+# or nameof). With a dotnet SDK the same build can be done through src\LivingMap.csproj.
+# References are read straight from the installed game and the r2modman profile, so
+# the build is against exactly the game version the mod will run in.
 #
-# После сборки check-refs.ps1 сверяет каждое обращение DLL к сборкам игры (и цели
-# рефлексии) с тем, что в них реально есть — компилятор этого не гарантирует, если
-# игра обновилась, а падает уже в рантайме.
+# After the build, check-refs.ps1 compares every reference the DLL makes into the game's
+# assemblies (and every reflection target) with what those assemblies actually contain -
+# the compiler cannot guarantee that once the game updates, and the failure would only
+# show at runtime.
+#
+# Paths are build-time only. Override them with environment variables instead of editing:
+#   VALHEIM_MANAGED  = <game>\valheim_Data\Managed
+#   BEPINEX_PROFILE  = the r2modman / Thunderstore Mod Manager profile that holds BepInEx\core
 
 param([switch]$Install, [switch]$Package, [switch]$NoCheck)
 
 $ErrorActionPreference = "Stop"
-$root    = $PSScriptRoot
-$managed = "D:\SteamLibrary\steamapps\common\Valheim\valheim_Data\Managed"
-$profile = "$env:APPDATA\r2modmanPlus-local\Valheim\profiles\Valheim"
-$core    = "$profile\BepInEx\core"
-$plugins = "$profile\BepInEx\plugins\LivingMap"
+$root       = $PSScriptRoot
+$managed    = if ($env:VALHEIM_MANAGED) { $env:VALHEIM_MANAGED } else { "D:\SteamLibrary\steamapps\common\Valheim\valheim_Data\Managed" }
+$bepProfile = if ($env:BEPINEX_PROFILE) { $env:BEPINEX_PROFILE } else { "$env:APPDATA\r2modmanPlus-local\Valheim\profiles\Valheim" }
+$core       = "$bepProfile\BepInEx\core"
+$plugins    = "$bepProfile\BepInEx\plugins\LivingMap"
 $out     = "$root\build\LivingMap.dll"
 $src     = Get-ChildItem "$root\src\*.cs" | Sort-Object Name | ForEach-Object { $_.FullName }
 $main    = "$root\src\LivingMapPlugin.cs"
@@ -30,8 +35,8 @@ $main    = "$root\src\LivingMapPlugin.cs"
 $csc = "$env:WINDIR\Microsoft.NET\Framework64\v4.0.30319\csc.exe"
 if (-not (Test-Path $csc)) { $csc = "$env:WINDIR\Microsoft.NET\Framework\v4.0.30319\csc.exe" }
 if (-not (Test-Path $csc))     { throw "csc.exe not found under $env:WINDIR\Microsoft.NET" }
-if (-not (Test-Path $managed)) { throw "Game assemblies not found: $managed (edit `$managed in build.ps1)" }
-if (-not (Test-Path $core))    { throw "BepInEx core not found: $core (edit `$profile in build.ps1)" }
+if (-not (Test-Path $managed)) { throw "Game assemblies not found: $managed (set VALHEIM_MANAGED or edit build.ps1)" }
+if (-not (Test-Path $core))    { throw "BepInEx core not found: $core (set BEPINEX_PROFILE or edit build.ps1)" }
 
 $refs = @(
     "assembly_valheim", "assembly_utils", "SoftReferenceableAssets",
@@ -44,7 +49,7 @@ $refs += "/r:$core\0Harmony.dll"
 
 New-Item -ItemType Directory -Force (Split-Path $out) | Out-Null
 
-# /nostdlib + mscorlib игры: собираем против того рантайма, в котором мод будет жить
+# /nostdlib plus the game's mscorlib: compile against the runtime the mod will live in
 & $csc /nologo /noconfig /nostdlib+ /target:library /optimize+ /nowarn:0618,1701,1702 "/out:$out" @refs @src
 if ($LASTEXITCODE -ne 0) { throw "Build failed" }
 
@@ -63,8 +68,8 @@ if ($Install) {
 }
 
 if ($Package) {
-    # Пакет Thunderstore: manifest.json (версия подставляется из исходника), icon.png
-    # 256x256, README.md, CHANGELOG.md и DLL в корне архива.
+    # Thunderstore package: manifest.json (version filled in from the source), icon.png
+    # 256x256, README.md, CHANGELOG.md and the DLL, all at the root of the archive.
     $ts   = "$root\thunderstore"
     $tmp  = Join-Path ([System.IO.Path]::GetTempPath()) ("LivingMap-pkg-" + [guid]::NewGuid().ToString("N"))
     $zip  = "$root\build\LivingMap-$ver.zip"

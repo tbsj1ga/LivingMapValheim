@@ -9,14 +9,18 @@
     <GenerateAssemblyInfo>false</GenerateAssemblyInfo>
     <AppendTargetFrameworkToOutputPath>false</AppendTargetFrameworkToOutputPath>
     <NoWarn>0618</NoWarn>
-    <!-- Один источник правды с build.ps1: собранный DLL лежит в build -->
+    <!-- One source of truth with build.ps1: the built DLL lives in build\ -->
     <OutputPath>..\build\</OutputPath>
     <GenerateDependencyFile>false</GenerateDependencyFile>
     <DebugType>none</DebugType>
 
-    <!-- Поправь эти два пути, если игра или профиль r2modman переедут -->
-    <ValheimManaged>D:\SteamLibrary\steamapps\common\Valheim\valheim_Data\Managed</ValheimManaged>
-    <BepInExCore>$(AppData)\r2modmanPlus-local\Valheim\profiles\Valheim\BepInEx\core</BepInExCore>
+    <!-- Build-time only: where the game's and BepInEx's assemblies are read from. Nothing here
+         matters at runtime. Override with the VALHEIM_MANAGED and BEPINEX_CORE environment
+         variables (or on the command line, e.g. -p:ValheimManaged=...) instead of editing. -->
+    <ValheimManaged Condition="'$(ValheimManaged)' == '' And '$(VALHEIM_MANAGED)' != ''">$(VALHEIM_MANAGED)</ValheimManaged>
+    <ValheimManaged Condition="'$(ValheimManaged)' == ''">D:\SteamLibrary\steamapps\common\Valheim\valheim_Data\Managed</ValheimManaged>
+    <BepInExCore Condition="'$(BepInExCore)' == '' And '$(BEPINEX_CORE)' != ''">$(BEPINEX_CORE)</BepInExCore>
+    <BepInExCore Condition="'$(BepInExCore)' == ''">$(AppData)\r2modmanPlus-local\Valheim\profiles\Valheim\BepInEx\core</BepInExCore>
   </PropertyGroup>
 
   <ItemGroup>
@@ -25,7 +29,7 @@
       <Private>false</Private>
     </Reference>
     <Reference Include="assembly_utils">
-      <HintPath>$(ValheimManaged)ssembly_utils.dll</HintPath>
+      <HintPath>$(ValheimManaged)\assembly_utils.dll</HintPath>
       <Private>false</Private>
     </Reference>
     <Reference Include="SoftReferenceableAssets">

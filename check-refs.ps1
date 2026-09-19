@@ -1,28 +1,28 @@
-# Сверка собранного DLL с текущей версией игры.
+# Checks the built DLL against the current game version.
 #
-#   powershell -ExecutionPolicy Bypass -File .\check-refs.ps1 [-Dll путь]
+#   powershell -ExecutionPolicy Bypass -File .\check-refs.ps1 [-Dll path]
 #
-# build.ps1 вызывает его сам после каждой сборки. Проверяются две вещи:
+# build.ps1 runs it after every build. Two things are checked:
 #
-#   1. Каждая ссылка мода на тип или член (метод, поле) любой сборки из папки
-#      игры и BepInEx резолвится в реальное определение. Компилятор это тоже
-#      проверяет, но только против тех сборок, что лежали рядом при сборке; после
-#      обновления игры несовпадение всплывает уже в рантайме как
-#      MissingMethodException / TypeLoadException. Именно так ломались
-#      AutoRepair и CraftFromContainers.
+#   1. Every reference the mod makes to a type or member (method, field) of any
+#      assembly in the game folder or BepInEx resolves to a real definition. The
+#      compiler checks this too, but only against the assemblies present at build
+#      time; after a game update a mismatch surfaces at runtime as a
+#      MissingMethodException / TypeLoadException.
 #
-#   2. Цели рефлексии. Компилятор их не видит вовсе: `typeof(ZDOMan).GetField(
-#      "m_objectsByID", …)` — просто строка. Скрипт находит в IL вызовы
-#      Type.GetField / GetMethod / GetProperty, берёт ближайшие перед ними
-#      ldtoken (тип) и ldstr (имя) и проверяет, что такой член у типа есть.
+#   2. Reflection targets. The compiler never sees them: `typeof(ZDOMan).GetField(
+#      "m_objectsByID", ...)` is just a string. The script finds the calls to
+#      Type.GetField / GetMethod / GetProperty in the IL, takes the nearest ldtoken
+#      (the type) and ldstr (the name) before each, and checks the type has that member.
 #
-# Инструмент — Mono.Cecil.dll из BepInEx\core, ничего ставить не нужно.
+# The tool is Mono.Cecil.dll from BepInEx\core; nothing needs installing.
+# Paths can be overridden with the VALHEIM_MANAGED and BEPINEX_PROFILE environment variables.
 
 param([string]$Dll = "$PSScriptRoot\build\LivingMap.dll")
 
 $ErrorActionPreference = "Stop"
-$managed = "D:\SteamLibrary\steamapps\common\Valheim\valheim_Data\Managed"
-$core    = "$env:APPDATA\r2modmanPlus-local\Valheim\profiles\Valheim\BepInEx\core"
+$managed = if ($env:VALHEIM_MANAGED) { $env:VALHEIM_MANAGED } else { "D:\SteamLibrary\steamapps\common\Valheim\valheim_Data\Managed" }
+$core    = if ($env:BEPINEX_PROFILE) { "$env:BEPINEX_PROFILE\BepInEx\core" } else { "$env:APPDATA\r2modmanPlus-local\Valheim\profiles\Valheim\BepInEx\core" }
 
 if (-not (Test-Path $Dll))     { throw "DLL not found: $Dll" }
 if (-not (Test-Path $managed)) { throw "Game assemblies not found: $managed" }
@@ -40,7 +40,7 @@ $mod = [Mono.Cecil.AssemblyDefinition]::ReadAssembly($Dll, $rp).MainModule
 $problems = New-Object System.Collections.Generic.List[string]
 $types = 0; $members = 0; $reflect = 0
 
-# --- 1. типы
+# --- 1. types
 foreach ($tr in $mod.GetTypeReferences()) {
     $types++
     try {
@@ -51,7 +51,7 @@ foreach ($tr in $mod.GetTypeReferences()) {
     }
 }
 
-# --- 1. члены
+# --- 1. members
 foreach ($mr in $mod.GetMemberReferences()) {
     $members++
     $where = $mr.DeclaringType.FullName + "::" + $mr.Name
@@ -63,7 +63,7 @@ foreach ($mr in $mod.GetMemberReferences()) {
     }
 }
 
-# --- 2. рефлексия
+# --- 2. reflection
 function Walk-Types($t) {
     $t
     foreach ($n in $t.NestedTypes) { Walk-Types $n }
@@ -79,8 +79,8 @@ foreach ($t in ($mod.Types | ForEach-Object { Walk-Types $_ })) {
             if ($callee.DeclaringType.FullName -ne "System.Type") { continue }
             if ($callee.Name -notin @("GetField", "GetMethod", "GetProperty")) { continue }
 
-            # назад до ldstr (имя), затем до первого ldtoken перед ним (тип): у GetMethod
-            # с массивом типов параметров между ldstr и вызовом лежат ldtoken параметров
+            # back to the ldstr (name), then to the first ldtoken before it (the type): a GetMethod
+            # with a parameter-type array has the parameters' ldtokens between the ldstr and the call
             $name = $null; $type = $null
             for ($j = $i - 1; $j -ge 0 -and $j -ge $i - 60; $j--) {
                 $p = $ins[$j]
