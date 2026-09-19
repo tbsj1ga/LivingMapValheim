@@ -261,10 +261,10 @@ PinType, name, save: false, isChecked: false)` возвращает `PinData`, �
       подпись должна быть другой.
 - [x] **Переименование в LivingMap** (0.13.0). Старое имя описывало
       наложение поверх карты, которого с 0.7.0 нет; «MapOverlay» к тому же
-      совпадает с термином из API Jötunn. Папка репозитория переименована в
-      `LivingMap` 19.09.2026. Миграция конфига и данных — в
-      `LivingMapPlugin.cs`, раздел «the old name»; через несколько версий её
-      можно удалить.
+      совпадает с термином из API Jötunn. Папка репозитория переименовывается в
+      `LivingMap` вручную — git имени папки не знает. Миграция конфига и
+      данных — в `LivingMapPlugin.cs`, раздел «the old name»; через несколько
+      версий её можно удалить.
 - [x] **Пакет для Thunderstore** — `thunderstore\{manifest.json, icon.png,
       README.md}`, `build.ps1 -Package` подставляет версию из исходника и
       собирает `build\LivingMap-<версия>.zip` (в `.gitignore`). Иконка

@@ -268,8 +268,9 @@ Not about the mod's functionality, but about keeping it convenient to work on.
       the signature should differ.
 - [x] **Rename to LivingMap** (0.13.0). The old name described an overlay on
       top of the map, gone since 0.7.0; "MapOverlay" also collides with a term
-      in the Jötunn API. The repository folder was renamed to `LivingMap` on
-      2026-09-19. The config and data migration lives in `LivingMapPlugin.cs`,
+      in the Jötunn API. The repository folder is renamed to `LivingMap` by hand
+      (git does not care about the folder name). The config and data migration
+      lives in `LivingMapPlugin.cs`,
       section "the old name"; it can be removed a few versions on.
 - [x] **Thunderstore package** — `thunderstore\{manifest.json, icon.png,
       README.md}`; `build.ps1 -Package` fills in the version from the source and
