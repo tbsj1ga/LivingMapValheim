@@ -2,6 +2,32 @@
 
 The version is set in one place — `LivingMapPlugin.Version` in `src/LivingMapPlugin.cs`.
 
+## 0.15.0
+
+- **Settings regrouped**, by who needs them. Seven sections: `General`
+  (`Enabled`, `SaveOverlay`), `Layers` (every switch followed by its own
+  thresholds — the forest thresholds moved here from `Scanning`), `Scanning`
+  (the two sources and `ZdoScanInterval`), `Rendering` (`MapTextureScale` and
+  `TerrainGridSize` moved here), `Colors`, `Advanced` (`ZdoObjectsPerFrame`,
+  `ScanRadius`, `MaxPieces`, `MaxTerrainCells`) and `Debug` (`Debug`,
+  `DebugMarker`, `IncrementalRedraw`, `LinearColorFix`, `MapLayerFlipY`). The
+  `Storage` section is gone. The outline colour is `Building_Outline`, so it no
+  longer shares a name with the `BuildingOutline` switch. On the first start the
+  values are carried over from the old file and the obsolete lines removed
+  (including those of the ten settings 0.14.0 dropped); a value already
+  present under the new section wins.
+- **Six settings became constants**: `MoveDelta`, `ScanInterval`,
+  `IdleRescanInterval` and `MaxColliders` (pacing and buffer of the fallback
+  scanners, which do nothing with the default ZDO sources), `MapRebuildInterval`
+  (0.5 s) and `SaveInterval` (60 s).
+- **`TerrainGridSize` is safe to change.** Path cells are keyed by grid cell
+  and the file did not record the step, so a changed step silently misplaced
+  every stored cell. The file now records it (format v7); on a mismatch the
+  path cells are dropped and collected again. Older files are read as is.
+- Descriptions corrected: `ScanRadius` no longer claims to serve the path layer
+  (not since 0.12.0 with `PathScanSource = ZDO`); the forest layers no longer
+  ask for "the GPU map layer", the only one since 0.14.0.
+
 ## 0.14.0
 
 - **`livingmap` console command**: `status` — what the map remembers and

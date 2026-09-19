@@ -15,7 +15,7 @@ namespace LivingMap
     {
         public const string Guid = "j1ga.livingmap";
         public const string Name = "Living Map";
-        public const string Version = "0.14.0";
+        public const string Version = "0.15.0";
 
         private const byte MatNone = 255;
         private const byte TerrainNone = 0;
@@ -77,7 +77,9 @@ namespace LivingMap
             try
             {
                 MigrateFromMapOverlay();
+                HashSet<ConfigDefinition> inFile = SettingsInFile();   // before binding: what the file holds
                 BindConfig();
+                MigrateConfigLayout(inFile);
                 RegisterCommands();
                 _pieceLayerMask = LayerMask.GetMask("piece");
                 _zdoPieceLayer = LayerMask.NameToLayer("piece");
@@ -160,11 +162,11 @@ namespace LivingMap
 
             if (now >= _nextScanTime)
             {
-                bool moved = (pos - _lastScanPos).sqrMagnitude >= _cfgMoveDelta.Value * _cfgMoveDelta.Value;
-                bool idleDue = now >= _lastScanTime + _cfgIdleRescan.Value;
+                bool moved = (pos - _lastScanPos).sqrMagnitude >= ScanMoveDelta * ScanMoveDelta;
+                bool idleDue = now >= _lastScanTime + IdleRescanInterval;
                 if (moved || idleDue)
                 {
-                    _nextScanTime = now + _cfgScanInterval.Value;
+                    _nextScanTime = now + ScanInterval;
                     _lastScanTime = now;
                     _lastScanPos = pos;
                     Scan(pos);
@@ -189,7 +191,7 @@ namespace LivingMap
                 bool adds = _addPieces.Count > 0 || _addTerrain.Count > 0;
                 if ((_rtDirty || adds || _maskDirty) && now >= _nextRtRebuild)
                 {
-                    _nextRtRebuild = now + _cfgMapRebuildInterval.Value;
+                    _nextRtRebuild = now + MapRebuildInterval;
                     if (_rtDirty || (adds && (!_cfgIncremental.Value || _cfgDebugMarker.Value ||
                                               _addPieces.Count > MaxIncrementalPieces || _addTerrain.Count > MaxIncrementalPieces)))
                     {
@@ -208,7 +210,7 @@ namespace LivingMap
 
             if (_cfgPersist.Value && _storeChanged && now >= _nextSaveTime)
             {
-                _nextSaveTime = now + _cfgSaveInterval.Value;
+                _nextSaveTime = now + SaveInterval;
                 SaveStore();
             }
         }
@@ -230,7 +232,7 @@ namespace LivingMap
             _texSize = mm.m_textureSize;
             _pixelSize = mm.m_pixelSize;
             MapPixelSize = _pixelSize;
-            _colliderBuf = new Collider[Mathf.Clamp(_cfgMaxColliders.Value, 256, 65536)];
+            _colliderBuf = new Collider[MaxColliders];
 
             _worldUid = 0L;
             try { if (ZNet.instance != null) _worldUid = ZNet.instance.GetWorldUID(); }
@@ -280,7 +282,7 @@ namespace LivingMap
 
             _lastScanPos = new Vector3(float.MinValue, 0f, float.MinValue);
             _nextScanTime = 0f; _lastScanTime = 0f;
-            _nextSaveTime = Time.realtimeSinceStartup + _cfgSaveInterval.Value;
+            _nextSaveTime = Time.realtimeSinceStartup + SaveInterval;
             _ready = true;
 
             Logger.LogInfo(string.Format(

@@ -63,7 +63,7 @@ The source is split into files of one `partial class LivingMapPlugin`:
 | File | Contents |
 |---|---|
 | `LivingMapPlugin.cs` | constants, `PieceRec`, shared state, `Awake`/`OnDestroy`, `Tick`, `Setup`/`Teardown`, shared helpers, error handling |
-| `.Config.cs` | every `ConfigEntry` and `BindConfig` |
+| `.Config.cs` | every `ConfigEntry`, `BindConfig`, and the carry-over of settings that moved in 0.15.0 |
 | `.Zdo.cs` | the `ZDOMan` pass: snapshot, prefab classification, footprints, bucket merging |
 | `.TerrainRecords.cs` | paths from `_TerrainCompiler` records |
 | `.Forest.cs` | cleared and planted forest, the `_MaskTex` mask |
@@ -75,35 +75,78 @@ The source is split into files of one `partial class LivingMapPlugin`:
 The data file is bound to the world UID. Its format has changed several times;
 on a version mismatch it is simply ignored and collected afresh.
 
-## Main settings
+## Settings
+
+`BepInEx\config\j1ga.livingmap.cfg`, seven sections. Everything a player is
+likely to touch is in the first five; `Advanced` and `Debug` hold budgets, caps
+and the switches for diagnosing drawing problems. Settings that changed section
+in 0.15.0 are carried over from the old file on the first start.
+
+**01 General**
 
 | Setting | Meaning |
 |---|---|
-| `MapTextureScale` | 1 / 2 / 4 / 8 → 2048 / 4096 / 8192 / 16384 pixels, i.e. 12 / 6 / 3 / 1.5 m per pixel; 67 MB / 268 MB / 1 GB of video memory. Default 4. This one matters: it is the resolution of the map texture itself, and it decides how sharp the buildings are. |
-| `Debug` | Verbose log: the time of every scan and redraw, coordinates of newly added forest pixels, a self-check of terrain records against the loaded terrain. |
-| `MapRebuildInterval` | Minimum seconds between layer updates. |
-| `IncrementalRedraw` | New shapes are drawn on top of the existing texture; a full rebuild happens only when something disappeared. Off = always rebuild everything, as before 0.11.0. |
-| `MinPieceSizeMeters` | Smallest size a build piece is drawn at, in metres. Metres on purpose, so a sharper texture does not make small pieces fainter. |
-| `BuildingOutline` | A dark halo around buildings, so a house separates from the levelled ground under it. |
+| `Enabled` | Master switch. |
+| `SaveOverlay` | Remember what was collected between sessions, in a file per world. The host collects everything again within seconds anyway; this matters on a client of a dedicated server, which only ever gets what the server has sent it. |
+
+**02 Layers** — each switch followed by its own thresholds
+
+| Setting | Meaning |
+|---|---|
+| `ShowBuildings` | Build pieces, coloured by material. |
 | `OnlyPlayerBuilt` | Show only what players placed: pieces that came with a location (ruins, draugr villages, dvergr outposts) carry no creator and are skipped. Switching it drops the stored pieces and collects them again — the host in seconds, a client of a dedicated server gets pieces from earlier sessions back only by passing by them. Off. |
-| `BuildingScanSource` | Where buildings come from. `ZDO` (default) — the game's object database: on the host the whole world at once, on a client of a dedicated server everything the server has sent this session. `Physics` — the old way, only colliders in the loaded zones around the player. If the database cannot be read the mod falls back to `Physics` on its own. |
-| `ZdoScanInterval` | Seconds between full passes over the object database. |
-| `ZdoObjectsPerFrame` | Objects examined per frame. A world of 70 000 objects takes about 18 frames at the default. |
-| `PathScanSource` | Where paths come from. `ZDO` (default) — the terrain records in the object database: on the host every modified zone of the world at once, on a client the zones sent this session; only records whose revision changed are re-read. `Heightmap` — the old way, sampling the loaded terrain within `ScanRadius`. If the records cannot be read the mod falls back to `Heightmap` on its own. |
-| `ScanRadius` | Scan radius around the player for the `Heightmap` / `Physics` modes. Above ~128 m gains nothing: objects exist only in loaded zones. |
-| `TerrainGridSize` | Terrain sampling step in metres. 1.0 is sharper but four times the samples. |
-| `LinearColorFix` | Colour correction for linear rendering. If the colours look too dark, turn it off. |
-| `MapLayerFlipY` | Emergency vertical flip of the layer, should the graphics API render it mirrored. |
-| `ShowClearedGround` | Show ground that was merely levelled with the hoe (no paint). Off by default — it paints every terraced area. |
-| `ShowClearedForest` | Erase the map's forest pattern where the trees are gone. The vanilla forest is a static mask from the world generator; the mod compares it with the trees in the object database. On the host every generated zone is checked, on a client of a dedicated server the zones you have been in this session (remembered between sessions). Clearings around locations show up too. GPU layer and `BuildingScanSource = ZDO` only. |
+| `ShowPaths` | Hoe-painted ground: dirt paths, paving and cultivated soil. |
+| `ShowClearedGround` | Also mark ground that was merely levelled with the hoe (no paint). Off by default — it paints every terraced area. |
+| `ShowClearedForest` | Erase the map's forest pattern where the trees are gone. The vanilla forest is a static mask from the world generator; the mod compares it with the trees in the object database. On the host every generated zone is checked, on a client of a dedicated server the zones you have been in this session (remembered between sessions). Clearings around locations show up too. Needs `BuildingScanSource = ZDO`. |
 | `ClearedForestRadius` | Radius in metres of the window in which trees around a pixel are counted. 12 = the pixel and its neighbours, a 36×36 m window. Larger ignores natural gaps, smaller follows the edge of a clearing more closely. |
 | `ClearedForestMaxTrees` | How many trees that window may still hold for the pixel to count as cleared. A natural wood has 6–40 per 36×36 m window, a clearing with a couple of trees left standing 1–2. |
 | `ShowPlantedForest` | Draw the vanilla forest pattern where trees stand but the map knows no forest: a planted grove, or woods the generator's mask missed. Only in biomes where vanilla draws forest at all (Meadows, Black Forest, Plains); otherwise see `PlantedForestAnyBiome`. |
 | `PlantedForestMinTrees` | Trees a map pixel (12×12 m) must hold to become forest. A planting at 2–3 m spacing gives 15+; the edge of a natural wood that the mask cuts mid-pixel gives up to 5. |
 | `PlantedForestAnyBiome` | Draw forest in biomes where vanilla never does (swamps, mountains, Mistlands, Ashlands). Their natural woods then get the pattern as well — the look of the whole map changes. |
-| `DebugMarker` | A magenta cross at the character's position, to confirm the layer lines up with the map. While it is on, every update is a full rebuild. |
+| `RespectFog` | Only draw on explored ground. Off shows everything the mod knows about, which on the host is the whole world. |
 
-Changing `MapTextureScale` needs a world re-enter.
+**03 Scanning**
+
+| Setting | Meaning |
+|---|---|
+| `BuildingScanSource` | Where buildings come from. `ZDO` (default) — the game's object database: on the host the whole world at once, on a client of a dedicated server everything the server has sent this session. `Physics` — the old way, only colliders in the loaded zones around the player, within `ScanRadius`. If the database cannot be read the mod falls back to `Physics` on its own. |
+| `PathScanSource` | Where paths come from. `ZDO` (default) — the terrain records in the object database: on the host every modified zone of the world at once, on a client the zones sent this session; only records whose revision changed are re-read. `Heightmap` — the old way, sampling the loaded terrain within `ScanRadius`. If the records cannot be read the mod falls back to `Heightmap` on its own. |
+| `ZdoScanInterval` | Seconds between full passes over the object database: how long a new or removed piece takes to reach the map. |
+
+**04 Rendering**
+
+| Setting | Meaning |
+|---|---|
+| `MapTextureScale` | 1 / 2 / 4 / 8 → 2048 / 4096 / 8192 / 16384 pixels, i.e. 12 / 6 / 3 / 1.5 m per pixel; 67 MB / 268 MB / 1 GB of video memory. Default 4. This one matters: it is the resolution of the map texture itself, and it decides how sharp the buildings are. Takes effect on the next world load. |
+| `MinPieceSizeMeters` | Smallest size a build piece is drawn at, in metres. Metres on purpose, so a sharper texture does not make small pieces fainter. |
+| `BuildingOutline`, `OutlineWidthMeters` | A dark halo around buildings, so a house separates from the levelled ground under it, and how far it extends. |
+| `TerrainGridSize` | Metres per cell of the path layer. The terrain records hold 1 m; 2 is plenty up to `MapTextureScale` 4, at 8 the difference shows. Halving it means four times the cells in memory and in the file. Changing it drops the stored path cells (the file records the step they were collected at); the host has them back within one pass. |
+
+**05 Colors** — one per material (`Material_Wood` … `Material_Timberwood`,
+`Material_Unknown`), per kind of ground (`Terrain_DirtPath`, `Terrain_Paved`,
+`Terrain_Cultivated`, `Terrain_Cleared`) and `Building_Outline` for the halo.
+
+**06 Advanced**
+
+| Setting | Meaning |
+|---|---|
+| `ZdoObjectsPerFrame` | Objects examined per frame during a pass. A world of 70 000 objects takes about 18 frames at the default. |
+| `ScanRadius` | Radius around the player for the old `Physics` / `Heightmap` scanners; unused with the default ZDO sources. Above ~128 m gains nothing: objects exist only in loaded zones. |
+| `MaxPieces`, `MaxTerrainCells` | Hard caps on what is stored; beyond them nothing new is recorded, with one warning in the log. |
+
+**07 Debug**
+
+| Setting | Meaning |
+|---|---|
+| `Debug` | Verbose log: the time of every scan and redraw, coordinates of newly added forest pixels, a self-check of terrain records against the loaded terrain. |
+| `DebugMarker` | A magenta cross at the character's position, to confirm the layer lines up with the map. While it is on, every update is a full rebuild. |
+| `IncrementalRedraw` | Off = rebuild the whole texture on every change, as before 0.11.0. Only for pinning down a drawing glitch. |
+| `LinearColorFix` | Colour conversion for linear rendering, applied only when the game renders in linear colour space (it does). Off only to check whether the colours are the problem. |
+| `MapLayerFlipY` | Emergency vertical flip of the layer, should the graphics API render it mirrored. |
+
+The scanners' pacing (a scan after 8 m of walking, at most once a second,
+every 10 s when standing still), the redraw interval (0.5 s) and the save
+interval (60 s) are constants in the source since 0.15.0.
 
 ## Console command
 
@@ -133,14 +176,14 @@ lines).
 | What | When | Cost |
 |---|---|---|
 | `Tick` | every frame | a few time comparisons, nothing |
-| Terrain scan (paths), `Heightmap` mode | every `ScanInterval` after moving `MoveDelta`, otherwise every `IdleRescanInterval` | ~2600 `GetPaintMask` samples within 58 m, about 0.5–1 ms |
+| Terrain scan (paths), `Heightmap` mode | at most once a second after moving 8 m, otherwise every 10 s | ~2600 `GetPaintMask` samples within 58 m, about 0.5–1 ms |
 | ZDO pass | every `ZdoScanInterval` | reference snapshot (76k → ~0.3 ms), then `ZdoObjectsPerFrame` objects per frame: ~0.2–0.4 ms × 20 frames; merge ~0.1 ms |
 | Forest evaluation | second phase of the same pass | 150 zones per frame, ~0.5 ms × (zones/150) frames |
 | Terrain records (paths), `ZDO` mode | third phase of the same pass | only records whose revision changed: GZip inflate + parsing 65×65 vertices ≈ 0.5 ms per zone, 4 zones per frame; in a quiet world, nothing |
-| Incremental draw | on new shapes, at most every `MapRebuildInterval` | a handful of quads, fractions of a millisecond |
+| Incremental draw | on new shapes, at most every 0.5 s | a handful of quads, fractions of a millisecond |
 | Full rebuild | something disappeared, the texture was lost, a layer was switched | `Blit` of the whole texture (268 MB at scale 4, 1 GB at 8 — GPU work, 1–4 ms) + every shape through `GL.Vertex3` (~48k calls for 5300 pieces, 2–5 ms CPU) |
 | Forest mask | when the forest changes | 16 MB `Blit` + a few hundred quads, <1 ms |
-| Save | every `SaveInterval` when something changed | a ~200 KB file, fractions of a millisecond |
+| Save | every 60 s when something changed | a ~200 KB file, fractions of a millisecond |
 | World start | once | reading the 16 MB forest mask, loading the file, the first rebuild and the first pass; on a big world the first pass is stretched by the limit of 600 biome lookups per frame |
 
 Memory: ~6–7 MB RAM (4 MB tree counters, two 512 KB bit sets, a ~600 KB ZDO

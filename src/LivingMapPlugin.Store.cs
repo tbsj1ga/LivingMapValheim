@@ -14,6 +14,7 @@ namespace LivingMap
     {
         private long _worldUid;
         private bool _storeChanged;
+        private const float SaveInterval = 60f;             // seconds between background saves
 
         // ------------------------------------------------------------------
         // persistence
@@ -37,7 +38,7 @@ namespace LivingMap
                 {
                     if (br.ReadUInt32() != 0x334F4D4Du) return;   // "MMO3"
                     int version = br.ReadInt32();
-                    if (version < 3 || version > 6) return;
+                    if (version < 3 || version > 7) return;
                     long uid = br.ReadInt64();
                     int texSize = br.ReadInt32();
                     float pixelSize = br.ReadSingle();
@@ -104,6 +105,20 @@ namespace LivingMap
                     bool onlyPlayerBuilt = version >= 6 && br.ReadBoolean();
                     _piecesOnlyPlayerBuilt = onlyPlayerBuilt;
                     if (onlyPlayerBuilt != _cfgOnlyPlayerBuilt.Value) DropPieces("the file was collected with OnlyPlayerBuilt " + (onlyPlayerBuilt ? "on" : "off"));
+
+                    // path cells are keyed by grid cell, so cells collected at another step would land
+                    // in the wrong place; older files did not record the step and are taken as is
+                    float grid = Mathf.Max(0.5f, _cfgTerrainGrid.Value);
+                    if (version >= 7)
+                    {
+                        float fileGrid = br.ReadSingle();
+                        if (Mathf.Abs(fileGrid - grid) > 0.001f)
+                        {
+                            _terrain.Clear();
+                            _storeChanged = true;
+                            Logger.LogInfo("Stored path cells dropped (the file was collected with TerrainGridSize " + fileGrid + ", now " + grid + "); they are collected again.");
+                        }
+                    }
                 }
             }
             catch (Exception e)
@@ -131,7 +146,7 @@ namespace LivingMap
                 using (BinaryWriter bw = new BinaryWriter(fs))
                 {
                     bw.Write(0x334F4D4Du);
-                    bw.Write(6);
+                    bw.Write(7);
                     bw.Write(_worldUid);
                     bw.Write(_texSize);
                     bw.Write(_pixelSize);
@@ -165,6 +180,7 @@ namespace LivingMap
                     foreach (int idx in _plantedForest) bw.Write(idx);
 
                     bw.Write(_piecesOnlyPlayerBuilt);
+                    bw.Write(Mathf.Max(0.5f, _cfgTerrainGrid.Value));
                 }
 
                 if (File.Exists(path)) File.Delete(path);

@@ -17,6 +17,12 @@ namespace LivingMap
         private Collider[] _colliderBuf;
         private int _pieceLayerMask;
 
+        // pacing: a scan after walking this far, no more often than this, and now and then when standing still
+        private const float ScanMoveDelta = 8f;
+        private const float ScanInterval = 1f;
+        private const float IdleRescanInterval = 10f;
+        private const int MaxColliders = 8192;              // physics query buffer
+
         // ------------------------------------------------------------------
         // scanning
         // ------------------------------------------------------------------

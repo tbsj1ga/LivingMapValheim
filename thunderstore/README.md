@@ -23,7 +23,8 @@ it was.
 
 ## Settings
 
-`BepInEx\config\j1ga.livingmap.cfg`. The ones worth knowing:
+`BepInEx\config\j1ga.livingmap.cfg`, grouped into General, Layers, Scanning, Rendering,
+Colors, Advanced and Debug. The ones worth knowing:
 
 | Setting | Meaning |
 |---|---|

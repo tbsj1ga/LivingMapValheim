@@ -4,7 +4,8 @@ A Valheim mod: shows buildings (by material) and hoe-worked ground (paths,
 paving, cultivator) on the map. No Harmony patches, client-side only, nothing
 synchronised over the network.
 
-Current version: **0.14.0** (tag `v0.14.0`), started in the game. Game: Valheim
+Current version: **0.15.0** (branch `feature/config-cleanup`, not yet run in the
+game); the last one started in the game is 0.14.0 (tag `v0.14.0`). Game: Valheim
 1.0.14, BepInEx 5.4.23.5.
 
 ---
@@ -111,6 +112,17 @@ Current version: **0.14.0** (tag `v0.14.0`), started in the game. Game: Valheim
       vanilla map alone. The physics scanner and the live heightmap remain as
       automatic fallbacks. Orphaned keys in an old `.cfg` are kept by BepInEx
       and are harmless.
+- [x] **Settings regrouped** (0.15.0). Seven sections by who needs them
+      (`General`, `Layers`, `Scanning`, `Rendering`, `Colors`, `Advanced`,
+      `Debug`); six pacing/buffer settings became constants; the outline colour
+      is `Building_Outline`. BepInEx keeps unbound lines as orphans and writes
+      them back, so moved settings would have fallen back to defaults with the
+      old lines lingering: `MigrateConfigLayout` in `Config.cs` reads the
+      private `ConfigFile.OrphanedEntries` (reflection, checked by
+      `check-refs.ps1`), matches orphans to bound entries by key, copies the
+      value unless the new definition was already in the file, removes the
+      orphans and saves. `TerrainGridSize` is now recorded in the file (v7):
+      the terrain keys depend on it, so a mismatch drops the path cells.
 - [x] **Planted forest** (0.10.0) — the reverse case through the same
       mechanism: a pixel outside the vanilla mask holding ≥ `PlantedForestMinTrees`
       trees gets R=1 with an additive `(1,0,0,0)` blend, and the shader draws its
@@ -184,7 +196,7 @@ means re-entering the world. Most switches are already tracked on the fly
 (`ShowBuildings/ShowPaths/BuildingOutline` → full rebuild, `ShowClearedForest`
 → `Setup`, `OnlyPlayerBuilt` → dropping the pieces), so `Config.Reload()` in
 `Commands.cs` plus a message about what changed is enough. Only
-`MapTextureScale` and the colours are not picked up without a re-enter (the
+`MapTextureScale`, `TerrainGridSize` and the colours are not picked up without a re-enter (the
 colours because what is already drawn is not repainted; after `reload` simply
 setting `_rtDirty` makes a full rebuild pick them up). ~20 lines.
 
@@ -232,7 +244,8 @@ No dates; as real need appears.
   both separately — it looks like they do; verify).
 - **`TerrainGridSize = 1`.** The terrain records store 1 m, the mod takes 2 m;
   at scale 8 the difference shows. Already in the config, now free on the CPU —
-  only ×4 cells in memory and in the file. A note rather than a task.
+  only ×4 cells in memory and in the file. Since 0.15.0 the file records the
+  step, so switching is safe. A note rather than a task.
 - **Splitting `Gpu.cs`** into the rebuild and the incremental draw, if it keeps
   growing.
 - **A server half for clients.** A client would see the whole world like the

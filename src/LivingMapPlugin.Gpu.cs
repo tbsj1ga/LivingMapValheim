@@ -29,6 +29,7 @@ namespace LivingMap
         private int _rtIncrements;
         private bool _drawnBuildings, _drawnPaths, _drawnOutline;   // layer switches at the last full rebuild
         private const int MaxIncrementalPieces = 1500;    // beyond this a full rebuild is the cheaper option
+        private const float MapRebuildInterval = 0.5f;    // seconds between texture updates after something changed
         private float _nextRtRebuild;
         private int _rtScale = 1;
         private int _rtRebuilds;
