@@ -38,6 +38,36 @@ Colors, Advanced and Debug. The ones worth knowing:
 
 Colours are configurable per material and per path type.
 
+## Compatibility
+
+Tested with **Valheim 1.0.16** (network version 40), **BepInEx 5.4.23.5** (BepInExPack_Valheim 5.4.2351).
+
+## Who needs it
+
+| Who | What |
+|---|---|
+| Player with the mod | sees buildings, paths and forest changes on their own map |
+| Host / single player | the same, for the whole world at once |
+| Dedicated server | not needed |
+| Players without the mod | unaffected — nothing is sent over the network |
+
+## Known conflicts
+
+- Other mods that replace or resize the map texture or its shader may clash with `MapTextureScale` — set it to 1 to rule this out.
+- SatelliteMap (Qua8ion) draws its own picture over the big map when zoomed in; the two have not been tested together.
+
+## Bugs and feedback
+
+GitHub Issues: https://github.com/tbsj1ga/LivingMapValheim/issues — please attach `BepInEx/LogOutput.log`.
+
+## Screenshots
+
+<!-- Uncomment each line once the file is in docs/media/ and pushed. -->
+<!-- ![the big map: a village with coloured buildings and paths](https://raw.githubusercontent.com/tbsj1ga/LivingMapValheim/main/docs/media/map-village.png) -->
+<!-- ![the same area with the layers off and on](https://raw.githubusercontent.com/tbsj1ga/LivingMapValheim/main/docs/media/map-before-after.gif) -->
+<!-- ![a clear-cut gone from the map](https://raw.githubusercontent.com/tbsj1ga/LivingMapValheim/main/docs/media/map-cleared-forest.png) -->
+<!-- ![the minimap](https://raw.githubusercontent.com/tbsj1ga/LivingMapValheim/main/docs/media/minimap.png) -->
+
 Source, documentation and the changelog: https://github.com/tbsj1ga/LivingMapValheim
 
 *Developed with the help of an AI assistant (Claude by Anthropic); the design

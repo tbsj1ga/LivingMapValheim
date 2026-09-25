@@ -32,6 +32,36 @@
 `bin/`, `obj/`, zip-пакеты и дубликат DLL в корне папки; всё это перечислено в
 `.gitignore`.
 
+## Совместимость
+
+Проверено на **Valheim 1.0.16** (network version 40), **BepInEx 5.4.23.5** (BepInExPack_Valheim 5.4.2351).
+
+## Кому ставить
+
+| Кто | Что |
+|---|---|
+| Игрок с модом | видит постройки, тропы и изменения леса на своей карте |
+| Хост / одиночная игра | то же самое, сразу для всего мира |
+| Выделенный сервер | не нужен |
+| Игроки без мода | ничего не замечают — по сети ничего не передаётся |
+
+## Известные конфликты
+
+- Другие моды, которые подменяют или меняют размер текстуры карты или её шейдер, могут конфликтовать с `MapTextureScale` — для проверки поставьте 1.
+- SatelliteMap (Qua8ion) при приближении рисует на большой карте свою картинку поверх; вместе они не проверялись.
+
+## Ошибки и отзывы
+
+GitHub Issues: https://github.com/tbsj1ga/LivingMapValheim/issues — приложите `BepInEx/LogOutput.log`.
+
+## Скриншоты
+
+<!-- Раскомментируйте строку, когда файл лежит в docs/media/ и отправлен на GitHub. -->
+<!-- ![большая карта: деревня с цветными постройками и тропами](https://raw.githubusercontent.com/tbsj1ga/LivingMapValheim/main/docs/media/map-village.png) -->
+<!-- ![одно место со слоями выкл/вкл](https://raw.githubusercontent.com/tbsj1ga/LivingMapValheim/main/docs/media/map-before-after.gif) -->
+<!-- ![вырубка, пропавшая с карты](https://raw.githubusercontent.com/tbsj1ga/LivingMapValheim/main/docs/media/map-cleared-forest.png) -->
+<!-- ![мини-карта](https://raw.githubusercontent.com/tbsj1ga/LivingMapValheim/main/docs/media/minimap.png) -->
+
 ## Установка
 
 Файл `build/LivingMap.dll` кладётся в
