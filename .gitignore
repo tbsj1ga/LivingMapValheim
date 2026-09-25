@@ -46,3 +46,6 @@ desktop.ini
 
 # --- Icon sources and prompts live outside the repository ---
 ICON-PROMPT.md
+
+# --- Local design notes, not published ---
+notes/

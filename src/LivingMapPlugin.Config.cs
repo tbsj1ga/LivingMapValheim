@@ -73,6 +73,7 @@ namespace LivingMap
         private const string SecColors = "05 Colors";
         private const string SecAdvanced = "06 Advanced";
         private const string SecDebug = "07 Debug";
+        // "08 Detail" lives in LivingMapPlugin.Detail.cs
 
         private static readonly string[] MatNames =
         {
@@ -197,6 +198,9 @@ namespace LivingMap
                 "Convert the colours to linear before drawing on the GPU. The game renders in linear colour space, and the conversion is applied only then; without it everything comes out pale and washed out. Off only to check whether the colours are the problem.");
             _cfgMapFlipY = Config.Bind(SecDebug, "MapLayerFlipY", false,
                 "Flip the drawn shapes vertically. Only needed if the graphics API renders the map layer upside down - check with DebugMarker, set it once and the whole layer lines up.");
+
+            // --- 08 Detail
+            BindDetailConfig();
         }
 
         // ------------------------------------------------------------------

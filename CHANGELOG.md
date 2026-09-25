@@ -2,6 +2,20 @@
 
 The version is set in one place — `LivingMapPlugin.Version` in `src/LivingMapPlugin.cs`.
 
+## 0.16.0 — Detail layer when zoomed in (prototype, branch `feature/detail-zoom`)
+
+- When the big map shows at most `DetailStartSpanMeters` (3000 m) across, a detailed picture
+  fades in over it: 4 / 2 / 1 m per pixel, relief shaded from the world generator's heights,
+  water coloured by depth, the vanilla forest rule with Living Map's cleared/planted
+  corrections, and the paths and buildings the mod collects. Zoomed out and on the minimap
+  nothing changes.
+- Tiles of 256×256 are drawn on background threads (`DetailWorkerThreads`, 2) from a snapshot
+  taken on the main thread, uploaded two per frame, cached up to 96 (about 24 MB of video
+  memory). Only explored ground is drawn; tiles are redrawn when more is explored or the
+  mod's data changes (at most once per 15 s per tile).
+- New section `08 Detail`. Any failure switches off only this layer for the session.
+- Not tested in game yet.
+
 ## 0.15.0
 
 - **Settings regrouped**, by who needs them. Seven sections: `General`

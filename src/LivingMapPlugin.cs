@@ -15,7 +15,7 @@ namespace LivingMap
     {
         public const string Guid = "j1ga.livingmap";
         public const string Name = "Living Map";
-        public const string Version = "0.15.0";
+        public const string Version = "0.16.0";
 
         private const byte MatNone = 255;
         private const byte TerrainNone = 0;
@@ -304,6 +304,7 @@ namespace LivingMap
             }
 
             ReleaseGpuLayer();
+            try { DetailTeardown(); } catch (Exception e) { Logger.LogWarning("Detail layer teardown: " + e.Message); }
 
             _mm = null; _vanillaTex = null; _origSmallTex = null; _origLargeTex = null;
             _vanillaMask = null; _origSmallMask = null; _origLargeMask = null;
