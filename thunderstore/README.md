@@ -38,6 +38,8 @@ Colors, Advanced and Debug. The ones worth knowing:
 
 Colours are configurable per material and per path type.
 
+Source, documentation and the changelog: https://github.com/tbsj1ga/LivingMapValheim
+
 *Developed with the help of an AI assistant (Claude by Anthropic); the design
 decisions, verification against the game code and in-game testing are the
 author's.*
