@@ -43,3 +43,6 @@ desktop.ini
 # --- A stray copy of the build in the root: build/LivingMap.dll is the source of truth ---
 /LivingMap.dll
 /MapOverlay.dll
+
+# --- Icon sources and prompts live outside the repository ---
+ICON-PROMPT.md
