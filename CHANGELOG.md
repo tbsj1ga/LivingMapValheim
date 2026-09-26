@@ -2,6 +2,11 @@
 
 The version is set in one place — `LivingMapPlugin.Version` in `src/LivingMapPlugin.cs`.
 
+## 0.15.2
+
+- Package page: a section with the author's other mods (icons, one line each, links). No
+  code changes.
+
 ## 0.15.1
 
 - Package page: screenshots of the big map and the minimap, vanilla vs LivingMap; sections on
