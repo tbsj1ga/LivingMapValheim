@@ -56,11 +56,9 @@ GitHub Issues: https://github.com/tbsj1ga/LivingMapValheim/issues — please att
 
 ## Screenshots
 
-<!-- Uncomment each line once the file is in docs/media/ and pushed. -->
-<!-- ![the big map: a village with coloured buildings and paths](https://raw.githubusercontent.com/tbsj1ga/LivingMapValheim/main/docs/media/map-village.png) -->
-<!-- ![the same area with the layers off and on](https://raw.githubusercontent.com/tbsj1ga/LivingMapValheim/main/docs/media/map-before-after.gif) -->
-<!-- ![a clear-cut gone from the map](https://raw.githubusercontent.com/tbsj1ga/LivingMapValheim/main/docs/media/map-cleared-forest.png) -->
-<!-- ![the minimap](https://raw.githubusercontent.com/tbsj1ga/LivingMapValheim/main/docs/media/minimap.png) -->
+![The big map: vanilla on the left, LivingMap on the right - the base, its paved circle, paths and the cleared forest around it](https://raw.githubusercontent.com/tbsj1ga/LivingMapValheim/main/docs/media/map-compare.png)
+
+![The minimap: vanilla on the left, LivingMap on the right](https://raw.githubusercontent.com/tbsj1ga/LivingMapValheim/main/docs/media/minimap-compare.png)
 
 ## Installation
 
