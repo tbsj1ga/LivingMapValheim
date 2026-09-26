@@ -76,11 +76,9 @@ GitHub Issues: https://github.com/tbsj1ga/LivingMapValheim/issues — прило
 
 ## Скриншоты
 
-<!-- Раскомментируйте строку, когда файл лежит в docs/media/ и отправлен на GitHub. -->
-<!-- ![большая карта: деревня с цветными постройками и тропами](https://raw.githubusercontent.com/tbsj1ga/LivingMapValheim/main/docs/media/map-village.png) -->
-<!-- ![одно место со слоями выкл/вкл](https://raw.githubusercontent.com/tbsj1ga/LivingMapValheim/main/docs/media/map-before-after.gif) -->
-<!-- ![вырубка, пропавшая с карты](https://raw.githubusercontent.com/tbsj1ga/LivingMapValheim/main/docs/media/map-cleared-forest.png) -->
-<!-- ![мини-карта](https://raw.githubusercontent.com/tbsj1ga/LivingMapValheim/main/docs/media/minimap.png) -->
+![Большая карта: слева ванильная, справа с LivingMap — база, мощёная площадка, тропы и вырубленный вокруг лес](https://raw.githubusercontent.com/tbsj1ga/LivingMapValheim/main/docs/media/map-compare.png)
+
+![Мини-карта: слева ванильная, справа с LivingMap](https://raw.githubusercontent.com/tbsj1ga/LivingMapValheim/main/docs/media/minimap-compare.png)
 
 ## Установка
 

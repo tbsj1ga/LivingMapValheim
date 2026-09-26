@@ -4,6 +4,10 @@ Client-side map mod for Valheim. It draws onto the map texture itself, so everyt
 below is part of the map: it pans, zooms, hides under the fog of war and under every
 marker, on the big map and the minimap alike.
 
+![The big map: vanilla on the left, LivingMap on the right - the base, its paved circle, paths and the cleared forest around it](https://raw.githubusercontent.com/tbsj1ga/LivingMapValheim/main/docs/media/map-compare.png)
+
+![The minimap: vanilla on the left, LivingMap on the right](https://raw.githubusercontent.com/tbsj1ga/LivingMapValheim/main/docs/media/minimap-compare.png)
+
 - **Buildings**, coloured by material (wood, stone, iron, marble, ...), with a dark
   outline so a house separates from the levelled ground it stands on.
 - **Hoe-made paths**: dirt paths, paving and cultivated soil.
@@ -65,14 +69,6 @@ Tested with **Valheim 1.0.16** (network version 40), **BepInEx 5.4.23.5** (BepIn
 ## Bugs and feedback
 
 GitHub Issues: https://github.com/tbsj1ga/LivingMapValheim/issues — please attach `BepInEx/LogOutput.log`.
-
-## Screenshots
-
-<!-- Uncomment each line once the file is in docs/media/ and pushed. -->
-<!-- ![the big map: a village with coloured buildings and paths](https://raw.githubusercontent.com/tbsj1ga/LivingMapValheim/main/docs/media/map-village.png) -->
-<!-- ![the same area with the layers off and on](https://raw.githubusercontent.com/tbsj1ga/LivingMapValheim/main/docs/media/map-before-after.gif) -->
-<!-- ![a clear-cut gone from the map](https://raw.githubusercontent.com/tbsj1ga/LivingMapValheim/main/docs/media/map-cleared-forest.png) -->
-<!-- ![the minimap](https://raw.githubusercontent.com/tbsj1ga/LivingMapValheim/main/docs/media/minimap.png) -->
 
 Source, documentation and the changelog: https://github.com/tbsj1ga/LivingMapValheim
 
