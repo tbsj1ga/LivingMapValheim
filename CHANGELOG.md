@@ -13,6 +13,17 @@ The version is set in one place — `LivingMapPlugin.Version` in `src/LivingMapP
   taken on the main thread, uploaded two per frame, cached up to 96 (about 24 MB of video
   memory). Only explored ground is drawn; tiles are redrawn when more is explored or the
   mod's data changes (at most once per 15 s per tile).
+- The relief includes the ground players levelled or raised: the height edits are read from
+  the same terrain records as the paths.
+- At 2 and 1 m per pixel trees and rocks are drawn where they stand, and buildings as rotated
+  boxes shaded by height (roofs lighter than walls), read from the object database zone by
+  zone. Zones the database does not hold fall back to the forest pattern and the stored
+  footprints. `DetailObjects` switches this off.
+- A tile is drawn again only when what it covers changes: explored ground, buildings, height
+  edits and paths of its zones, forest corrections, the objects in its zones.
+- `MapTextureScale` defaults to 2 (was 4): close up the detail layer draws finer, so the big
+  texture is no longer needed — about 200 MB less video memory. An existing config keeps its
+  value.
 - New section `08 Detail`. Any failure switches off only this layer for the session.
 - Not tested in game yet.
 

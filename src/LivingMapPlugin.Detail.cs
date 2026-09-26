@@ -11,14 +11,19 @@ using UnityEngine.UI;
 namespace LivingMap
 {
     // Detail layer: when the big map is zoomed in, tiles of 4 / 2 / 1 m per pixel are laid over
-    // it - relief shaded from the world generator's heights, water by depth, the vanilla forest
-    // rule with this mod's cleared/planted corrections, and the paths and buildings the mod
-    // already collects. Zoomed out and on the minimap nothing changes.
+    // it - relief shaded from the world generator's heights plus the players' terrain edits,
+    // water by depth, forest, rocks, paths and buildings. Zoomed out and on the minimap nothing
+    // changes.
     //
     // Tiles are drawn on background threads from a snapshot taken on the main thread (the
-    // threads never touch the mod's collections) and uploaded at most two per frame. They sit
-    // in a UI layer under the map's pins, positioned from the large map image's uvRect in
-    // LateUpdate. Any failure switches off this layer only.
+    // threads never touch the mod's or the game's collections) and uploaded at most two per
+    // frame. They sit in a UI layer under the map's pins, positioned from the large map image's
+    // uvRect in LateUpdate. Any failure switches off this layer only.
+    //
+    // At 2 and 1 m per pixel the snapshot also reads the objects of each zone straight from the
+    // object database: trees and rocks are drawn where they stand, buildings as rotated boxes
+    // shaded by height. Zones the database does not hold (a client far from where it has been
+    // this session) fall back to the vanilla forest rule and the stored building footprints.
     public partial class LivingMapPlugin
     {
         private const string SecDetail = "08 Detail";
@@ -27,14 +32,17 @@ namespace LivingMap
         private ConfigEntry<float> _cfgDetailFinest;
         private ConfigEntry<float> _cfgDetailRelief;
         private ConfigEntry<float> _cfgDetailForestShade;
+        private ConfigEntry<bool> _cfgDetailObjects;
         private ConfigEntry<Color> _cfgDetailWaterShallow;
         private ConfigEntry<Color> _cfgDetailWaterDeep;
+        private ConfigEntry<Color> _cfgDetailTreeColor;
+        private ConfigEntry<Color> _cfgDetailRockColor;
         private ConfigEntry<int> _cfgDetailWorkers;
 
         private void BindDetailConfig()
         {
             _cfgDetail = Config.Bind(SecDetail, "DetailEnabled", true,
-                "When the big map is zoomed in, draw a detailed picture over it: shaded relief, water by depth, forest, paths and buildings, down to 1 m per pixel. Zoomed out and on the minimap nothing changes.");
+                "When the big map is zoomed in, draw a detailed picture over it: shaded relief, water by depth, forest, rocks, paths and buildings, down to 1 m per pixel. Zoomed out and on the minimap nothing changes.");
             _cfgDetailStartSpan = Config.Bind(SecDetail, "DetailStartSpanMeters", 3000f,
                 new ConfigDescription("The detailed picture fades in once the map window shows at most this many metres across (fully visible at 80% of it).",
                     new AcceptableValueRange<float>(500f, 8000f)));
@@ -44,11 +52,17 @@ namespace LivingMap
             _cfgDetailRelief = Config.Bind(SecDetail, "DetailRelief", 1f,
                 new ConfigDescription("Strength of the hill shading. 0 = flat colours.", new AcceptableValueRange<float>(0f, 3f)));
             _cfgDetailForestShade = Config.Bind(SecDetail, "DetailForestShade", 0.35f,
-                new ConfigDescription("How much darker forest is drawn. 0 = forest not shown.", new AcceptableValueRange<float>(0f, 0.9f)));
+                new ConfigDescription("How much darker forest is drawn where single trees are not known (4 m per pixel, or zones the object database does not hold). 0 = not shown.", new AcceptableValueRange<float>(0f, 0.9f)));
+            _cfgDetailObjects = Config.Bind(SecDetail, "DetailObjects", true,
+                "At 2 and 1 m per pixel, draw trees and rocks where they stand and buildings as rotated boxes shaded by height, read from the object database. Off = the forest pattern and the stored footprints only.");
             _cfgDetailWaterShallow = Config.Bind(SecDetail, "DetailWaterShallow", new Color(0.36f, 0.50f, 0.56f, 1f),
                 "Colour of shallow water in the detailed picture.");
             _cfgDetailWaterDeep = Config.Bind(SecDetail, "DetailWaterDeep", new Color(0.14f, 0.22f, 0.30f, 1f),
                 "Colour of deep water in the detailed picture.");
+            _cfgDetailTreeColor = Config.Bind(SecDetail, "DetailTreeColor", new Color(0.20f, 0.30f, 0.14f, 1f),
+                "Colour of tree crowns in the detailed picture.");
+            _cfgDetailRockColor = Config.Bind(SecDetail, "DetailRockColor", new Color(0.52f, 0.52f, 0.50f, 1f),
+                "Colour of rocks in the detailed picture.");
             _cfgDetailWorkers = Config.Bind(SecDetail, "DetailWorkerThreads", 2,
                 new ConfigDescription("Background threads that draw tiles. Takes effect on the next world load.", new AcceptableValueRange<int>(1, 4)));
         }
@@ -60,7 +74,9 @@ namespace LivingMap
         private const int DCacheLimit = 96;
         private const int DVisibleLimit = 64;
         private const int DUploadsPerFrame = 2;
-        private const float DRedrawMinAge = 15f;
+        private const int DEnqueuesPerFrame = 4;
+        private const float DRedrawMinAge = 5f;
+        private const float DObjectsMaxMpp = 2f;
         private static readonly float[] DLevels = { 4f, 2f, 1f };
 
         private class DTile
@@ -70,9 +86,20 @@ namespace LivingMap
             public Texture2D Tex;
             public RawImage Img;
             public bool Ready, Queued, Failed;
-            public int Rev, FogSig;
+            public long Sig;
             public float RenderedAt, LastUsed;
         }
+
+        // players' height edits of one zone: level + smooth delta per heightmap vertex
+        private class HeightZone
+        {
+            public float Cx, Cz, Scale;
+            public int Pitch, Half;
+            public float[] D;
+        }
+
+        private struct DTree { public float X, Z, R; public bool Rock; }
+        private struct DBox { public float X, Z, HX, HZ, Cos, Sin, Top; public byte Mat; }
 
         private class DJob
         {
@@ -80,16 +107,20 @@ namespace LivingMap
             public float X0, Z0, Mpp;
             public float Priority;
             // snapshot
-            public float WaterLevel, Relief, ForestShade;
-            public Color32 WaterShallow, WaterDeep;
+            public float WaterLevel, Relief, ForestShade, ZoneSize;
+            public Color32 WaterShallow, WaterDeep, Tree, Rock;
             public Color32[] Biome;                 // index = biome bit position
             public bool[] Fog; public int FogX0, FogZ0, FogW, FogH; public float PixelSize; public int TexSize;
             public sbyte[] ForestFix;               // same grid as Fog: -1 cleared, +1 planted
             public List<PieceRec> Pieces;
+            public List<DBox> Boxes;
+            public List<DTree> Trees;
+            public HashSet<long> LiveZones;         // zones whose objects were read (trees drawn, no forest pattern)
+            public Dictionary<long, HeightZone> Heights;
             public Color32[] MatColors; public Color32 MatUnknown, Outline; public bool DrawOutline;
             public List<long> TerrKeys; public List<byte> TerrKinds; public float Grid;
             public Color32 Paved, Dirt, Cultivated, Cleared;
-            public int Rev, FogSig;
+            public long Sig;
             // result
             public byte[] Pixels;
             public double Ms;
@@ -104,11 +135,17 @@ namespace LivingMap
         private bool _dBroken;
         private RectTransform _dRoot, _dBack, _dFront;
         private CanvasGroup _dGroup;
-        private int _dRev, _dDataSig;
-        private int _dFogCursor;
+        private int _dRecheckCursor, _dEnqueuedThisFrame;
         private readonly List<DTile> _dScratch = new List<DTile>();
-        private FieldInfo _fiMistColor;
+        private FieldInfo _fiMistColor, _fiObjectsBySector;
         private int _dRendered; private double _dMsTotal;
+
+        private readonly Dictionary<long, HeightZone> _dHeights = new Dictionary<long, HeightZone>();
+        private readonly Dictionary<long, int> _dZoneRev = new Dictionary<long, int>();   // terrain record parses per zone
+        private long _dHeightsWorld;
+        private readonly Dictionary<int, byte> _dKind = new Dictionary<int, byte>();       // prefab -> 0 none, 1 tree, 2 rock, 3 piece
+
+        private static long DZoneKey(int zx, int zz) { return ((long)zx << 32) | (uint)zz; }
 
         private void LateUpdate()
         {
@@ -125,6 +162,35 @@ namespace LivingMap
         }
 
         // ------------------------------------------------------------------
+        // terrain records -> height edits (called from ApplyTerrainRecord)
+        // ------------------------------------------------------------------
+        private void DetailWorldCheck()
+        {
+            if (_dHeightsWorld == _worldUid) return;
+            _dHeightsWorld = _worldUid;
+            _dHeights.Clear();
+            _dZoneRev.Clear();
+        }
+
+        private void StoreHeightZone(Vector3 zonePos, int pitch, float scale, float[] delta)
+        {
+            DetailWorldCheck();
+            Vector2s z = ZoneSystem.GetZone(zonePos);
+            long key = DZoneKey(z.x, z.y);
+            if (delta == null) _dHeights.Remove(key);
+            else
+            {
+                HeightZone hz = new HeightZone();
+                hz.Cx = zonePos.x; hz.Cz = zonePos.z; hz.Scale = scale;
+                hz.Pitch = pitch; hz.Half = pitch / 2; hz.D = delta;
+                _dHeights[key] = hz;                       // replaced, never mutated: safe to hand to workers
+            }
+            int rev;
+            _dZoneRev.TryGetValue(key, out rev);
+            _dZoneRev[key] = rev + 1;
+        }
+
+        // ------------------------------------------------------------------
         // main thread
         // ------------------------------------------------------------------
         private void DetailTick()
@@ -138,6 +204,7 @@ namespace LivingMap
                 if (!_ready && (_dTiles.Count > 0 || _dWorkers != null)) DetailTeardown();
                 return;
             }
+            DetailWorldCheck();
 
             RawImage img = mm.m_mapImageLarge;
             Rect uv = img.uvRect;
@@ -155,10 +222,7 @@ namespace LivingMap
             if (!_dRoot.gameObject.activeSelf) _dRoot.gameObject.SetActive(true);
             _dGroup.alpha = alpha;
             EnsureWorkers();
-
-            int sig = _pieceCount * 31 + _terrain.Count * 17 + _clearedForest.Count * 7 + _plantedForest.Count * 13 +
-                      (_cfgShowBuildings.Value ? 1 : 0) + (_cfgShowPaths.Value ? 2 : 0) + (_cfgShowCleared.Value ? 4 : 0);
-            if (sig != _dDataSig) { _dDataSig = sig; _dRev++; }
+            _dEnqueuedThisFrame = 0;
 
             // level: the coarsest whose pixel is no bigger than a screen pixel
             Canvas canvas = img.canvas;
@@ -187,7 +251,7 @@ namespace LivingMap
             ShowLevel(level, vx0, vx1, vz0, vz1, uv, world, now, true, cx, cz);
 
             UploadDone();
-            RecheckFog();
+            RecheckTiles(now);
             Evict(now);
         }
 
@@ -223,14 +287,10 @@ namespace LivingMap
                     }
                     tile.LastUsed = now;
                     float wx = tx * t, wz = tz * t;
-                    if (request && !tile.Queued && !tile.Failed)
+                    if (request && !tile.Ready && !tile.Queued && !tile.Failed && _dEnqueuedThisFrame < DEnqueuesPerFrame)
                     {
-                        bool stale = tile.Ready && tile.Rev != _dRev && now - tile.RenderedAt >= DRedrawMinAge;
-                        if (!tile.Ready || stale)
-                        {
-                            float dx = wx + t * 0.5f - cx, dz = wz + t * 0.5f - cz;
-                            Enqueue(tile, wx, wz, mpp, dx * dx + dz * dz);
-                        }
+                        float dx = wx + t * 0.5f - cx, dz = wz + t * 0.5f - cz;
+                        Enqueue(tile, dx * dx + dz * dz);
                     }
                     if (!tile.Ready || tile.Img == null) continue;
                     RectTransform rt = tile.Img.rectTransform;
@@ -258,6 +318,12 @@ namespace LivingMap
             _dBack = NewLayer("back", _dRoot);
             _dFront = NewLayer("front", _dRoot);
             if (_fiMistColor == null) _fiMistColor = typeof(Minimap).GetField("m_mistlandsColor", BindingFlags.Instance | BindingFlags.NonPublic | BindingFlags.Public);
+            if (_fiObjectsBySector == null)
+            {
+                FieldInfo f = typeof(ZDOMan).GetField("m_objectsBySector", BindingFlags.Instance | BindingFlags.NonPublic | BindingFlags.Public);
+                if (f != null && typeof(List<ZDO>[]).IsAssignableFrom(f.FieldType)) _fiObjectsBySector = f;
+                else LogOnce("detail-sectors", "ZDOMan.m_objectsBySector was not found; the detailed map draws the forest pattern and stored footprints only.");
+            }
         }
 
         private static RectTransform NewLayer(string name, RectTransform parent)
@@ -297,18 +363,90 @@ namespace LivingMap
         }
 
         // ------------------------------------------------------------------
+        // what a tile shows, as a number: redraw only when it changes
+        // ------------------------------------------------------------------
+        private void TileArea(DTile t, out float x0, out float z0, out float size, out int fx0, out int fz0, out int w)
+        {
+            float mpp = DLevels[t.Level];
+            size = DTileSize * mpp; x0 = t.TX * size; z0 = t.TZ * size;
+            float half = _texSize * 0.5f;
+            fx0 = Mathf.FloorToInt(x0 / _pixelSize + half) - 1;
+            fz0 = Mathf.FloorToInt(z0 / _pixelSize + half) - 1;
+            w = Mathf.CeilToInt(size / _pixelSize) + 3;
+        }
+
+        private long RegionSig(DTile t)
+        {
+            float x0, z0, size; int fx0, fz0, w;
+            TileArea(t, out x0, out z0, out size, out fx0, out fz0, out w);
+            BitArray ex = _fiExplored != null ? _fiExplored.GetValue(_mm) as BitArray : null;
+            BitArray exo = _fiExploredOthers != null ? _fiExploredOthers.GetValue(_mm) as BitArray : null;
+            bool fog = _cfgRespectFog.Value, buildings = _cfgShowBuildings.Value;
+            long sig = 17;
+            for (int gz = 0; gz < w; gz++)
+                for (int gx = 0; gx < w; gx++)
+                {
+                    int px = fx0 + gx, pz = fz0 + gz;
+                    if (px < 0 || pz < 0 || px >= _texSize || pz >= _texSize) continue;
+                    int idx = pz * _texSize + px;
+                    if (!fog || IsExplored(ex, exo, idx)) sig += 1;
+                    if (_plantedForest.Contains(idx)) sig += 7919;
+                    else if (_clearedForest.Contains(idx)) sig += 104729;
+                    List<PieceRec> bucket;
+                    if (buildings && _pieces.TryGetValue(idx, out bucket)) sig += bucket.Count * 131L;
+                }
+            float zs = ZoneSystem.instance != null ? ZoneSystem.instance.m_zoneSize : 64f;
+            int zx0 = Mathf.FloorToInt(x0 / zs + 0.5f), zx1 = Mathf.FloorToInt((x0 + size) / zs + 0.5f);
+            int zz0 = Mathf.FloorToInt(z0 / zs + 0.5f), zz1 = Mathf.FloorToInt((z0 + size) / zs + 0.5f);
+            List<ZDO>[] sectors = DLevels[t.Level] <= DObjectsMaxMpp && _cfgDetailObjects.Value ? Sectors() : null;
+            for (int zz = zz0; zz <= zz1; zz++)
+                for (int zx = zx0; zx <= zx1; zx++)
+                {
+                    int rev;
+                    if (_dZoneRev.TryGetValue(DZoneKey(zx, zz), out rev)) sig += rev * 1000003L;
+                    List<ZDO> list = SectorList(sectors, zx, zz);
+                    if (list != null) sig += list.Count * 65537L;
+                }
+            sig += (_cfgShowBuildings.Value ? 1 : 0) * 3 + (_cfgShowPaths.Value ? 1 : 0) * 5 + (_cfgShowCleared.Value ? 1 : 0) * 11;
+            return sig;
+        }
+
+        private List<ZDO>[] Sectors()
+        {
+            if (_fiObjectsBySector == null || ZDOMan.instance == null) return null;
+            return _fiObjectsBySector.GetValue(ZDOMan.instance) as List<ZDO>[];
+        }
+
+        private static List<ZDO> SectorList(List<ZDO>[] sectors, int zx, int zz)
+        {
+            if (sectors == null) return null;
+            uint idx = ZoneSystem.SectorToIndex(zx, zz).Sector;
+            if (idx >= sectors.Length) return null;
+            return sectors[idx];
+        }
+
+        // ------------------------------------------------------------------
         // jobs: snapshot on the main thread
         // ------------------------------------------------------------------
-        private void Enqueue(DTile tile, float x0, float z0, float mpp, float priority)
+        private void Enqueue(DTile tile, float priority)
         {
+            _dEnqueuedThisFrame++;
             Minimap mm = _mm;
+            float x0, z0, size; int fx0, fz0, w;
+            TileArea(tile, out x0, out z0, out size, out fx0, out fz0, out w);
+            float mpp = DLevels[tile.Level];
+
             DJob j = new DJob();
             j.Tile = tile; j.X0 = x0; j.Z0 = z0; j.Mpp = mpp; j.Priority = priority;
+            j.Sig = RegionSig(tile);
             j.WaterLevel = ZoneSystem.instance != null ? ZoneSystem.instance.m_waterLevel : 30f;
+            j.ZoneSize = ZoneSystem.instance != null ? ZoneSystem.instance.m_zoneSize : 64f;
             j.Relief = _cfgDetailRelief.Value;
             j.ForestShade = _cfgDetailForestShade.Value;
             j.WaterShallow = _cfgDetailWaterShallow.Value;
             j.WaterDeep = _cfgDetailWaterDeep.Value;
+            j.Tree = _cfgDetailTreeColor.Value;
+            j.Rock = _cfgDetailRockColor.Value;
             Color mist = mm.m_blackforestColor;
             try { if (_fiMistColor != null) mist = (Color)_fiMistColor.GetValue(mm); } catch { }
             j.Biome = new Color32[10];
@@ -316,42 +454,58 @@ namespace LivingMap
             j.Biome[3] = mm.m_blackforestColor; j.Biome[4] = mm.m_heathColor; j.Biome[5] = mm.m_ashlandsColor;
             j.Biome[6] = mm.m_deepnorthColor; j.Biome[7] = Color.white; j.Biome[8] = Color.white; j.Biome[9] = mist;
 
-            float size = DTileSize * mpp;
+            // explored cells and the forest corrections, on the vanilla map grid
             j.PixelSize = _pixelSize; j.TexSize = _texSize;
-            float half = _texSize * 0.5f;
-            j.FogX0 = Mathf.FloorToInt(x0 / _pixelSize + half) - 1;
-            j.FogZ0 = Mathf.FloorToInt(z0 / _pixelSize + half) - 1;
-            j.FogW = Mathf.CeilToInt(size / _pixelSize) + 3;
-            j.FogH = j.FogW;
-            j.Fog = new bool[j.FogW * j.FogH];
-            j.ForestFix = new sbyte[j.FogW * j.FogH];
+            j.FogX0 = fx0; j.FogZ0 = fz0; j.FogW = w; j.FogH = w;
+            j.Fog = new bool[w * w];
+            j.ForestFix = new sbyte[w * w];
             BitArray ex = _fiExplored != null ? _fiExplored.GetValue(mm) as BitArray : null;
             BitArray exo = _fiExploredOthers != null ? _fiExploredOthers.GetValue(mm) as BitArray : null;
             bool fog = _cfgRespectFog.Value;
             bool cleared = _cfgShowForest.Value, planted = _cfgShowPlanted.Value;
-            int fogSig = 0;
-            for (int gz = 0; gz < j.FogH; gz++)
-                for (int gx = 0; gx < j.FogW; gx++)
+            for (int gz = 0; gz < w; gz++)
+                for (int gx = 0; gx < w; gx++)
                 {
-                    int px = j.FogX0 + gx, pz = j.FogZ0 + gz;
-                    int k = gz * j.FogW + gx;
+                    int px = fx0 + gx, pz = fz0 + gz;
+                    int k = gz * w + gx;
                     if (px < 0 || pz < 0 || px >= _texSize || pz >= _texSize) continue;
                     int idx = pz * _texSize + px;
-                    bool e = !fog || IsExplored(ex, exo, idx);
-                    j.Fog[k] = e;
-                    if (e) fogSig++;
+                    j.Fog[k] = !fog || IsExplored(ex, exo, idx);
                     if (planted && _plantedForest.Contains(idx)) j.ForestFix[k] = 1;
                     else if (cleared && _clearedForest.Contains(idx)) j.ForestFix[k] = -1;
                 }
-            j.FogSig = fogSig;
 
+            // zones: height edits, and at the finer levels the objects themselves
+            j.Heights = new Dictionary<long, HeightZone>();
+            j.LiveZones = new HashSet<long>();
+            j.Trees = new List<DTree>();
+            j.Boxes = new List<DBox>();
+            float zs = j.ZoneSize;
+            int zx0 = Mathf.FloorToInt(x0 / zs + 0.5f) - 1, zx1 = Mathf.FloorToInt((x0 + size) / zs + 0.5f) + 1;
+            int zz0 = Mathf.FloorToInt(z0 / zs + 0.5f) - 1, zz1 = Mathf.FloorToInt((z0 + size) / zs + 0.5f) + 1;
+            List<ZDO>[] sectors = mpp <= DObjectsMaxMpp && _cfgDetailObjects.Value ? Sectors() : null;
+            bool onlyPlayer = _cfgOnlyPlayerBuilt.Value, buildings = _cfgShowBuildings.Value;
+            for (int zz = zz0; zz <= zz1; zz++)
+                for (int zx = zx0; zx <= zx1; zx++)
+                {
+                    long zk = DZoneKey(zx, zz);
+                    HeightZone hz;
+                    if (_dHeights.TryGetValue(zk, out hz)) j.Heights[zk] = hz;
+                    List<ZDO> list = SectorList(sectors, zx, zz);
+                    if (list == null || list.Count == 0) continue;
+                    j.LiveZones.Add(zk);
+                    for (int i = 0; i < list.Count; i++)
+                        SnapshotObject(j, list[i], x0, z0, size, onlyPlayer, buildings);
+                }
+
+            // stored footprints, only where the zone's objects were not read
             j.Pieces = new List<PieceRec>();
-            if (_cfgShowBuildings.Value)
+            if (buildings)
             {
-                for (int gz = 0; gz < j.FogH; gz++)
-                    for (int gx = 0; gx < j.FogW; gx++)
+                for (int gz = 0; gz < w; gz++)
+                    for (int gx = 0; gx < w; gx++)
                     {
-                        int px = j.FogX0 + gx, pz = j.FogZ0 + gz;
+                        int px = fx0 + gx, pz = fz0 + gz;
                         if (px < 0 || pz < 0 || px >= _texSize || pz >= _texSize) continue;
                         List<PieceRec> bucket;
                         if (!_pieces.TryGetValue(pz * _texSize + px, out bucket)) continue;
@@ -359,10 +513,12 @@ namespace LivingMap
                         {
                             PieceRec r = bucket[i];
                             if (r.X1 < x0 || r.X0 > x0 + size || r.Z1 < z0 || r.Z0 > z0 + size) continue;
+                            if (j.LiveZones.Count > 0 && j.LiveZones.Contains(DZoneKey(Mathf.FloorToInt(r.CX / zs + 0.5f), Mathf.FloorToInt(r.CZ / zs + 0.5f)))) continue;
                             j.Pieces.Add(r);
                         }
                     }
             }
+            j.Boxes.Sort((a, b) => a.Top.CompareTo(b.Top));
             j.MatColors = new Color32[_cfgMatColor.Length];
             for (int i = 0; i < _cfgMatColor.Length; i++) j.MatColors[i] = _cfgMatColor[i].Value;
             j.MatUnknown = _cfgMatUnknownColor.Value;
@@ -374,20 +530,101 @@ namespace LivingMap
             if (_cfgShowPaths.Value && _terrain.Count > 0)
             {
                 bool showCleared = _cfgShowCleared.Value;
-                foreach (KeyValuePair<long, byte> kv in _terrain)
+                int gx0 = Mathf.FloorToInt(x0 / j.Grid) - 1, gx1 = Mathf.CeilToInt((x0 + size) / j.Grid);
+                int gz0 = Mathf.FloorToInt(z0 / j.Grid) - 1, gz1 = Mathf.CeilToInt((z0 + size) / j.Grid);
+                long cells = (long)(gx1 - gx0 + 1) * (gz1 - gz0 + 1);
+                if (cells <= _terrain.Count)
                 {
-                    if (kv.Value == TerrainCleared && !showCleared) continue;
-                    float wx = (int)(kv.Key >> 32) * j.Grid, wz = (int)kv.Key * j.Grid;
-                    if (wx + j.Grid < x0 || wx > x0 + size || wz + j.Grid < z0 || wz > z0 + size) continue;
-                    j.TerrKeys.Add(kv.Key); j.TerrKinds.Add(kv.Value);
+                    for (int gz = gz0; gz <= gz1; gz++)
+                        for (int gx = gx0; gx <= gx1; gx++)
+                        {
+                            long key = ((long)gx << 32) | (uint)gz;
+                            byte kind;
+                            if (!_terrain.TryGetValue(key, out kind) || (kind == TerrainCleared && !showCleared)) continue;
+                            j.TerrKeys.Add(key); j.TerrKinds.Add(kind);
+                        }
+                }
+                else
+                {
+                    foreach (KeyValuePair<long, byte> kv in _terrain)
+                    {
+                        if (kv.Value == TerrainCleared && !showCleared) continue;
+                        int gx = (int)(kv.Key >> 32), gz = (int)kv.Key;
+                        if (gx < gx0 || gx > gx1 || gz < gz0 || gz > gz1) continue;
+                        j.TerrKeys.Add(kv.Key); j.TerrKinds.Add(kv.Value);
+                    }
                 }
             }
             j.Paved = _cfgPavedColor.Value; j.Dirt = _cfgDirtColor.Value;
             j.Cultivated = _cfgCultivatedColor.Value; j.Cleared = _cfgClearedColor.Value;
-            j.Rev = _dRev;
 
             tile.Queued = true;
             lock (_dLock) { _dPending.Add(j); Monitor.Pulse(_dLock); }
+        }
+
+        private void SnapshotObject(DJob j, ZDO zdo, float x0, float z0, float size, bool onlyPlayer, bool buildings)
+        {
+            if (zdo == null || !zdo.IsValid()) return;
+            int hash = zdo.GetPrefab();
+            if (hash == 0) return;
+            byte kind = DKind(hash);
+            if (kind == 0) return;
+            Vector3 p = zdo.GetPosition();
+            const float pad = 20f;
+            if (p.x < x0 - pad || p.x > x0 + size + pad || p.z < z0 - pad || p.z > z0 + size + pad) return;
+
+            if (kind == 1 || kind == 2)
+            {
+                float s = zdo.GetVec3(ZDOVars.s_scaleHash, Vector3.one).x;
+                if (s <= 0.01f) s = 1f;
+                DTree t = new DTree();
+                t.X = p.x; t.Z = p.z; t.Rock = kind == 2;
+                t.R = (kind == 1 ? 2.6f : 2f) * Mathf.Clamp(s, 0.3f, 3f);
+                j.Trees.Add(t);
+                return;
+            }
+            if (!buildings) return;
+            if (onlyPlayer && zdo.GetLong(ZDOVars.s_creator, 0L) == 0L) return;
+            PrefabInfo info;
+            if (!_prefabCache.TryGetValue(hash, out info)) return;
+            float hx = (info.Max.x - info.Min.x) * 0.5f, hzz = (info.Max.z - info.Min.z) * 0.5f;
+            if (hx * 2f > MaxFootprint || hzz * 2f > MaxFootprint || hx <= 0f || hzz <= 0f) return;
+            Quaternion q = zdo.GetRotation();
+            Vector3 lc = new Vector3((info.Min.x + info.Max.x) * 0.5f, 0f, (info.Min.z + info.Max.z) * 0.5f);
+            Vector3 c = p + q * lc;
+            float yaw = q.eulerAngles.y * Mathf.Deg2Rad;
+            DBox b = new DBox();
+            b.X = c.x; b.Z = c.z; b.HX = hx; b.HZ = hzz;
+            b.Cos = Mathf.Cos(yaw); b.Sin = Mathf.Sin(yaw);
+            b.Top = p.y + info.Max.y;
+            b.Mat = info.Mat;
+            j.Boxes.Add(b);
+        }
+
+        private byte DKind(int hash)
+        {
+            byte k;
+            if (_dKind.TryGetValue(hash, out k)) return k;
+            k = 0;
+            PrefabInfo info;
+            if (!_prefabCache.TryGetValue(hash, out info))
+            {
+                info = BuildPrefabInfo(hash);
+                _prefabCache[hash] = info;
+            }
+            if (info.IsPiece) k = 3;
+            else if (info.IsTree) k = 1;
+            else if (!info.IsTerrain && ZNetScene.instance != null)
+            {
+                GameObject prefab = ZNetScene.instance.GetPrefab(hash);
+                if (prefab != null)
+                {
+                    if (prefab.GetComponent<MineRock>() != null || prefab.GetComponent<MineRock5>() != null) k = 2;
+                    else if (prefab.GetComponent<Destructible>() != null && prefab.name.IndexOf("rock", StringComparison.OrdinalIgnoreCase) >= 0) k = 2;
+                }
+            }
+            _dKind[hash] = k;
+            return k;
         }
 
         private void UploadDone()
@@ -420,40 +657,28 @@ namespace LivingMap
                     t.Img.enabled = false;
                 }
                 t.Img.texture = t.Tex;
-                t.Ready = true; t.Rev = j.Rev; t.FogSig = j.FogSig; t.RenderedAt = Time.realtimeSinceStartup;
+                t.Ready = true; t.Sig = j.Sig; t.RenderedAt = Time.realtimeSinceStartup;
                 _dRendered++; _dMsTotal += j.Ms;
                 if (_cfgDebug.Value && _dRendered % 20 == 0)
-                    Logger.LogInfo("Detail: " + _dRendered + " tiles drawn, " + (_dMsTotal / _dRendered).ToString("0") + " ms per tile on average; cached " + _dTiles.Count);
+                    Logger.LogInfo("Detail: " + _dRendered + " tiles drawn, " + (_dMsTotal / _dRendered).ToString("0") + " ms per tile on average (last " + j.Ms.ToString("0") +
+                                   " ms at " + j.Mpp + " m/px, " + j.Trees.Count + " trees/rocks, " + j.Boxes.Count + " boxes); cached " + _dTiles.Count);
             }
         }
 
-        // A few ready visible tiles per frame: if more ground was explored, draw them again.
-        private void RecheckFog()
+        // Two visible ready tiles per frame: redraw if what they cover changed (explored ground,
+        // buildings, paths, height edits, forest corrections, objects in their zones).
+        private void RecheckTiles(float now)
         {
-            if (!_cfgRespectFog.Value || _dTiles.Count == 0) return;
-            BitArray ex = _fiExplored != null ? _fiExplored.GetValue(_mm) as BitArray : null;
-            BitArray exo = _fiExploredOthers != null ? _fiExploredOthers.GetValue(_mm) as BitArray : null;
+            if (_dTiles.Count == 0) return;
             _dScratch.Clear();
             foreach (DTile t in _dTiles.Values) if (t.Ready && !t.Queued && t.Img != null && t.Img.enabled) _dScratch.Add(t);
             if (_dScratch.Count == 0) return;
-            for (int n = 0; n < 2; n++)
+            for (int n = 0; n < 2 && _dEnqueuedThisFrame < DEnqueuesPerFrame; n++)
             {
-                _dFogCursor = (_dFogCursor + 1) % _dScratch.Count;
-                DTile t = _dScratch[_dFogCursor];
-                float mpp = DLevels[t.Level];
-                float size = DTileSize * mpp, x0 = t.TX * size, z0 = t.TZ * size;
-                float half = _texSize * 0.5f;
-                int fx0 = Mathf.FloorToInt(x0 / _pixelSize + half) - 1, fz0 = Mathf.FloorToInt(z0 / _pixelSize + half) - 1;
-                int w = Mathf.CeilToInt(size / _pixelSize) + 3;
-                int sig = 0;
-                for (int gz = 0; gz < w; gz++)
-                    for (int gx = 0; gx < w; gx++)
-                    {
-                        int px = fx0 + gx, pz = fz0 + gz;
-                        if (px < 0 || pz < 0 || px >= _texSize || pz >= _texSize) continue;
-                        if (IsExplored(ex, exo, pz * _texSize + px)) sig++;
-                    }
-                if (sig != t.FogSig) Enqueue(t, x0, z0, mpp, 0f);
+                _dRecheckCursor = (_dRecheckCursor + 1) % _dScratch.Count;
+                DTile t = _dScratch[_dRecheckCursor];
+                if (now - t.RenderedAt < DRedrawMinAge) continue;
+                if (RegionSig(t) != t.Sig) Enqueue(t, 0f);
             }
         }
 
@@ -554,11 +779,11 @@ namespace LivingMap
                     float wx = j.X0 + ((sx - 1) * DStep + 0.5f) * mpp;
                     float wz = j.Z0 + ((sz - 1) * DStep + 0.5f) * mpp;
                     Heightmap.Biome b = wg.GetBiome(wx, wz, 0.02f, false);
-                    float hh = wg.GetBiomeHeight(b, wx, wz, out mask, false, true);
+                    float hh = wg.GetBiomeHeight(b, wx, wz, out mask, false, true) + HeightDelta(j, wx, wz);
                     int k = sz * gs + sx;
                     h[k] = hh;
                     bio[k] = BiomeIndex(b);
-                    forest[k] = ForestAmount(b, wx, wz, hh, j.WaterLevel);
+                    forest[k] = j.LiveZones.Contains(ZoneOf(j, wx, wz)) ? 0f : ForestAmount(b, wx, wz, hh, j.WaterLevel);
                 }
 
             byte[] px = new byte[n * n * 4];
@@ -586,15 +811,12 @@ namespace LivingMap
                     {
                         Color32 c = j.Biome[bio[Nearest(gs, fx, fz)]];
                         r = c.r; g = c.g; b = c.b;
-                        Vector3 nrm = new Vector3(-dhx, 1f, -dhz).normalized;
-                        float lit = Vector3.Dot(nrm, light);
-                        float f = 1f + relief * (lit - flat) * 1.4f;
-                        f = Mathf.Clamp(f, 0.35f, 1.5f);
+                        float f = Shade(dhx, dhz, light, flat, relief);
                         r *= f; g *= f; b *= f;
 
                         float fa = Sample(forest, gs, fx, fz);
                         int fk = FogIndex(j, wx, wz);
-                        if (fk >= 0 && j.ForestFix[fk] != 0) fa = j.ForestFix[fk] > 0 ? 1f : 0f;
+                        if (fk >= 0 && j.ForestFix[fk] != 0 && !j.LiveZones.Contains(ZoneOf(j, wx, wz))) fa = j.ForestFix[fk] > 0 ? 1f : 0f;
                         if (fa > 0.01f && j.ForestShade > 0f)
                         {
                             float crown = Crown(wx, wz);
@@ -616,6 +838,13 @@ namespace LivingMap
                 Color32 c = TerrainColor32(j, j.TerrKinds[i]);
                 FillRect(px, n, j, cx0, cz0, cx0 + grid, cz0 + grid, c);
             }
+
+            // rocks, then tree shadows and crowns
+            for (int i = 0; i < j.Trees.Count; i++) if (j.Trees[i].Rock) DrawDisc(px, n, j, j.Trees[i], j.Rock, 0f, 0.9f);
+            for (int i = 0; i < j.Trees.Count; i++) if (!j.Trees[i].Rock) DrawShadow(px, n, j, j.Trees[i]);
+            for (int i = 0; i < j.Trees.Count; i++) if (!j.Trees[i].Rock) DrawDisc(px, n, j, j.Trees[i], j.Tree, 0.35f, 0.95f);
+
+            // stored footprints (zones not read), then rotated boxes lowest first, outlines under fills
             for (int i = 0; i < j.Pieces.Count; i++)
             {
                 PieceRec r = j.Pieces[i];
@@ -627,7 +856,47 @@ namespace LivingMap
                 }
                 FillRect(px, n, j, r.X0, r.Z0, r.X1, r.Z1, c);
             }
+            if (j.DrawOutline)
+            {
+                float w = Mathf.Max(0.5f, mpp);
+                for (int i = 0; i < j.Boxes.Count; i++) FillBox(px, n, j, j.Boxes[i], w, j.Outline, 1f);
+            }
+            for (int i = 0; i < j.Boxes.Count; i++)
+            {
+                DBox bx = j.Boxes[i];
+                Color32 c = bx.Mat != MatNone && bx.Mat < j.MatColors.Length ? j.MatColors[bx.Mat] : j.MatUnknown;
+                float ground = Sample(h, gs, (bx.X - j.X0) / mpp / DStep + 1f - 0.25f, (bx.Z - j.Z0) / mpp / DStep + 1f - 0.25f);
+                float lift = Mathf.Clamp(0.82f + 0.035f * (bx.Top - ground), 0.82f, 1.15f);   // higher = lighter: roofs over walls
+                FillBox(px, n, j, bx, 0f, c, lift);
+            }
             return px;
+        }
+
+        private static float Shade(float dhx, float dhz, Vector3 light, float flat, float relief)
+        {
+            Vector3 nrm = new Vector3(-dhx, 1f, -dhz).normalized;
+            float lit = Vector3.Dot(nrm, light);
+            return Mathf.Clamp(1f + relief * (lit - flat) * 1.4f, 0.35f, 1.5f);
+        }
+
+        private static long ZoneOf(DJob j, float wx, float wz)
+        {
+            return DZoneKey(Mathf.FloorToInt(wx / j.ZoneSize + 0.5f), Mathf.FloorToInt(wz / j.ZoneSize + 0.5f));
+        }
+
+        // players' terrain edits: bilinear over the zone's heightmap vertices
+        private static float HeightDelta(DJob j, float wx, float wz)
+        {
+            if (j.Heights.Count == 0) return 0f;
+            HeightZone z;
+            if (!j.Heights.TryGetValue(ZoneOf(j, wx, wz), out z)) return 0f;
+            float fx = (wx - z.Cx) / z.Scale + z.Half, fz = (wz - z.Cz) / z.Scale + z.Half;
+            int max = z.Pitch - 1;
+            int x0 = Mathf.Clamp(Mathf.FloorToInt(fx), 0, max - 1), z0 = Mathf.Clamp(Mathf.FloorToInt(fz), 0, max - 1);
+            float tx = Mathf.Clamp01(fx - x0), tz = Mathf.Clamp01(fz - z0);
+            float[] d = z.D;
+            int p = z.Pitch;
+            return Lerp(Lerp(d[z0 * p + x0], d[z0 * p + x0 + 1], tx), Lerp(d[(z0 + 1) * p + x0], d[(z0 + 1) * p + x0 + 1], tx), tz);
         }
 
         private static byte BiomeIndex(Heightmap.Biome b)
@@ -663,6 +932,63 @@ namespace LivingMap
             float dx = wx / 4f - cx - ox, dz = wz / 4f - cz - oz;
             float d = Mathf.Sqrt(dx * dx + dz * dz);
             return Mathf.Clamp01(1f - d * 1.6f);
+        }
+
+        // a round crown or rock: lit from the north-west, soft edge
+        private static void DrawDisc(byte[] px, int n, DJob j, DTree t, Color32 c, float highlight, float opacity)
+        {
+            float r = t.R;
+            int ix0 = Mathf.Max(0, Mathf.FloorToInt((t.X - r - j.X0) / j.Mpp)), ix1 = Mathf.Min(n - 1, Mathf.CeilToInt((t.X + r - j.X0) / j.Mpp));
+            int iz0 = Mathf.Max(0, Mathf.FloorToInt((t.Z - r - j.Z0) / j.Mpp)), iz1 = Mathf.Min(n - 1, Mathf.CeilToInt((t.Z + r - j.Z0) / j.Mpp));
+            if (ix1 < ix0 || iz1 < iz0) return;
+            float soft = Mathf.Max(j.Mpp, r * 0.25f);
+            for (int iz = iz0; iz <= iz1; iz++)
+                for (int ix = ix0; ix <= ix1; ix++)
+                {
+                    float dx = j.X0 + (ix + 0.5f) * j.Mpp - t.X, dz = j.Z0 + (iz + 0.5f) * j.Mpp - t.Z;
+                    float d = Mathf.Sqrt(dx * dx + dz * dz);
+                    if (d > r) continue;
+                    float a = opacity * Mathf.Clamp01((r - d) / soft);
+                    float lit = 1f + highlight * Mathf.Clamp((-dx + dz) / (r * 1.41f), -1f, 1f);   // brighter towards the north-west
+                    Blend(px, (iz * n + ix) * 4, c.r * lit, c.g * lit, c.b * lit, a);
+                }
+        }
+
+        private static void DrawShadow(byte[] px, int n, DJob j, DTree t)
+        {
+            DTree s = t;
+            s.X += t.R * 0.35f; s.Z -= t.R * 0.35f;              // to the south-east
+            Color32 black = new Color32(0, 0, 0, 255);
+            DrawDisc(px, n, j, s, black, 0f, 0.35f);
+        }
+
+        private static void FillBox(byte[] px, int n, DJob j, DBox b, float grow, Color32 c, float lift)
+        {
+            float hx = b.HX + grow, hz = b.HZ + grow;
+            float ext = Mathf.Sqrt(hx * hx + hz * hz);
+            int ix0 = Mathf.Max(0, Mathf.FloorToInt((b.X - ext - j.X0) / j.Mpp)), ix1 = Mathf.Min(n - 1, Mathf.CeilToInt((b.X + ext - j.X0) / j.Mpp));
+            int iz0 = Mathf.Max(0, Mathf.FloorToInt((b.Z - ext - j.Z0) / j.Mpp)), iz1 = Mathf.Min(n - 1, Mathf.CeilToInt((b.Z + ext - j.Z0) / j.Mpp));
+            if (ix1 < ix0 || iz1 < iz0) return;
+            float a = c.a / 255f;
+            float half = j.Mpp * 0.5f;                            // cover a pixel if its centre is within half a pixel
+            for (int iz = iz0; iz <= iz1; iz++)
+                for (int ix = ix0; ix <= ix1; ix++)
+                {
+                    float dx = j.X0 + (ix + 0.5f) * j.Mpp - b.X, dz = j.Z0 + (iz + 0.5f) * j.Mpp - b.Z;
+                    // world -> local: the inverse of a yaw rotation (Unity's y rotation turns +z towards +x)
+                    float lx = dx * b.Cos - dz * b.Sin;
+                    float lz = dx * b.Sin + dz * b.Cos;
+                    if (Mathf.Abs(lx) > hx + half || Mathf.Abs(lz) > hz + half) continue;
+                    Blend(px, (iz * n + ix) * 4, c.r * lift, c.g * lift, c.b * lift, a);
+                }
+        }
+
+        private static void Blend(byte[] px, int o, float r, float g, float b, float a)
+        {
+            float ia = 1f - a;
+            px[o] = ToByte(r * a + px[o] * ia);
+            px[o + 1] = ToByte(g * a + px[o + 1] * ia);
+            px[o + 2] = ToByte(b * a + px[o + 2] * ia);
         }
 
         private static int FogIndex(DJob j, float wx, float wz)
@@ -707,15 +1033,10 @@ namespace LivingMap
             int iz0 = Mathf.Max(0, Mathf.FloorToInt((z0 - j.Z0) / j.Mpp));
             int iz1 = Mathf.Min(n - 1, Mathf.CeilToInt((z1 - j.Z0) / j.Mpp) - 1);
             if (ix1 < ix0 || iz1 < iz0) return;
-            float a = c.a / 255f, ia = 1f - a;
+            float a = c.a / 255f;
             for (int iz = iz0; iz <= iz1; iz++)
                 for (int ix = ix0; ix <= ix1; ix++)
-                {
-                    int o = (iz * n + ix) * 4;
-                    px[o] = (byte)(c.r * a + px[o] * ia);
-                    px[o + 1] = (byte)(c.g * a + px[o + 1] * ia);
-                    px[o + 2] = (byte)(c.b * a + px[o + 2] * ia);
-                }
+                    Blend(px, (iz * n + ix) * 4, c.r, c.g, c.b, a);
         }
 
         private static float Sample(float[] a, int gs, float fx, float fz)

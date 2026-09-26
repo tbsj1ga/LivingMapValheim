@@ -9,7 +9,11 @@ marker, on the big map and the minimap alike.
 - **Hoe-made paths**: dirt paths, paving and cultivated soil.
 - **Forest that is gone**: where the vanilla map still shows woods but the trees have
   been cut, the forest pattern is erased. Where you planted a grove, it appears.
-- Sharper map texture: 3 m per pixel by default (vanilla is 12 m), up to 1.5 m.
+- Sharper map texture: 6 m per pixel by default (vanilla is 12 m), up to 1.5 m.
+- **Detail layer when zoomed in:** below about 3 km across, a picture of 4 / 2 / 1 m per
+  pixel fades in — shaded relief with the ground players levelled, water by depth, trees
+  and rocks where they stand, buildings as rotated boxes. Drawn on background threads, only
+  what is on screen, about 24 MB of video memory.
 
 Everything is read from the game's object database rather than from what is loaded
 around you. On the host (single player, or the player hosting) that is the entire
@@ -28,7 +32,9 @@ Colors, Advanced and Debug. The ones worth knowing:
 
 | Setting | Meaning |
 |---|---|
-| `MapTextureScale` | 1 / 2 / 4 / 8 = 12 / 6 / 3 / 1.5 m per pixel; 16 MB / 67 MB / 268 MB / 1 GB of video memory. Change needs a world re-enter. |
+| `MapTextureScale` | 1 / 2 / 4 / 8 = 12 / 6 / 3 / 1.5 m per pixel; 16 MB / 67 MB / 268 MB / 1 GB of video memory. Default 2. Change needs a world re-enter. |
+| `DetailEnabled`, `DetailStartSpanMeters`, `DetailFinestMetersPerPixel` | The detail layer when zoomed in: on/off, from how many metres across, finest level. |
+| `DetailRelief`, `DetailObjects` | Hill shading strength; trees, rocks and rotated buildings from the object database. |
 | `ShowBuildings`, `ShowPaths`, `ShowClearedForest`, `ShowPlantedForest` | The layers. |
 | `RespectFog` | Only draw on explored ground. |
 | `MinPieceSizeMeters` | Smallest size a build piece is drawn at, in metres. |

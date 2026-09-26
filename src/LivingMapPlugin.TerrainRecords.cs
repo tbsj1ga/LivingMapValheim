@@ -109,10 +109,15 @@ namespace LivingMap
 
             if (_tcHeightScratch == null || _tcHeightScratch.Length < heightCount) _tcHeightScratch = new bool[heightCount];
             bool[] modifiedHeight = _tcHeightScratch;
+            float[] heightDelta = null;                             // for the detail layer: level + smooth per vertex
             for (int i = 0; i < heightCount; i++)
             {
                 modifiedHeight[i] = pkg.ReadBool();
-                if (modifiedHeight[i]) { pkg.ReadSingle(); pkg.ReadSingle(); }   // level and smooth deltas
+                if (!modifiedHeight[i]) continue;
+                float level = pkg.ReadSingle(), smooth = pkg.ReadSingle();
+                if (level + smooth == 0f) continue;
+                if (heightDelta == null) heightDelta = new float[heightCount];
+                heightDelta[i] = level + smooth;
             }
 
             int paintCount = pkg.ReadInt();
@@ -144,6 +149,8 @@ namespace LivingMap
             // the heightmap scan queries the mask at (cell centre - 0.5), and so does this
             float zoneSize = ZoneSystem.instance != null ? ZoneSystem.instance.m_zoneSize : 64f;
             Vector3 c = ZoneSystem.GetZonePos(ZoneSystem.GetZone(zdo.GetPosition()));
+            try { StoreHeightZone(c, pitch, zoneSize / (pitch - 1), heightDelta); }
+            catch (Exception e) { LogOnce("detail-heights", "Height edits for the detailed map could not be stored: " + e.Message); }
             float scale = zoneSize / (paintPitch - 1);
             int halfMask = paintPitch / 2;
             float zh = zoneSize * 0.5f;

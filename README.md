@@ -32,6 +32,25 @@ the documentation, the Thunderstore package skeleton and the built
 (`*.bin`), the BepInEx config, intermediate `bin/` and `obj/`, zip packages
 and a stray DLL copy in the root — all listed in `.gitignore`.
 
+## Detail layer when zoomed in
+
+When the big map shows about 3 km across or less, a detailed picture fades in over it:
+4, 2 and finally 1 m per pixel. It is drawn by Living Map itself, not a screenshot:
+
+- **Relief** shaded from the world generator's heights, including the ground players
+  levelled or raised (read from the terrain records); **water** coloured by depth.
+- **Trees and rocks** where they stand, and **buildings** as rotated boxes shaded by
+  height (roofs lighter than walls), read from the object database at 2 and 1 m per pixel.
+  Where the database has no objects (a client far from where it has been this session),
+  the vanilla forest pattern and the stored footprints are drawn instead.
+- **Paths**, the forest corrections and the fog of war as on the rest of the map.
+
+Tiles of 256×256 are drawn on background threads and uploaded two per frame; up to 96 are
+kept (about 24 MB of video memory). Only what is on screen is drawn, and a tile is drawn
+again only when what it covers changes. The minimap and the zoomed-out map are not
+touched. Settings: section `08 Detail`. With it, `MapTextureScale` 2 is enough (the
+default since 0.16.0; an existing config keeps its value).
+
 ## Compatibility
 
 Tested with **Valheim 1.0.16** (network version 40), **BepInEx 5.4.23.5** (BepInExPack_Valheim 5.4.2351).
@@ -147,7 +166,7 @@ in 0.15.0 are carried over from the old file on the first start.
 
 | Setting | Meaning |
 |---|---|
-| `MapTextureScale` | 1 / 2 / 4 / 8 → 2048 / 4096 / 8192 / 16384 pixels, i.e. 12 / 6 / 3 / 1.5 m per pixel; 67 MB / 268 MB / 1 GB of video memory. Default 4. This one matters: it is the resolution of the map texture itself, and it decides how sharp the buildings are. Takes effect on the next world load. |
+| `MapTextureScale` | 1 / 2 / 4 / 8 → 2048 / 4096 / 8192 / 16384 pixels, i.e. 12 / 6 / 3 / 1.5 m per pixel; 67 MB / 268 MB / 1 GB of video memory. Default 2 (4 before 0.16.0). It is the resolution of the map texture itself — the zoomed-out map and the minimap; close up the detail layer draws finer. Takes effect on the next world load. |
 | `MinPieceSizeMeters` | Smallest size a build piece is drawn at, in metres. Metres on purpose, so a sharper texture does not make small pieces fainter. |
 | `BuildingOutline`, `OutlineWidthMeters` | A dark halo around buildings, so a house separates from the levelled ground under it, and how far it extends. |
 | `TerrainGridSize` | Metres per cell of the path layer. The terrain records hold 1 m; 2 is plenty up to `MapTextureScale` 4, at 8 the difference shows. Halving it means four times the cells in memory and in the file. Changing it drops the stored path cells (the file records the step they were collected at); the host has them back within one pass. |
