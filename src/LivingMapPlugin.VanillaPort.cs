@@ -238,7 +238,8 @@ namespace LivingMap
         internal static bool s_portLinMaterial = false, s_portLinGlobals = false;
         // textures decoded from sRGB, result encoded to sRGB (the linear pipeline) or both raw
         internal static bool s_portLinTextures = false, s_portSrgbOut = true;
-        // light direction: 0 the material's _lightDir, 1 the environment's _SunDir, 2 its opposite;
+        // light direction: 0 the material's _lightDir, 1 the environment's _SunDir, 2 its opposite,
+        // 3 the opposite of _lightDir;
         // forest/mist/lava mask: the vanilla texture or the one the map material holds now
         internal static int s_portLightMode = 0;
         internal static bool s_portMaskFromMaterial = false;
@@ -260,8 +261,8 @@ namespace LivingMap
             p.Light = Lin(m.GetColor("_lightColor")); p.Ambient = Lin(m.GetColor("_ambientLightColor"));
             p.Lava1 = Lin(m.GetColor("_lavaColor1")); p.Lava2 = Lin(m.GetColor("_lavaColor2"));
             p.Sun = LinG(Shader.GetGlobalColor("_SunColor")); p.AmbientG = LinG(Shader.GetGlobalColor("_AmbientColor"));
-            Vector4 ld = s_portLightMode == 0 ? m.GetVector("_lightDir") : Shader.GetGlobalVector("_SunDir");
-            if (s_portLightMode == 2) ld = -ld;
+            Vector4 ld = s_portLightMode == 0 || s_portLightMode == 3 ? m.GetVector("_lightDir") : Shader.GetGlobalVector("_SunDir");
+            if (s_portLightMode == 2 || s_portLightMode == 3) ld = -ld;
             p.LightDir = new Vector3(ld.x, ld.y, ld.z).normalized;
             p.NormalWidth = m.GetFloat("_normalWidth"); p.NormalIntensity = m.GetFloat("_normalIntensity");
             p.Zoom = m.GetFloat("_zoom"); p.SharedFade = m.GetFloat("_SharedFade");
