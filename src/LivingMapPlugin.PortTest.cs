@@ -14,7 +14,7 @@ namespace LivingMap
     // logs how much of the window changed, which tells which constant does what.
     public partial class LivingMapPlugin
     {
-        private static readonly string[] PortTestGlobals = { "_SunColor", "_AmbientColor", "_SunFogColor", "_FogColor", "_CloudColor", "_SkyColor" };
+        private static readonly string[] PortTestGlobals = { "_SunColor", "_AmbientColor", "_SunFogColor" };
 
         private string PortTest()
         {
@@ -43,19 +43,32 @@ namespace LivingMap
                 mat.SetVector("_mapCenter", src.GetVector("_mapCenter"));
                 mat.SetFloat("_SharedFade", src.GetFloat("_SharedFade"));
 
+                string stamp = DateTime.Now.ToString("HHmmss");
                 float[] gpu = GpuRender(mat, DTileSize);
-                SavePng(gpu, DTileSize, Path.Combine(dir, "port_gpu.png"));
+                SavePng(gpu, DTileSize, Path.Combine(dir, "port_" + stamp + "_gpu.png"));
 
                 DJob j = new DJob();
                 j.X0 = x0; j.Z0 = z0; j.Mpp = mpp;
                 j.Port = SnapshotPort(x0, z0, size);
                 j.Port.TimeX = Time.timeSinceLevelLoad / 20f; j.Port.TimeY = Time.timeSinceLevelLoad;
                 j.Port.Zoom = 1000f;
+                Vector4 co = Shader.GetGlobalVector("_CloudOffset");
+                j.Port.CloudX = co.x; j.Port.CloudZ = co.z;
                 byte[] cpu = RenderPortTile(j);
-                File.WriteAllBytes(Path.Combine(dir, "port_cpu.png"), EncodePng(cpu, DTileSize));
+                File.WriteAllBytes(Path.Combine(dir, "port_" + stamp + "_cpu.png"), EncodePng(cpu, DTileSize));
                 double diff = 0; int n = DTileSize * DTileSize;
+                byte[] dimg = new byte[n * 4];
                 for (int i = 0; i < n; i++)
-                    for (int c = 0; c < 3; c++) diff += Math.Abs(gpu[i * 4 + c] * 255f - cpu[i * 4 + c]);
+                {
+                    for (int c = 0; c < 3; c++)
+                    {
+                        float d = gpu[i * 4 + c] * 255f - cpu[i * 4 + c];
+                        diff += Math.Abs(d);
+                        dimg[i * 4 + c] = (byte)Mathf.Clamp(128f + d * 2f, 0f, 255f);      // grey = equal, brighter = shader brighter
+                    }
+                    dimg[i * 4 + 3] = 255;
+                }
+                File.WriteAllBytes(Path.Combine(dir, "port_" + stamp + "_diff.png"), EncodePng(dimg, DTileSize));
                 log.AppendLine("port vs shader: mean difference " + (diff / (n * 3)).ToString("F2") + " of 255 per channel");
 
                 // which constant does what
@@ -85,7 +98,7 @@ namespace LivingMap
             }
             finally { UnityEngine.Object.Destroy(mat); }
             Logger.LogInfo(log.ToString());
-            return "livingmap port: port_gpu.png and port_cpu.png written to " + dir + "; details in the BepInEx log";
+            return "livingmap port: port_*_gpu/cpu/diff.png written to " + dir + "; details in the BepInEx log";
         }
 
         private static string Changed(float[] a, float[] b)
@@ -111,7 +124,18 @@ namespace LivingMap
             {
                 RenderTexture.active = rt;
                 GL.Clear(true, true, new Color(0f, 0f, 0f, 1f));
-                Graphics.Blit(mat.GetTexture("_MainTex"), rt, mat);
+                // a quad with uv 0..1: the shader's own _MainTex_ST picks the window (a Blit
+                // would reset it)
+                GL.PushMatrix();
+                GL.LoadOrtho();
+                mat.SetPass(0);
+                GL.Begin(GL.QUADS);
+                GL.TexCoord2(0f, 0f); GL.Vertex3(0f, 0f, 0f);
+                GL.TexCoord2(0f, 1f); GL.Vertex3(0f, 1f, 0f);
+                GL.TexCoord2(1f, 1f); GL.Vertex3(1f, 1f, 0f);
+                GL.TexCoord2(1f, 0f); GL.Vertex3(1f, 0f, 0f);
+                GL.End();
+                GL.PopMatrix();
                 RenderTexture.active = rt;
                 read.ReadPixels(new Rect(0, 0, size, size), 0, 0, false);
                 read.Apply(false);

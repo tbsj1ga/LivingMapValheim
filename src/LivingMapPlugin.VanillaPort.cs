@@ -194,7 +194,7 @@ namespace LivingMap
             public float World;                  // metres the whole map texture spans
             public int TexSize;
             // material and global values (colours linear)
-            public Color Forest, Water, WaterDeep, WaterAsh, WaterAshDeep, Fog, Light, Ambient, Sun, AmbientG, Lava1, Lava2;
+            public Color Forest, Water, WaterDeep, WaterAsh, WaterAshDeep, SunFog, Light, Ambient, Sun, AmbientG, Lava1, Lava2;
             public Vector3 LightDir;
             public float NormalWidth, NormalIntensity, Zoom, SharedFade, CloudX, CloudZ, TimeX, TimeY;
             // world data around the tile, on the vanilla map grid (step 1)
@@ -219,7 +219,7 @@ namespace LivingMap
             p.Forest = Lin(m.GetColor("_ForestColor"));
             p.Water = Lin(m.GetColor("_WaterColor")); p.WaterDeep = Lin(m.GetColor("_WaterColorDeep"));
             p.WaterAsh = Lin(m.GetColor("_WaterColorAshlands")); p.WaterAshDeep = Lin(m.GetColor("_WaterColorAshlandsDeep"));
-            p.Fog = Lin(m.GetColor("_FogColor"));
+            p.SunFog = Lin(Shader.GetGlobalColor("_SunFogColor"));     // the material's _FogColor is not used
             p.Light = Lin(m.GetColor("_lightColor")); p.Ambient = Lin(m.GetColor("_ambientLightColor"));
             p.Lava1 = Lin(m.GetColor("_lavaColor1")); p.Lava2 = Lin(m.GetColor("_lavaColor2"));
             p.Sun = Lin(Shader.GetGlobalColor("_SunColor")); p.AmbientG = Lin(Shader.GetGlobalColor("_AmbientColor"));
@@ -301,7 +301,8 @@ namespace LivingMap
             float rsA = Mathf.Sin(rotA), rcA = Mathf.Cos(rotA), rsB = Mathf.Sin(rotB), rcB = Mathf.Cos(rotB);
             float coastWidth = Mathf.Clamp(p.Zoom * 50f, 2f, 10f);
             Color lt = p.Light, amb = p.Ambient, sun = p.Sun, ambG = p.AmbientG;
-            float laR = lt.r + amb.r, laG = lt.g + amb.g, laB = lt.b + amb.b;
+            // fog and mist are lit by the environment's sun + ambient, not the material's light
+            float laR = sun.r + ambG.r, laG = sun.g + ambG.g, laB = sun.b + ambG.b;
             float nw = p.NormalWidth;
             float r, g, b, a;
 
@@ -441,7 +442,7 @@ namespace LivingMap
                     float fa = Mathf.Clamp01(fogAmt);
                     if (fa > 0f)
                     {
-                        float qR = flR * fogAmt * laR * p.Fog.r, qG = flG * fogAmt * laG * p.Fog.g, qB = flB * fogAmt * laB * p.Fog.b;
+                        float qR = flR * fogAmt * laR * p.SunFog.r, qG = flG * fogAmt * laG * p.SunFog.g, qB = flB * fogAmt * laB * p.SunFog.b;
                         float du = u - 0.5f, dv = v - 0.5f;
                         float e = Smooth01(Mathf.Min(Mathf.Sqrt(du * du + dv * dv) * 2.325581f, 1f));
                         qR -= 0.8f * e * qR; qG -= 0.8f * e * qG; qB -= 0.8f * e * qB;
