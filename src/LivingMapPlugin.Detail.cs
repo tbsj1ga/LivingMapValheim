@@ -279,6 +279,9 @@ namespace LivingMap
                 return;
             }
 
+            // the vanilla style matches the map under it pixel for pixel, so it is shown at once:
+            // a half-transparent layer would let its ground show through its own fog of war
+            if (PortWanted) alpha = 1f;
             EnsureDetailLayer(img);
             if (!_dRoot.gameObject.activeSelf) _dRoot.gameObject.SetActive(true);
             _dGroup.alpha = alpha;
