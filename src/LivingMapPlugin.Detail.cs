@@ -38,6 +38,10 @@ namespace LivingMap
         private ConfigEntry<Color> _cfgDetailTreeColor;
         private ConfigEntry<Color> _cfgDetailRockColor;
         private ConfigEntry<int> _cfgDetailWorkers;
+        private ConfigEntry<bool> _cfgDetailVanillaTone;
+        private ConfigEntry<Color> _cfgDetailToneTint;
+        private ConfigEntry<float> _cfgDetailToneDesaturate;
+        private ConfigEntry<float> _cfgDetailSharedOpacity;
 
         private void BindDetailConfig()
         {
@@ -55,16 +59,57 @@ namespace LivingMap
                 new ConfigDescription("How much darker forest is drawn where single trees are not known (4 m per pixel, or zones the object database does not hold). 0 = not shown.", new AcceptableValueRange<float>(0f, 0.9f)));
             _cfgDetailObjects = Config.Bind(SecDetail, "DetailObjects", true,
                 "At 2 and 1 m per pixel, draw trees and rocks where they stand and buildings as rotated boxes shaded by height, read from the object database. Off = the forest pattern and the stored footprints only.");
-            _cfgDetailWaterShallow = Config.Bind(SecDetail, "DetailWaterShallow", new Color(0.36f, 0.50f, 0.56f, 1f),
-                "Colour of shallow water in the detailed picture.");
-            _cfgDetailWaterDeep = Config.Bind(SecDetail, "DetailWaterDeep", new Color(0.14f, 0.22f, 0.30f, 1f),
-                "Colour of deep water in the detailed picture.");
-            _cfgDetailTreeColor = Config.Bind(SecDetail, "DetailTreeColor", new Color(0.20f, 0.30f, 0.14f, 1f),
-                "Colour of tree crowns in the detailed picture.");
-            _cfgDetailRockColor = Config.Bind(SecDetail, "DetailRockColor", new Color(0.52f, 0.52f, 0.50f, 1f),
-                "Colour of rocks in the detailed picture.");
+            _cfgDetailWaterShallow = Config.Bind(SecDetail, "DetailWaterShallow", new Color(0.27f, 0.28f, 0.33f, 1f),
+                "Colour of shallow water in the detailed picture (as drawn; the vanilla map's water).");
+            _cfgDetailWaterDeep = Config.Bind(SecDetail, "DetailWaterDeep", new Color(0.22f, 0.24f, 0.30f, 1f),
+                "Colour of deep water in the detailed picture (as drawn).");
+            _cfgDetailTreeColor = Config.Bind(SecDetail, "DetailTreeColor", new Color(0.55f, 0.62f, 0.45f, 1f),
+                "Colour of tree crowns in the detailed picture (before DetailVanillaTone).");
+            _cfgDetailRockColor = Config.Bind(SecDetail, "DetailRockColor", new Color(0.50f, 0.50f, 0.48f, 1f),
+                "Colour of rocks in the detailed picture (before DetailVanillaTone). Rocks under water are not drawn.");
+            _cfgDetailVanillaTone = Config.Bind(SecDetail, "DetailVanillaTone", true,
+                "Tone the detailed picture - terrain, trees, rocks, paths and buildings; water has its own colours - the way the game's map shader tones the map: darker and less saturated, so zooming in keeps the vanilla look. Off = the raw colours.");
+            _cfgDetailToneTint = Config.Bind(SecDetail, "DetailToneTint", new Color(0.38f, 0.48f, 0.44f, 1f),
+                "DetailVanillaTone: every colour is multiplied by this (measured against the vanilla map).");
+            _cfgDetailToneDesaturate = Config.Bind(SecDetail, "DetailToneDesaturate", 0.5f,
+                new ConfigDescription("DetailVanillaTone: how much colour is taken out before the tint. 0 = none, 1 = grey.", new AcceptableValueRange<float>(0f, 1f)));
+            _cfgDetailSharedOpacity = Config.Bind(SecDetail, "DetailSharedOpacity", 0.5f,
+                new ConfigDescription("Ground known only from a cartography table (explored by others) is drawn this opaque, so the vanilla haze over it shows through as on the vanilla map. 1 = like your own explored ground.", new AcceptableValueRange<float>(0f, 1f)));
+            MigrateDetailConfig();
             _cfgDetailWorkers = Config.Bind(SecDetail, "DetailWorkerThreads", 2,
                 new ConfigDescription("Background threads that draw tiles. Takes effect on the next world load.", new AcceptableValueRange<int>(1, 4)));
+        }
+
+        // Once per config file: colours still at the defaults of the first detail builds move to
+        // the vanilla-toned ones; anything the user picked is kept.
+        private void MigrateDetailConfig()
+        {
+            ConfigEntry<int> ver = Config.Bind(SecDetail, "DetailConfigVersion", 1, "Internal: which defaults this section has been updated to. Do not edit.");
+            if (ver.Value >= 2) return;
+            MoveDefault(_cfgDetailWaterShallow, new Color(0.36f, 0.50f, 0.56f, 1f));
+            MoveDefault(_cfgDetailWaterDeep, new Color(0.14f, 0.22f, 0.30f, 1f));
+            MoveDefault(_cfgDetailTreeColor, new Color(0.20f, 0.30f, 0.14f, 1f));
+            MoveDefault(_cfgDetailRockColor, new Color(0.52f, 0.52f, 0.50f, 1f));
+            ver.Value = 2;
+        }
+
+        // The game's map shader draws the map darker and less saturated than its colours; the
+        // same tone on every land and overlay colour keeps the zoomed-in picture in the vanilla
+        // palette (and paths and buildings look like the ones the shader draws zoomed out).
+        private Color32 Tone(Color c)
+        {
+            if (!_cfgDetailVanillaTone.Value) return c;
+            float ds = Mathf.Clamp01(_cfgDetailToneDesaturate.Value);
+            Color t = _cfgDetailToneTint.Value;
+            float l = 0.299f * c.r + 0.587f * c.g + 0.114f * c.b;
+            return new Color((c.r + (l - c.r) * ds) * t.r, (c.g + (l - c.g) * ds) * t.g, (c.b + (l - c.b) * ds) * t.b, c.a);
+        }
+
+        private static void MoveDefault(ConfigEntry<Color> e, Color old)
+        {
+            Color v = e.Value;
+            if (Mathf.Abs(v.r - old.r) < 0.005f && Mathf.Abs(v.g - old.g) < 0.005f && Mathf.Abs(v.b - old.b) < 0.005f)
+                e.Value = (Color)e.DefaultValue;
         }
 
         // ------------------------------------------------------------------
@@ -110,7 +155,7 @@ namespace LivingMap
             public float WaterLevel, Relief, ForestShade, ZoneSize;
             public Color32 WaterShallow, WaterDeep, Tree, Rock;
             public Color32[] Biome;                 // index = biome bit position
-            public bool[] Fog; public int FogX0, FogZ0, FogW, FogH; public float PixelSize; public int TexSize;
+            public float[] Fog; public int FogX0, FogZ0, FogW, FogH; public float PixelSize; public int TexSize;
             public sbyte[] ForestFix;               // same grid as Fog: -1 cleared, +1 planted
             public List<PieceRec> Pieces;
             public List<DBox> Boxes;
@@ -389,7 +434,7 @@ namespace LivingMap
                     int px = fx0 + gx, pz = fz0 + gz;
                     if (px < 0 || pz < 0 || px >= _texSize || pz >= _texSize) continue;
                     int idx = pz * _texSize + px;
-                    if (!fog || IsExplored(ex, exo, idx)) sig += 1;
+                    if (!fog || IsExplored(ex, exo, idx)) sig += ex != null && idx < ex.Length && ex[idx] ? 2 : 1;   // own vs others' ground
                     if (_plantedForest.Contains(idx)) sig += 7919;
                     else if (_clearedForest.Contains(idx)) sig += 104729;
                     List<PieceRec> bucket;
@@ -453,11 +498,14 @@ namespace LivingMap
             j.Biome[0] = mm.m_meadowsColor; j.Biome[1] = mm.m_swampColor; j.Biome[2] = mm.m_mountainColor;
             j.Biome[3] = mm.m_blackforestColor; j.Biome[4] = mm.m_heathColor; j.Biome[5] = mm.m_ashlandsColor;
             j.Biome[6] = mm.m_deepnorthColor; j.Biome[7] = Color.white; j.Biome[8] = Color.white; j.Biome[9] = mist;
+            for (int i = 0; i < j.Biome.Length; i++) j.Biome[i] = Tone(j.Biome[i]);
+            j.Tree = Tone(j.Tree); j.Rock = Tone(j.Rock);
 
             // explored cells and the forest corrections, on the vanilla map grid
             j.PixelSize = _pixelSize; j.TexSize = _texSize;
             j.FogX0 = fx0; j.FogZ0 = fz0; j.FogW = w; j.FogH = w;
-            j.Fog = new bool[w * w];
+            j.Fog = new float[w * w];
+            float shared = Mathf.Clamp01(_cfgDetailSharedOpacity.Value);
             j.ForestFix = new sbyte[w * w];
             BitArray ex = _fiExplored != null ? _fiExplored.GetValue(mm) as BitArray : null;
             BitArray exo = _fiExploredOthers != null ? _fiExploredOthers.GetValue(mm) as BitArray : null;
@@ -470,7 +518,10 @@ namespace LivingMap
                     int k = gz * w + gx;
                     if (px < 0 || pz < 0 || px >= _texSize || pz >= _texSize) continue;
                     int idx = pz * _texSize + px;
-                    j.Fog[k] = !fog || IsExplored(ex, exo, idx);
+                    // own ground opaque; ground known only from others (cartography table) lets
+                    // the vanilla haze over it show through
+                    j.Fog[k] = !fog || (ex == null && exo == null) || (ex != null && idx < ex.Length && ex[idx]) ? 1f
+                             : exo != null && idx < exo.Length && exo[idx] ? shared : 0f;
                     if (planted && _plantedForest.Contains(idx)) j.ForestFix[k] = 1;
                     else if (cleared && _clearedForest.Contains(idx)) j.ForestFix[k] = -1;
                 }
@@ -520,9 +571,9 @@ namespace LivingMap
             }
             j.Boxes.Sort((a, b) => a.Top.CompareTo(b.Top));
             j.MatColors = new Color32[_cfgMatColor.Length];
-            for (int i = 0; i < _cfgMatColor.Length; i++) j.MatColors[i] = _cfgMatColor[i].Value;
-            j.MatUnknown = _cfgMatUnknownColor.Value;
-            j.Outline = _cfgOutlineColor.Value;
+            for (int i = 0; i < _cfgMatColor.Length; i++) j.MatColors[i] = Tone(_cfgMatColor[i].Value);
+            j.MatUnknown = Tone(_cfgMatUnknownColor.Value);
+            j.Outline = Tone(_cfgOutlineColor.Value);
             j.DrawOutline = _cfgOutline.Value;
 
             j.TerrKeys = new List<long>(); j.TerrKinds = new List<byte>();
@@ -555,8 +606,8 @@ namespace LivingMap
                     }
                 }
             }
-            j.Paved = _cfgPavedColor.Value; j.Dirt = _cfgDirtColor.Value;
-            j.Cultivated = _cfgCultivatedColor.Value; j.Cleared = _cfgClearedColor.Value;
+            j.Paved = Tone(_cfgPavedColor.Value); j.Dirt = Tone(_cfgDirtColor.Value);
+            j.Cultivated = Tone(_cfgCultivatedColor.Value); j.Cleared = Tone(_cfgClearedColor.Value);
 
             tile.Queued = true;
             lock (_dLock) { _dPending.Add(j); Monitor.Pulse(_dLock); }
@@ -573,13 +624,14 @@ namespace LivingMap
             const float pad = 20f;
             if (p.x < x0 - pad || p.x > x0 + size + pad || p.z < z0 - pad || p.z > z0 + size + pad) return;
 
+            if (kind == 2 && p.y < j.WaterLevel) return;          // seabed rocks: the vanilla map shows none
             if (kind == 1 || kind == 2)
             {
                 float s = zdo.GetVec3(ZDOVars.s_scaleHash, Vector3.one).x;
                 if (s <= 0.01f) s = 1f;
                 DTree t = new DTree();
                 t.X = p.x; t.Z = p.z; t.Rock = kind == 2;
-                t.R = (kind == 1 ? 2.6f : 2f) * Mathf.Clamp(s, 0.3f, 3f);
+                t.R = (kind == 1 ? 2.6f : 1.6f) * Mathf.Clamp(s, 0.3f, 3f);
                 j.Trees.Add(t);
                 return;
             }
@@ -1015,7 +1067,7 @@ namespace LivingMap
         private static float Fog(DJob j, int x, int z)
         {
             if (x < 0 || z < 0 || x >= j.FogW || z >= j.FogH) return 0f;
-            return j.Fog[z * j.FogW + x] ? 1f : 0f;
+            return j.Fog[z * j.FogW + x];
         }
 
         private static Color32 TerrainColor32(DJob j, byte kind)

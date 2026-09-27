@@ -24,6 +24,11 @@ The version is set in one place — `LivingMapPlugin.Version` in `src/LivingMapP
 - `MapTextureScale` defaults to 2 (was 4): close up the detail layer draws finer, so the big
   texture is no longer needed — about 200 MB less video memory. An existing config keeps its
   value.
+- Vanilla look: land, trees, rocks, paths and buildings are toned the way the game's map
+  shader tones the map (darker, less saturated; `DetailVanillaTone`, `DetailToneTint`,
+  `DetailToneDesaturate`), water uses the vanilla map's slate colours, rocks under water are
+  not drawn, and ground known only from a cartography table is half transparent so the
+  vanilla haze shows through (`DetailSharedOpacity`).
 - New section `08 Detail`. Any failure switches off only this layer for the session.
 - Not tested in game yet.
 ## 0.15.3
