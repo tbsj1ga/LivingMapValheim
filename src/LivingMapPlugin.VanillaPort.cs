@@ -235,13 +235,14 @@ namespace LivingMap
 
         // Material colours reach the shader converted to linear; the environment globals
         // (_SunColor, _AmbientColor, _SunFogColor) as they are - measured with 'livingmap port'.
+        // measured against the real shader with 'livingmap port': about 2 of 255 apart
         internal static bool s_portLinMaterial = false, s_portLinGlobals = false;
         // textures decoded from sRGB, result encoded to sRGB (the linear pipeline) or both raw
-        internal static bool s_portLinTextures = false, s_portSrgbOut = true;
+        internal static bool s_portLinTextures = true, s_portSrgbOut = true;
         // light direction: 0 the material's _lightDir, 1 the environment's _SunDir, 2 its opposite,
         // 3 the opposite of _lightDir;
         // forest/mist/lava mask: the vanilla texture or the one the map material holds now
-        internal static int s_portLightMode = 0;
+        internal static int s_portLightMode = 1;
         internal static bool s_portMaskFromMaterial = false;
         private static Color Lin(Color c) { return s_portLinMaterial ? c.linear : c; }
         private static Color LinG(Color c) { return s_portLinGlobals ? c.linear : c; }
@@ -536,20 +537,22 @@ namespace LivingMap
             return px;
         }
 
-        // what the time of day changes in a tile: the sun and ambient colours (in 1/16 steps)
-        // and the fade of ground known from others; a change redraws the visible tiles
+        // what the time of day changes in a tile: the sun and ambient colours, the sun fog, the
+        // sun's direction (about 4 degrees) and the fade of ground known from others; a change
+        // redraws the visible tiles (see RelightTiles)
         private long PortLightSig()
         {
-            Color s = Shader.GetGlobalColor("_SunColor"), a = Shader.GetGlobalColor("_AmbientColor");
-            long q = 0;
-            q = q * 64 + Mathf.RoundToInt(Mathf.Clamp(s.r, 0f, 3f) * 16f);
-            q = q * 64 + Mathf.RoundToInt(Mathf.Clamp(s.g, 0f, 3f) * 16f);
-            q = q * 64 + Mathf.RoundToInt(Mathf.Clamp(s.b, 0f, 3f) * 16f);
-            q = q * 64 + Mathf.RoundToInt(Mathf.Clamp(a.r, 0f, 3f) * 16f);
-            q = q * 64 + Mathf.RoundToInt(Mathf.Clamp(a.g, 0f, 3f) * 16f);
-            q = q * 64 + Mathf.RoundToInt(Mathf.Clamp(a.b, 0f, 3f) * 16f);
-            if (_portMat != null) q = q * 17 + Mathf.RoundToInt(_portMat.GetFloat("_SharedFade") * 16f);
+            Color s = Shader.GetGlobalColor("_SunColor"), a = Shader.GetGlobalColor("_AmbientColor"), f = Shader.GetGlobalColor("_SunFogColor");
+            Vector4 d = Shader.GetGlobalVector("_SunDir");
+            long q = 17;
+            q = q * 31 + Q(s.r, 10f); q = q * 31 + Q(s.g, 10f); q = q * 31 + Q(s.b, 10f);
+            q = q * 31 + Q(a.r, 20f); q = q * 31 + Q(a.g, 20f); q = q * 31 + Q(a.b, 20f);
+            q = q * 31 + Q(f.r, 20f); q = q * 31 + Q(f.g, 20f); q = q * 31 + Q(f.b, 20f);
+            q = q * 31 + Q(d.x, 14f); q = q * 31 + Q(d.y, 14f); q = q * 31 + Q(d.z, 14f);
+            if (_portMat != null) q = q * 31 + Q(_portMat.GetFloat("_SharedFade"), 16f);
             return q;
         }
+
+        private static long Q(float v, float steps) { return Mathf.RoundToInt(Mathf.Clamp(v, -4f, 4f) * steps); }
     }
 }

@@ -132,6 +132,8 @@ namespace LivingMap
             public Texture2D Tex;
             public RawImage Img;
             public bool Ready, Queued, Failed;
+            public long LightSig;                   // the light it was drawn under (vanilla style)
+            public byte[] Pending; public long PendingLight;   // drawn again under new light, shown with the others
             public long Sig;
             public float RenderedAt, LastUsed;
         }
@@ -168,6 +170,7 @@ namespace LivingMap
             public Color32 Paved, Dirt, Cultivated, Cleared;
             public long Sig;
             public PortJob Port;                    // the vanilla map shader's inputs (DetailStyle = Vanilla)
+            public long LightSig; public bool Relight;
             // result
             public byte[] Pixels;
             public double Ms;
@@ -306,6 +309,7 @@ namespace LivingMap
 
             UploadDone();
             RecheckTiles(now);
+            RelightTiles(now);
             Evict(now);
         }
 
@@ -462,7 +466,6 @@ namespace LivingMap
                     if (list != null) sig += list.Count * 65537L;
                 }
             sig += (_cfgShowBuildings.Value ? 1 : 0) * 3 + (_cfgShowPaths.Value ? 1 : 0) * 5 + (_cfgShowCleared.Value ? 1 : 0) * 11;
-            if (PortWanted) sig = sig * 31 + PortLightSig();
             return sig;
         }
 
@@ -485,6 +488,11 @@ namespace LivingMap
         // ------------------------------------------------------------------
         private void Enqueue(DTile tile, float priority)
         {
+            Enqueue(tile, priority, false);
+        }
+
+        private void Enqueue(DTile tile, float priority, bool relight)
+        {
             _dEnqueuedThisFrame++;
             Minimap mm = _mm;
             float x0, z0, size; int fx0, fz0, w;
@@ -495,6 +503,8 @@ namespace LivingMap
             j.Tile = tile; j.X0 = x0; j.Z0 = z0; j.Mpp = mpp; j.Priority = priority;
             j.Sig = RegionSig(tile);
             if (PortWanted) j.Port = SnapshotPort(x0, z0, DTileSize * mpp);
+            if (_dLight == 0 && j.Port != null) _dLight = PortLightSig();
+            j.LightSig = _dLight; j.Relight = relight;
             j.WaterLevel = ZoneSystem.instance != null ? ZoneSystem.instance.m_waterLevel : 30f;
             j.ZoneSize = ZoneSystem.instance != null ? ZoneSystem.instance.m_zoneSize : 64f;
             j.Relief = _cfgDetailRelief.Value;
@@ -703,6 +713,12 @@ namespace LivingMap
                 if (_dFront == null) continue;
                 DTile live;
                 if (!_dTiles.TryGetValue(t.Key, out live) || live != t) continue;   // evicted meanwhile
+                if (j.Relight && t.Ready && t.Tex != null)
+                {
+                    t.Pending = j.Pixels; t.PendingLight = j.LightSig;      // shown together with the others
+                    continue;
+                }
+                t.Pending = null; t.LightSig = j.LightSig;
                 if (t.Tex == null)
                 {
                     t.Tex = new Texture2D(DTileSize, DTileSize, TextureFormat.RGBA32, false, false);
@@ -725,6 +741,39 @@ namespace LivingMap
                 if (_cfgDebug.Value && _dRendered % 20 == 0)
                     Logger.LogInfo("Detail: " + _dRendered + " tiles drawn, " + (_dMsTotal / _dRendered).ToString("0") + " ms per tile on average (last " + j.Ms.ToString("0") +
                                    " ms at " + j.Mpp + " m/px, " + j.Trees.Count + " trees/rocks, " + j.Boxes.Count + " boxes); cached " + _dTiles.Count);
+            }
+        }
+
+        // The vanilla style is lit by the time of day. When the light changes enough, the visible
+        // tiles are drawn again in the background and swapped in all at once, so the map never
+        // shows a patchwork of old and new light.
+        private long _dLight;
+        private float _dLightNext;
+
+        private void RelightTiles(float now)
+        {
+            if (!PortWanted || _portMat == null) return;
+            if (now >= _dLightNext)
+            {
+                _dLightNext = now + 2f;
+                _dLight = PortLightSig();
+            }
+            bool complete = true;
+            int pending = 0;
+            foreach (DTile t in _dTiles.Values)
+            {
+                if (!t.Ready || t.Img == null || !t.Img.enabled || t.LightSig == _dLight) continue;
+                if (t.Pending != null && t.PendingLight == _dLight) { pending++; continue; }
+                complete = false;
+                if (!t.Queued && _dEnqueuedThisFrame < DEnqueuesPerFrame) Enqueue(t, 1f, true);
+            }
+            if (!complete || pending == 0) return;
+            foreach (DTile t in _dTiles.Values)
+            {
+                if (t.Pending == null || t.PendingLight != _dLight || t.Tex == null) continue;
+                t.Tex.LoadRawTextureData(t.Pending);
+                t.Tex.Apply(false, false);
+                t.LightSig = t.PendingLight; t.Pending = null;
             }
         }
 
