@@ -71,6 +71,27 @@ namespace LivingMap
                 File.WriteAllBytes(Path.Combine(dir, "port_" + stamp + "_diff.png"), EncodePng(dimg, DTileSize));
                 log.AppendLine("port vs shader: mean difference " + (diff / (n * 3)).ToString("F2") + " of 255 per channel");
 
+                // which colours the shader receives converted to linear
+                bool keepM = s_portLinMaterial, keepG = s_portLinGlobals;
+                try
+                {
+                    for (int k = 0; k < 4; k++)
+                    {
+                        s_portLinMaterial = (k & 1) != 0; s_portLinGlobals = (k & 2) != 0;
+                        DJob jk = new DJob();
+                        jk.X0 = x0; jk.Z0 = z0; jk.Mpp = mpp;
+                        jk.Port = SnapshotPort(x0, z0, size);
+                        jk.Port.TimeX = j.Port.TimeX; jk.Port.TimeY = j.Port.TimeY; jk.Port.Zoom = 1000f;
+                        jk.Port.CloudX = co.x; jk.Port.CloudZ = co.z;
+                        byte[] ck = RenderPortTile(jk);
+                        double dk = 0;
+                        for (int i = 0; i < n; i++)
+                            for (int c = 0; c < 3; c++) dk += Math.Abs(gpu[i * 4 + c] * 255f - ck[i * 4 + c]);
+                        log.AppendLine("  material colours " + (s_portLinMaterial ? "linear" : "raw") + ", globals " + (s_portLinGlobals ? "linear" : "raw") + ": mean difference " + (dk / (n * 3)).ToString("F2"));
+                    }
+                }
+                finally { s_portLinMaterial = keepM; s_portLinGlobals = keepG; }
+
                 // which constant does what
                 Shader s = src.shader;
                 for (int i = 0; i < s.GetPropertyCount(); i++)

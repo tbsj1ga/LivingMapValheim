@@ -206,7 +206,11 @@ namespace LivingMap
         private static readonly FieldInfo s_fiForestTex = typeof(Minimap).GetField("m_forestMaskTexture", BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic);
         private static readonly FieldInfo s_fiFogTex = typeof(Minimap).GetField("m_fogTexture", BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic);
 
-        private static Color Lin(Color c) { return c.linear; }
+        // Material colours reach the shader converted to linear; the environment globals
+        // (_SunColor, _AmbientColor, _SunFogColor) as they are - measured with 'livingmap port'.
+        internal static bool s_portLinMaterial = true, s_portLinGlobals = false;
+        private static Color Lin(Color c) { return s_portLinMaterial ? c.linear : c; }
+        private static Color LinG(Color c) { return s_portLinGlobals ? c.linear : c; }
 
         private PortJob SnapshotPort(float x0, float z0, float size)
         {
@@ -219,10 +223,10 @@ namespace LivingMap
             p.Forest = Lin(m.GetColor("_ForestColor"));
             p.Water = Lin(m.GetColor("_WaterColor")); p.WaterDeep = Lin(m.GetColor("_WaterColorDeep"));
             p.WaterAsh = Lin(m.GetColor("_WaterColorAshlands")); p.WaterAshDeep = Lin(m.GetColor("_WaterColorAshlandsDeep"));
-            p.SunFog = Lin(Shader.GetGlobalColor("_SunFogColor"));     // the material's _FogColor is not used
+            p.SunFog = LinG(Shader.GetGlobalColor("_SunFogColor"));     // the material's _FogColor is not used
             p.Light = Lin(m.GetColor("_lightColor")); p.Ambient = Lin(m.GetColor("_ambientLightColor"));
             p.Lava1 = Lin(m.GetColor("_lavaColor1")); p.Lava2 = Lin(m.GetColor("_lavaColor2"));
-            p.Sun = Lin(Shader.GetGlobalColor("_SunColor")); p.AmbientG = Lin(Shader.GetGlobalColor("_AmbientColor"));
+            p.Sun = LinG(Shader.GetGlobalColor("_SunColor")); p.AmbientG = LinG(Shader.GetGlobalColor("_AmbientColor"));
             Vector4 ld = m.GetVector("_lightDir");
             p.LightDir = new Vector3(ld.x, ld.y, ld.z).normalized;
             p.NormalWidth = m.GetFloat("_normalWidth"); p.NormalIntensity = m.GetFloat("_normalIntensity");
