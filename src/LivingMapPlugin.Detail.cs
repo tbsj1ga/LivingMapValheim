@@ -194,7 +194,14 @@ namespace LivingMap
 
         private void LateUpdate()
         {
-            if (_disabledByErrors || _dBroken) return;
+            if (_disabledByErrors) return;
+            if (_probeImg != null)
+            {
+                try { ProbeTick(); }
+                catch (Exception e) { Logger.LogError("[probe] " + e); ProbeHide(); }
+                return;
+            }
+            if (_dBroken) return;
             try { DetailTick(); }
             catch (Exception e) { DetailFail("tick", e); }
         }

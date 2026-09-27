@@ -40,6 +40,7 @@ namespace LivingMap
             {
                 string sub = args.Args.Length > 1 ? args.Args[1].ToLowerInvariant() : "";
                 if (sub == "status") { Say(args, StatusText()); return; }
+                if (sub == "probe") { Say(args, ProbeCommand(args.Args)); return; }
                 if (sub != "reset")
                 {
                     Say(args, "livingmap status | livingmap reset [buildings|paths|forest] [metres|all]");
