@@ -128,7 +128,7 @@ namespace LivingMap
             // --- 04 Rendering
             _cfgMapScale = Config.Bind(SecRendering, "MapTextureScale", 4,
                 new ConfigDescription(
-                    "Resolution multiplier for the map texture. Vanilla 2048 is 12 m per pixel. 2 = 4096 = 6 m/px (~67 MB of video memory), 4 = 8192 = 3 m/px (~268 MB), 8 = 16384 = 1.5 m/px (~1 GB, only worth it on a card with plenty of VRAM). Video memory only, nothing is held in RAM. If the card refuses the size the mod steps down automatically. Takes effect on the next world load.",
+                    "Resolution multiplier for the map layer: how crisp buildings and paths are drawn. The terrain itself stays the vanilla 12 m texture and does not get more detailed. Vanilla 2048 is 12 m per pixel. 2 = 4096 = 6 m/px (~67 MB of video memory), 4 = 8192 = 3 m/px (~268 MB), 8 = 16384 = 1.5 m/px (~1 GB, only worth it on a card with plenty of VRAM). Video memory only, nothing is held in RAM. If the card refuses the size the mod steps down automatically. Takes effect on the next world load.",
                     new AcceptableValueList<int>(1, 2, 4, 8)));
             _cfgPieceSize = Config.Bind(SecRendering, "MinPieceSizeMeters", 2f,
                 new ConfigDescription("Smallest size, in metres, that a build piece is drawn at. Pieces use their real footprint; this is the floor so thin walls stay visible however sharp the map texture is. Raise it if buildings read as too faint.",

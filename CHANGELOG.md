@@ -2,6 +2,13 @@
 
 The version is set in one place — `LivingMapPlugin.Version` in `src/LivingMapPlugin.cs`.
 
+## 0.15.3
+
+- Package page rewritten for players: what the mod shows, what it does not do (the terrain
+  itself is not made more detailed), multiplayer, the few settings worth knowing. The
+  misleading "sharper map texture" line is gone; `MapTextureScale` is described everywhere
+  as the sharpness of buildings and paths. No gameplay changes.
+
 ## 0.15.2
 
 - Package page: a section with the author's other mods (icons, one line each, links). No

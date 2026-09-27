@@ -15,7 +15,7 @@ namespace LivingMap
     {
         public const string Guid = "j1ga.livingmap";
         public const string Name = "Living Map";
-        public const string Version = "0.15.2";
+        public const string Version = "0.15.3";
 
         private const byte MatNone = 255;
         private const byte TerrainNone = 0;
