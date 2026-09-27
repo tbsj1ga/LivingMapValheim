@@ -414,7 +414,8 @@ namespace LivingMap
         private class PortDetail
         {
             public byte[] Main;          // n x n RGBA, gamma
-            public float[] Trees;        // n x n tree cover 0..1 (zones whose objects are known)
+            public float[] Trees;        // n x n crown cover 0..1 (zones whose objects are known)
+            public float[] Near;         // n x n: a tree within ~9 m (keeps the vanilla forest where trees stand)
             public float[] H; public int Gs;   // heights every DStep pixels, one sample of border
             public float Half;           // 0 or 0.5: where a pixel samples, in pixels
         }
@@ -454,41 +455,43 @@ namespace LivingMap
                     Color32 c = kind == TerrainPaved ? p.Paved : kind == TerrainDirt ? p.Dirt : kind == TerrainCultivated ? p.Cultivated : p.Cleared;
                     FillRect(d.Main, n, j, cx0, cz0, cx0 + grid, cz0 + grid, c);
                 }
-                float w = Mathf.Max(0.5f, mpp);
+                // outlines only where a pixel is small enough for a one-pixel line not to swallow the
+                // building; all outlines first, then the fills; a piece gets at least its pixel
+                bool outline = p.DrawOutline && mpp < 1.2f;
+                float w = mpp, grow = mpp * 0.5f;
+                if (outline)
+                {
+                    for (int i = 0; i < j.Pieces.Count; i++)
+                    {
+                        PieceRec r = j.Pieces[i];
+                        FillRect(d.Main, n, j, r.X0 - w, r.Z0 - w, r.X1 + w, r.Z1 + w, p.Outline);
+                    }
+                    for (int i = 0; i < j.Boxes.Count; i++) FillBox(d.Main, n, j, j.Boxes[i], w, p.Outline, 1f);
+                }
                 for (int i = 0; i < j.Pieces.Count; i++)
                 {
                     PieceRec r = j.Pieces[i];
                     Color32 c = r.Mat != MatNone && r.Mat < p.Mat.Length ? p.Mat[r.Mat] : p.MatUnknown;
-                    if (p.DrawOutline) FillRect(d.Main, n, j, r.X0 - w, r.Z0 - w, r.X1 + w, r.Z1 + w, p.Outline);
-                    FillRect(d.Main, n, j, r.X0, r.Z0, r.X1, r.Z1, c);
+                    float gx = Mathf.Max(0f, (mpp - (r.X1 - r.X0)) * 0.5f), gz = Mathf.Max(0f, (mpp - (r.Z1 - r.Z0)) * 0.5f);
+                    FillRect(d.Main, n, j, r.X0 - gx, r.Z0 - gz, r.X1 + gx, r.Z1 + gz, c);
                 }
-                if (p.DrawOutline)
-                    for (int i = 0; i < j.Boxes.Count; i++) FillBox(d.Main, n, j, j.Boxes[i], w, p.Outline, 1f);
                 for (int i = 0; i < j.Boxes.Count; i++)
                 {
                     DBox bx = j.Boxes[i];
                     Color32 c = bx.Mat != MatNone && bx.Mat < p.Mat.Length ? p.Mat[bx.Mat] : p.MatUnknown;
-                    FillBox(d.Main, n, j, bx, 0f, c, 1f);
+                    FillBox(d.Main, n, j, bx, Mathf.Max(0f, grow - Mathf.Min(bx.HX, bx.HZ)), c, 1f);
                 }
 
-                // trees: a soft disc a little wider than the crown, so neighbours merge into forest
+                // trees: the crown (a lone tree gets its own stamp) and a wide "a tree is near"
+                // cover that keeps the vanilla forest pattern where trees still stand
                 d.Trees = new float[n * n];
+                d.Near = new float[n * n];
                 for (int i = 0; i < j.Trees.Count; i++)
                 {
                     DTree t = j.Trees[i];
                     if (t.Rock) continue;
-                    float rr = t.R * 1.3f;
-                    int ix0 = Mathf.Max(0, Mathf.FloorToInt((t.X - rr - j.X0) / mpp)), ix1 = Mathf.Min(n - 1, Mathf.CeilToInt((t.X + rr - j.X0) / mpp));
-                    int iz0 = Mathf.Max(0, Mathf.FloorToInt((t.Z - rr - j.Z0) / mpp)), iz1 = Mathf.Min(n - 1, Mathf.CeilToInt((t.Z + rr - j.Z0) / mpp));
-                    float soft = Mathf.Max(mpp, rr * 0.35f);
-                    for (int iz = iz0; iz <= iz1; iz++)
-                        for (int ix = ix0; ix <= ix1; ix++)
-                        {
-                            float dx = j.X0 + (ix + 0.5f) * mpp - t.X, dz = j.Z0 + (iz + 0.5f) * mpp - t.Z;
-                            float cov = Mathf.Clamp01((rr - Mathf.Sqrt(dx * dx + dz * dz)) / soft);
-                            int k = iz * n + ix;
-                            if (cov > d.Trees[k]) d.Trees[k] = cov;
-                        }
+                    Disc(d.Trees, n, j, t.X, t.Z, t.R * 1.3f, Mathf.Max(mpp, t.R * 0.45f));
+                    Disc(d.Near, n, j, t.X, t.Z, 9f, 3f);
                 }
             }
             finally { j.X0 = x0; j.Z0 = z0; }
@@ -506,6 +509,21 @@ namespace LivingMap
                     d.H[sz * gs + sx] = wg.GetBiomeHeight(bm, wx, wz, out mask, false, true) + HeightDelta(j, wx, wz);
                 }
             return d;
+        }
+
+        private static void Disc(float[] a, int n, DJob j, float x, float z, float r, float soft)
+        {
+            float mpp = j.Mpp;
+            int ix0 = Mathf.Max(0, Mathf.FloorToInt((x - r - j.X0) / mpp)), ix1 = Mathf.Min(n - 1, Mathf.CeilToInt((x + r - j.X0) / mpp));
+            int iz0 = Mathf.Max(0, Mathf.FloorToInt((z - r - j.Z0) / mpp)), iz1 = Mathf.Min(n - 1, Mathf.CeilToInt((z + r - j.Z0) / mpp));
+            for (int iz = iz0; iz <= iz1; iz++)
+                for (int ix = ix0; ix <= ix1; ix++)
+                {
+                    float dx = j.X0 + (ix + 0.5f) * mpp - x, dz = j.Z0 + (iz + 0.5f) * mpp - z;
+                    float cov = Mathf.Clamp01((r - Mathf.Sqrt(dx * dx + dz * dz)) / soft);
+                    int k = iz * n + ix;
+                    if (cov > a[k]) a[k] = cov;
+                }
         }
 
         private static byte[] RenderPortTile(DJob j, WorldGenerator wg)
@@ -562,7 +580,7 @@ namespace LivingMap
                         hgt = Sample(det.H, det.Gs, fx / DStep + 1f, fz / DStep + 1f);
                         float edit = HeightDelta(j, sxw, szw);
                         hvan += edit;
-                        if (j.LiveZones.Contains(ZoneOf(j, sxw, szw))) mX = det.Trees[di];
+                        if (j.LiveZones.Contains(ZoneOf(j, sxw, szw))) mX = Mathf.Max(mX * det.Near[di], det.Trees[di]);
                         else
                         {
                             int fk = FogIndex(j, sxw, szw);
