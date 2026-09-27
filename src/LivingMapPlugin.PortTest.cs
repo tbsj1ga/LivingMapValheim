@@ -71,13 +71,17 @@ namespace LivingMap
                 File.WriteAllBytes(Path.Combine(dir, "port_" + stamp + "_diff.png"), EncodePng(dimg, DTileSize));
                 log.AppendLine("port vs shader: mean difference " + (diff / (n * 3)).ToString("F2") + " of 255 per channel");
 
-                // which colours the shader receives converted to linear
-                bool keepM = s_portLinMaterial, keepG = s_portLinGlobals;
+                // which colour space the shader works in: material colours, textures, output
+                bool keepM = s_portLinMaterial, keepG = s_portLinGlobals, keepT = s_portLinTextures, keepO = s_portSrgbOut;
+                PortAssets keepA = _port;
+                PortAssets decoded = LoadPortAssets(_portMat, true), raw = LoadPortAssets(_portMat, false);
                 try
                 {
-                    for (int k = 0; k < 4; k++)
+                    s_portLinGlobals = false;
+                    for (int k = 0; k < 8; k++)
                     {
-                        s_portLinMaterial = (k & 1) != 0; s_portLinGlobals = (k & 2) != 0;
+                        s_portLinMaterial = (k & 1) != 0; s_portLinTextures = (k & 2) != 0; s_portSrgbOut = (k & 4) != 0;
+                        _port = s_portLinTextures ? decoded : raw;
                         DJob jk = new DJob();
                         jk.X0 = x0; jk.Z0 = z0; jk.Mpp = mpp;
                         jk.Port = SnapshotPort(x0, z0, size);
@@ -87,10 +91,12 @@ namespace LivingMap
                         double dk = 0;
                         for (int i = 0; i < n; i++)
                             for (int c = 0; c < 3; c++) dk += Math.Abs(gpu[i * 4 + c] * 255f - ck[i * 4 + c]);
-                        log.AppendLine("  material colours " + (s_portLinMaterial ? "linear" : "raw") + ", globals " + (s_portLinGlobals ? "linear" : "raw") + ": mean difference " + (dk / (n * 3)).ToString("F2"));
+                        string tag = "mat " + (s_portLinMaterial ? "lin" : "raw") + ", tex " + (s_portLinTextures ? "lin" : "raw") + ", out " + (s_portSrgbOut ? "srgb" : "raw");
+                        log.AppendLine("  " + tag + ": mean difference " + (dk / (n * 3)).ToString("F2"));
+                        File.WriteAllBytes(Path.Combine(dir, "port_" + stamp + "_cpu_" + k + ".png"), EncodePng(ck, DTileSize));
                     }
                 }
-                finally { s_portLinMaterial = keepM; s_portLinGlobals = keepG; }
+                finally { s_portLinMaterial = keepM; s_portLinGlobals = keepG; s_portLinTextures = keepT; s_portSrgbOut = keepO; _port = keepA; }
 
                 // which constant does what
                 Shader s = src.shader;

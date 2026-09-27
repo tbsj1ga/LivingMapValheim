@@ -81,6 +81,13 @@ namespace LivingMap
             return c <= 0.04045f ? c / 12.92f : Mathf.Pow((c + 0.055f) / 1.055f, 2.4f);
         }
 
+        private static byte RawByte(float c)
+        {
+            if (c <= 0f) return 0;
+            if (c >= 1f) return 255;
+            return (byte)(c * 255f + 0.5f);
+        }
+
         private static byte LinearToSrgbByte(float c)
         {
             if (c <= 0f) return 0;
@@ -92,6 +99,11 @@ namespace LivingMap
         // Every texture goes through an sRGB render texture and a readback, so textures that are
         // not readable (the pattern assets) are read the same way; RGB is decoded back to linear.
         private static PortTex ReadPattern(Texture t)
+        {
+            return ReadPattern(t, s_portLinTextures);
+        }
+
+        private static PortTex ReadPattern(Texture t, bool decode)
         {
             if (t == null) return null;
             if (s_srgbToLinear == null)
@@ -123,7 +135,9 @@ namespace LivingMap
             float[] r = new float[w * h], g = new float[w * h], b = new float[w * h], a = new float[w * h];
             for (int i = 0; i < px.Length; i++)
             {
-                r[i] = s_srgbToLinear[px[i].r]; g[i] = s_srgbToLinear[px[i].g]; b[i] = s_srgbToLinear[px[i].b]; a[i] = px[i].a / 255f;
+                if (decode) { r[i] = s_srgbToLinear[px[i].r]; g[i] = s_srgbToLinear[px[i].g]; b[i] = s_srgbToLinear[px[i].b]; }
+                else { r[i] = px[i].r / 255f; g[i] = px[i].g / 255f; b[i] = px[i].b / 255f; }
+                a[i] = px[i].a / 255f;
             }
             while (true)
             {
@@ -151,6 +165,19 @@ namespace LivingMap
         }
 
         // main thread; false when the map material is not the one this port was read from
+        private static PortAssets LoadPortAssets(Material m, bool decode)
+        {
+            PortAssets p = new PortAssets();
+            p.Background = ReadPattern(m.GetTexture("_BackgroundTex"), decode);
+            p.FogLayer = ReadPattern(m.GetTexture("_FogLayerTex"), decode);
+            p.Water = ReadPattern(m.GetTexture("_WaterTex"), decode);
+            p.Lava = ReadPattern(m.GetTexture("_lavaTex"), decode);
+            p.Mountain = ReadPattern(m.GetTexture("_MountainTex"), decode);
+            p.Cloud = ReadPattern(m.GetTexture("_CloudTex"), decode);
+            p.Forest = ReadPattern(m.GetTexture("_ForestTex"), decode);
+            return p;
+        }
+
         private bool EnsurePort()
         {
             if (_portFailed || _mm == null || _mm.m_mapImageLarge == null) return false;
@@ -208,7 +235,9 @@ namespace LivingMap
 
         // Material colours reach the shader converted to linear; the environment globals
         // (_SunColor, _AmbientColor, _SunFogColor) as they are - measured with 'livingmap port'.
-        internal static bool s_portLinMaterial = true, s_portLinGlobals = false;
+        internal static bool s_portLinMaterial = false, s_portLinGlobals = false;
+        // textures decoded from sRGB, result encoded to sRGB (the linear pipeline) or both raw
+        internal static bool s_portLinTextures = true, s_portSrgbOut = true;
         private static Color Lin(Color c) { return s_portLinMaterial ? c.linear : c; }
         private static Color LinG(Color c) { return s_portLinGlobals ? c.linear : c; }
 
@@ -258,7 +287,7 @@ namespace LivingMap
             int n = w * h;
             p.Height = new float[n]; p.MainR = new float[n]; p.MainG = new float[n]; p.MainB = new float[n];
             p.MaskX = new float[n]; p.MaskY = new float[n]; p.MaskZ = new float[n]; p.FogX = new float[n]; p.FogY = new float[n];
-            bool mainSrgb = main.isDataSRGB;
+            bool mainSrgb = main.isDataSRGB && s_portLinTextures;
             for (int i = 0; i < n; i++)
             {
                 p.Height[i] = hc[i].r;
@@ -461,7 +490,8 @@ namespace LivingMap
                     }
 
                     int o = (iz * n + ix) * 4;
-                    px[o] = LinearToSrgbByte(r); px[o + 1] = LinearToSrgbByte(g); px[o + 2] = LinearToSrgbByte(b);
+                    if (s_portSrgbOut) { px[o] = LinearToSrgbByte(r); px[o + 1] = LinearToSrgbByte(g); px[o + 2] = LinearToSrgbByte(b); }
+                    else { px[o] = RawByte(r); px[o + 1] = RawByte(g); px[o + 2] = RawByte(b); }
                     px[o + 3] = 255;
                 }
             }
