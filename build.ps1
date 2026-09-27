@@ -41,7 +41,7 @@ if (-not (Test-Path $core))    { throw "BepInEx core not found: $core (set BEPIN
 $refs = @(
     "assembly_valheim", "assembly_utils", "SoftReferenceableAssets",
     "UnityEngine", "UnityEngine.CoreModule", "UnityEngine.PhysicsModule",
-    "UnityEngine.UI", "UnityEngine.UIModule",
+    "UnityEngine.UI", "UnityEngine.UIModule", "UnityEngine.ImageConversionModule",
     "netstandard", "mscorlib", "System", "System.Core"
 ) | ForEach-Object { "/r:$managed\$_.dll" }
 $refs += "/r:$core\BepInEx.dll"

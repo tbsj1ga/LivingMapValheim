@@ -227,10 +227,10 @@ namespace LivingMap
             p.LightDir = new Vector3(ld.x, ld.y, ld.z).normalized;
             p.NormalWidth = m.GetFloat("_normalWidth"); p.NormalIntensity = m.GetFloat("_normalIntensity");
             p.Zoom = m.GetFloat("_zoom"); p.SharedFade = m.GetFloat("_SharedFade");
-            Vector4 co = Shader.GetGlobalVector("_CloudOffset");
-            p.CloudX = co.x; p.CloudZ = co.z;
-            float t = Time.timeSinceLevelLoad;
-            p.TimeX = t / 20f; p.TimeY = t;
+            // one fixed moment for every tile: the water, fog edge, mist and clouds move with
+            // time in the shader, and tiles drawn at different moments would not meet
+            p.CloudX = 0f; p.CloudZ = 0f;
+            p.TimeX = 0f; p.TimeY = 0f;
 
             // the vanilla textures around the tile: the normal reaches _normalWidth back, the
             // fog wobble 0.0004 either way, plus the bilinear neighbour
