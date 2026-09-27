@@ -164,7 +164,7 @@ in 0.15.0 are carried over from the old file on the first start.
 
 | Setting | Meaning |
 |---|---|
-| `MapTextureScale` | 1 / 2 / 4 / 8 → 2048 / 4096 / 8192 / 16384 pixels, i.e. 12 / 6 / 3 / 1.5 m per pixel; 67 MB / 268 MB / 1 GB of video memory. Default 2 (4 before 0.16.0). It is the resolution of the map texture itself — the zoomed-out map and the minimap; close up the detail layer draws finer. Takes effect on the next world load. |
+| `MapTextureScale` | 1 / 2 / 4 / 8 → 2048 / 4096 / 8192 / 16384 pixels, i.e. 12 / 6 / 3 / 1.5 m per pixel; 67 MB / 268 MB / 1 GB of video memory. Default 2 (4 before 0.16.0). It decides how crisp **buildings and paths** are; the terrain underneath (coastlines, biome colours, the forest pattern) is the vanilla 12 m texture stretched to this size and does not get any more detailed; close up, the detail layer (`08 Detail`) draws the terrain itself. Takes effect on the next world load. |
 | `MinPieceSizeMeters` | Smallest size a build piece is drawn at, in metres. Metres on purpose, so a sharper texture does not make small pieces fainter. |
 | `BuildingOutline`, `OutlineWidthMeters` | A dark halo around buildings, so a house separates from the levelled ground under it, and how far it extends. |
 | `TerrainGridSize` | Metres per cell of the path layer. The terrain records hold 1 m; 2 is plenty up to `MapTextureScale` 4, at 8 the difference shows. Halving it means four times the cells in memory and in the file. Changing it drops the stored path cells (the file records the step they were collected at); the host has them back within one pass. |

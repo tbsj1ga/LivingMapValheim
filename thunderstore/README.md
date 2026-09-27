@@ -1,74 +1,64 @@
 # LivingMap
 
-Client-side map mod for Valheim. It draws onto the map texture itself, so everything
-below is part of the map: it pans, zooms, hides under the fog of war and under every
-marker, on the big map and the minimap alike.
+**The vanilla map shows the world as it was generated. LivingMap shows the world as you've
+changed it.**
+
+Your bases, roads, fields and the forest you've cut down appear on the map and the minimap,
+right where they are, and update as you keep building.
 
 ![The big map: vanilla on the left, LivingMap on the right - the base, its paved circle, paths and the cleared forest around it](https://raw.githubusercontent.com/tbsj1ga/LivingMapValheim/main/docs/media/map-compare.png)
 
 ![The minimap: vanilla on the left, LivingMap on the right](https://raw.githubusercontent.com/tbsj1ga/LivingMapValheim/main/docs/media/minimap-compare.png)
 
-- **Buildings**, coloured by material (wood, stone, iron, marble, ...), with a dark
-  outline so a house separates from the levelled ground it stands on.
-- **Hoe-made paths**: dirt paths, paving and cultivated soil.
-- **Forest that is gone**: where the vanilla map still shows woods but the trees have
-  been cut, the forest pattern is erased. Where you planted a grove, it appears.
-- Sharper map texture: 6 m per pixel by default (vanilla is 12 m), up to 1.5 m.
-- **Detail layer when zoomed in:** below about 3 km across, a picture of 4 / 2 / 1 m per
-  pixel fades in — shaded relief with the ground players levelled, water by depth, trees
-  and rocks where they stand, buildings as rotated boxes. Drawn on background threads, only
-  what is on screen, about 24 MB of video memory.
+## What you'll see
 
-Everything is read from the game's object database rather than from what is loaded
-around you. On the host (single player, or the player hosting) that is the entire
-world at once, and whatever is torn down disappears from the map. On a client of a
-dedicated server it is everything the server has sent you this session, remembered
-between sessions in a file per world.
+- **Your buildings**, coloured by material: wood, stone, iron, marble…
+- **Roads and fields**: hoe paths, paving and farmland.
+- **Cleared forest**: where you've chopped the trees down, the map stops showing forest.
+  Plant a grove and it appears.
+- **Zoom in for detail**: below about 3 km across, a detailed picture fades in — shaded
+  relief with the ground players levelled, water by depth, trees and rocks where they
+  stand, buildings as rotated boxes, down to 1 m per pixel.
+- Everything respects the fog of war and sits under your pins and markers, on the big map
+  and the minimap.
 
-No Harmony patches, nothing sent over the network, no effect on players without the
-mod. If anything fails, the mod switches that layer off and leaves the vanilla map as
-it was.
+## What it doesn't do
 
-## Settings
+- It doesn't change how the world looks from afar: zoomed out, coastlines, mountains and
+  biome colours stay exactly as in vanilla.
+- It doesn't reveal unexplored areas: if you haven't explored it, you won't see it.
 
-`BepInEx\config\j1ga.livingmap.cfg`, grouped into General, Layers, Scanning, Rendering,
-Colors, Advanced and Debug. The ones worth knowing:
+## Multiplayer
 
-| Setting | Meaning |
-|---|---|
-| `MapTextureScale` | 1 / 2 / 4 / 8 = 12 / 6 / 3 / 1.5 m per pixel; 16 MB / 67 MB / 268 MB / 1 GB of video memory. Default 2. Change needs a world re-enter. |
-| `DetailEnabled`, `DetailStartSpanMeters`, `DetailFinestMetersPerPixel` | The detail layer when zoomed in: on/off, from how many metres across, finest level. |
-| `DetailRelief`, `DetailObjects` | Hill shading strength; trees, rocks and rotated buildings from the object database. |
-| `ShowBuildings`, `ShowPaths`, `ShowClearedForest`, `ShowPlantedForest` | The layers. |
-| `RespectFog` | Only draw on explored ground. |
-| `MinPieceSizeMeters` | Smallest size a build piece is drawn at, in metres. |
-| `ClearedForestRadius`, `ClearedForestMaxTrees` | How empty an area must be to count as cleared forest. |
-| `PlantedForestMinTrees` | Trees per 12 x 12 m map pixel to count as a planted grove. |
-| `Debug` | Verbose log with timings. |
+- Only you need it: nothing is sent to other players, and friends without the mod aren't
+  affected. The server doesn't need it.
+- As the host or in single player you see every building in the world at once.
+- On a dedicated server you see what's around the places you've visited; the map remembers
+  them between sessions.
 
-Colours are configurable per material and per path type.
+## Settings you might want
+
+Everything works out of the box. If you want to tweak it (in
+`BepInEx/config/j1ga.livingmap.cfg`, or in game with ConfigurationManager, F1):
+
+- **Each layer** — buildings, roads, cleared and planted forest — can be turned off.
+- **Colours** of every material and road type.
+- **`MapTextureScale`** — how crisp **buildings and roads** look (not the terrain):
+  1 / 2 / 4 / 8. Higher values use more video memory (2 ≈ 70 MB, 4 ≈ 270 MB); with the detail layer 2 is plenty.
+  Takes effect when you re-enter the world.
+- **Detail layer** (section `08 Detail`): on/off, from how far in it appears, the finest level,
+  relief strength, trees and buildings from the world.
 
 ## Compatibility
 
-Tested with **Valheim 1.0.16** (network version 40), **BepInEx 5.4.23.5** (BepInExPack_Valheim 5.4.2351).
-
-## Who needs it
-
-| Who | What |
-|---|---|
-| Player with the mod | sees buildings, paths and forest changes on their own map |
-| Host / single player | the same, for the whole world at once |
-| Dedicated server | not needed |
-| Players without the mod | unaffected — nothing is sent over the network |
-
-## Known conflicts
-
-- Other mods that replace or resize the map texture or its shader may clash with `MapTextureScale` — set it to 1 to rule this out.
-- SatelliteMap (Qua8ion) draws its own picture over the big map when zoomed in; the two have not been tested together.
+Tested with **Valheim 1.0.16**, **BepInEx 5.4.23.5** (BepInExPack_Valheim 5.4.2351). Mods
+that replace or resize the map texture may clash with it — set `MapTextureScale` to 1 to
+rule that out.
 
 ## Bugs and feedback
 
-GitHub Issues: https://github.com/tbsj1ga/LivingMapValheim/issues — please attach `BepInEx/LogOutput.log`.
+GitHub Issues: https://github.com/tbsj1ga/LivingMapValheim/issues — please attach
+`BepInEx/LogOutput.log`.
 
 ## More mods by j1gA
 
@@ -79,8 +69,7 @@ GitHub Issues: https://github.com/tbsj1ga/LivingMapValheim/issues — please att
 | [![ExtendedBosses](https://raw.githubusercontent.com/tbsj1ga/ExtendedBossesValheim/main/docs/media/icon-128.png)](https://thunderstore.io/c/valheim/p/j1gA/ExtendedBosses/) | **[ExtendedBosses](https://thunderstore.io/c/valheim/p/j1gA/ExtendedBosses/)** — Raid-style boss fights: phases, adds, nests, shields, marks — built from vanilla parts. |
 | [![HostOwner](https://raw.githubusercontent.com/tbsj1ga/HostOwnerValheim/main/docs/media/icon-128.png)](https://thunderstore.io/c/valheim/p/j1gA/HostOwner/) | **[HostOwner](https://thunderstore.io/c/valheim/p/j1gA/HostOwner/)** — The host takes ownership of stations and bosses near it, so its mods work for everyone. |
 
-Source, documentation and the changelog: https://github.com/tbsj1ga/LivingMapValheim
+Source, full documentation and the changelog: https://github.com/tbsj1ga/LivingMapValheim
 
-*Developed with the help of an AI assistant (Claude by Anthropic); the design
-decisions, verification against the game code and in-game testing are the
-author's.*
+*Developed with the help of an AI assistant (Claude by Anthropic); the design decisions,
+verification against the game code and in-game testing are the author's.*

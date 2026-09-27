@@ -2,7 +2,7 @@
   "name": "LivingMap",
   "version_number": "0.0.0",
   "website_url": "https://github.com/tbsj1ga/LivingMapValheim",
-  "description": "Buildings, hoe-made paths, clear-cuts and planted groves on the map and minimap. Reads the object database, so the host sees the whole world at once. Client-side, no Harmony patches.",
+  "description": "Your bases, roads, fields and cleared forest appear on the map and minimap as you build. The vanilla map shows the world as generated - LivingMap shows it as you've changed it. Client-side, no server needed.",
   "dependencies": [
     "denikson-BepInExPack_Valheim-5.4.2350"
   ]
