@@ -1,0 +1,482 @@
+using System;
+using System.Collections.Generic;
+using System.Reflection;
+using BepInEx.Configuration;
+using UnityEngine;
+
+namespace LivingMap
+{
+    // The game's map shader (Custom/mapshader) ported to the detail tiles, so a zoomed-in tile
+    // looks like the vanilla map: paper, forest stamps, water lines, mountains, lava, mist,
+    // clouds and fog, lit by the same sun and ambient colours the environment sets for the time
+    // of day. Read from the shader's DX11 bytecode; every pattern is sampled at the same
+    // whole-map coordinate as in the shader, so it keeps its size and place when zooming in.
+    // Not ported: the coordinate snapping (a zoom-dependent pixel grid), the animation of water
+    // and clouds (a tile is a snapshot) and the space picture past the edge of the world.
+    //
+    // Step 1: the world data (colour, height, forest/mist/lava mask, fog) is taken from the
+    // vanilla map textures, so a tile must match the vanilla map under it.
+    public partial class LivingMapPlugin
+    {
+        private ConfigEntry<string> _cfgDetailStyle;
+
+        private void BindPortConfig()
+        {
+            _cfgDetailStyle = Config.Bind(SecDetail, "DetailStyle", "Vanilla",
+                new ConfigDescription("How the detailed picture is drawn. Vanilla: the game's own map look (paper, forest stamps, water lines, time-of-day light). Legacy: the earlier flat shaded picture.",
+                    new AcceptableValueList<string>("Vanilla", "Legacy")));
+        }
+
+        private bool PortWanted { get { return _cfgDetailStyle != null && _cfgDetailStyle.Value == "Vanilla"; } }
+
+        // ------------------------------------------------------------------
+        // pattern textures, read once per map
+        // ------------------------------------------------------------------
+        private class PortTex
+        {
+            public int Levels;
+            public int[] W, H;
+            public float[][] R, G, B, A;     // linear colour per mip level
+
+            // bilinear, repeating, from the level that fits 'texelsPerPixel'
+            public void Sample(float u, float v, float lod, out float r, out float g, out float b, out float a)
+            {
+                int l = Mathf.Clamp((int)(lod + 0.5f), 0, Levels - 1);
+                int w = W[l], h = H[l];
+                float x = u * w - 0.5f, y = v * h - 0.5f;
+                int x0 = Mathf.FloorToInt(x), y0 = Mathf.FloorToInt(y);
+                float tx = x - x0, ty = y - y0;
+                x0 %= w; if (x0 < 0) x0 += w;
+                y0 %= h; if (y0 < 0) y0 += h;
+                int x1 = x0 + 1 == w ? 0 : x0 + 1, y1 = y0 + 1 == h ? 0 : y0 + 1;
+                int i00 = y0 * w + x0, i10 = y0 * w + x1, i01 = y1 * w + x0, i11 = y1 * w + x1;
+                float w00 = (1f - tx) * (1f - ty), w10 = tx * (1f - ty), w01 = (1f - tx) * ty, w11 = tx * ty;
+                float[] cr = R[l], cg = G[l], cb = B[l], ca = A[l];
+                r = cr[i00] * w00 + cr[i10] * w10 + cr[i01] * w01 + cr[i11] * w11;
+                g = cg[i00] * w00 + cg[i10] * w10 + cg[i01] * w01 + cg[i11] * w11;
+                b = cb[i00] * w00 + cb[i10] * w10 + cb[i01] * w01 + cb[i11] * w11;
+                a = ca[i00] * w00 + ca[i10] * w10 + ca[i01] * w01 + ca[i11] * w11;
+            }
+
+            // mip level for a pattern tiled 'repeat' times over the world, drawn at 'mpp' m/px
+            public float Lod(float repeat, float mpp, float world)
+            {
+                float texelsPerPixel = repeat * W[0] * mpp / world;
+                return texelsPerPixel <= 1f ? 0f : Mathf.Log(texelsPerPixel, 2f);
+            }
+        }
+
+        private class PortAssets
+        {
+            public PortTex Background, FogLayer, Water, Lava, Mountain, Cloud, Forest;
+        }
+
+        private PortAssets _port;
+        private Material _portMat;
+        private bool _portFailed;
+        private static float[] s_srgbToLinear;
+
+        private static float SrgbToLinear(float c)
+        {
+            return c <= 0.04045f ? c / 12.92f : Mathf.Pow((c + 0.055f) / 1.055f, 2.4f);
+        }
+
+        private static byte LinearToSrgbByte(float c)
+        {
+            if (c <= 0f) return 0;
+            if (c >= 1f) return 255;
+            float s = c <= 0.0031308f ? c * 12.92f : 1.055f * Mathf.Pow(c, 1f / 2.4f) - 0.055f;
+            return (byte)(s * 255f + 0.5f);
+        }
+
+        // Every texture goes through an sRGB render texture and a readback, so textures that are
+        // not readable (the pattern assets) are read the same way; RGB is decoded back to linear.
+        private static PortTex ReadPattern(Texture t)
+        {
+            if (t == null) return null;
+            if (s_srgbToLinear == null)
+            {
+                s_srgbToLinear = new float[256];
+                for (int i = 0; i < 256; i++) s_srgbToLinear[i] = SrgbToLinear(i / 255f);
+            }
+            int w = t.width, h = t.height;
+            RenderTexture rt = RenderTexture.GetTemporary(w, h, 0, RenderTextureFormat.ARGB32, RenderTextureReadWrite.sRGB);
+            RenderTexture prev = RenderTexture.active;
+            Texture2D read = new Texture2D(w, h, TextureFormat.RGBA32, false, false);
+            try
+            {
+                Graphics.Blit(t, rt);
+                RenderTexture.active = rt;
+                read.ReadPixels(new Rect(0, 0, w, h), 0, 0, false);
+                read.Apply(false);
+            }
+            finally
+            {
+                RenderTexture.active = prev;
+                RenderTexture.ReleaseTemporary(rt);
+            }
+            Color32[] px = read.GetPixels32();
+            UnityEngine.Object.Destroy(read);
+
+            List<float[]> lr = new List<float[]>(), lg = new List<float[]>(), lb = new List<float[]>(), la = new List<float[]>();
+            List<int> lw = new List<int>(), lh = new List<int>();
+            float[] r = new float[w * h], g = new float[w * h], b = new float[w * h], a = new float[w * h];
+            for (int i = 0; i < px.Length; i++)
+            {
+                r[i] = s_srgbToLinear[px[i].r]; g[i] = s_srgbToLinear[px[i].g]; b[i] = s_srgbToLinear[px[i].b]; a[i] = px[i].a / 255f;
+            }
+            while (true)
+            {
+                lr.Add(r); lg.Add(g); lb.Add(b); la.Add(a); lw.Add(w); lh.Add(h);
+                if (w <= 1 && h <= 1) break;
+                int nw = Mathf.Max(1, w / 2), nh = Mathf.Max(1, h / 2);
+                float[] nr = new float[nw * nh], ng = new float[nw * nh], nb = new float[nw * nh], na = new float[nw * nh];
+                for (int y = 0; y < nh; y++)
+                    for (int x = 0; x < nw; x++)
+                    {
+                        int x0 = Mathf.Min(2 * x, w - 1), x1 = Mathf.Min(2 * x + 1, w - 1);
+                        int y0 = Mathf.Min(2 * y, h - 1), y1 = Mathf.Min(2 * y + 1, h - 1);
+                        int o = y * nw + x;
+                        nr[o] = (r[y0 * w + x0] + r[y0 * w + x1] + r[y1 * w + x0] + r[y1 * w + x1]) * 0.25f;
+                        ng[o] = (g[y0 * w + x0] + g[y0 * w + x1] + g[y1 * w + x0] + g[y1 * w + x1]) * 0.25f;
+                        nb[o] = (b[y0 * w + x0] + b[y0 * w + x1] + b[y1 * w + x0] + b[y1 * w + x1]) * 0.25f;
+                        na[o] = (a[y0 * w + x0] + a[y0 * w + x1] + a[y1 * w + x0] + a[y1 * w + x1]) * 0.25f;
+                    }
+                r = nr; g = ng; b = nb; a = na; w = nw; h = nh;
+            }
+            PortTex p = new PortTex();
+            p.Levels = lr.Count; p.R = lr.ToArray(); p.G = lg.ToArray(); p.B = lb.ToArray(); p.A = la.ToArray();
+            p.W = lw.ToArray(); p.H = lh.ToArray();
+            return p;
+        }
+
+        // main thread; false when the map material is not the one this port was read from
+        private bool EnsurePort()
+        {
+            if (_portFailed || _mm == null || _mm.m_mapImageLarge == null) return false;
+            Material m = _mm.m_mapImageLarge.material;
+            if (m == null || m.shader == null || m.shader.name != "Custom/mapshader")
+            {
+                if (!_portFailed) Logger.LogWarning("The map shader is not Custom/mapshader; the vanilla detail style is off.");
+                _portFailed = true;
+                return false;
+            }
+            if (_port != null && _portMat == m) return true;
+            try
+            {
+                PortAssets p = new PortAssets();
+                p.Background = ReadPattern(m.GetTexture("_BackgroundTex"));
+                p.FogLayer = ReadPattern(m.GetTexture("_FogLayerTex"));
+                p.Water = ReadPattern(m.GetTexture("_WaterTex"));
+                p.Lava = ReadPattern(m.GetTexture("_lavaTex"));
+                p.Mountain = ReadPattern(m.GetTexture("_MountainTex"));
+                p.Cloud = ReadPattern(m.GetTexture("_CloudTex"));
+                p.Forest = ReadPattern(m.GetTexture("_ForestTex"));
+                if (p.Background == null || p.FogLayer == null || p.Water == null || p.Lava == null || p.Mountain == null || p.Cloud == null || p.Forest == null)
+                    throw new Exception("a pattern texture of the map material is missing");
+                _port = p; _portMat = m;
+                return true;
+            }
+            catch (Exception e)
+            {
+                _portFailed = true;
+                Logger.LogError("[detail vanilla style] " + e + "\nThe vanilla detail style is off for this session.");
+                return false;
+            }
+        }
+
+        // ------------------------------------------------------------------
+        // per job snapshot
+        // ------------------------------------------------------------------
+        private class PortJob
+        {
+            public PortAssets A;
+            public float World;                  // metres the whole map texture spans
+            public int TexSize;
+            // material and global values (colours linear)
+            public Color Forest, Water, WaterDeep, WaterAsh, WaterAshDeep, Fog, Light, Ambient, Sun, AmbientG, Lava1, Lava2;
+            public Vector3 LightDir;
+            public float NormalWidth, NormalIntensity, Zoom, SharedFade, CloudX, CloudZ, TimeX, TimeY;
+            // world data around the tile, on the vanilla map grid (step 1)
+            public int X0, Z0, W, H;
+            public float[] Height, MainR, MainG, MainB, MaskX, MaskY, MaskZ, FogX, FogY;
+        }
+
+        private static readonly FieldInfo s_fiHeightTex = typeof(Minimap).GetField("m_heightTexture", BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic);
+        private static readonly FieldInfo s_fiForestTex = typeof(Minimap).GetField("m_forestMaskTexture", BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic);
+        private static readonly FieldInfo s_fiFogTex = typeof(Minimap).GetField("m_fogTexture", BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic);
+
+        private static Color Lin(Color c) { return c.linear; }
+
+        private PortJob SnapshotPort(float x0, float z0, float size)
+        {
+            if (!EnsurePort()) return null;
+            Material m = _portMat;
+            PortJob p = new PortJob();
+            p.A = _port;
+            p.TexSize = _texSize;
+            p.World = _texSize * _pixelSize;
+            p.Forest = Lin(m.GetColor("_ForestColor"));
+            p.Water = Lin(m.GetColor("_WaterColor")); p.WaterDeep = Lin(m.GetColor("_WaterColorDeep"));
+            p.WaterAsh = Lin(m.GetColor("_WaterColorAshlands")); p.WaterAshDeep = Lin(m.GetColor("_WaterColorAshlandsDeep"));
+            p.Fog = Lin(m.GetColor("_FogColor"));
+            p.Light = Lin(m.GetColor("_lightColor")); p.Ambient = Lin(m.GetColor("_ambientLightColor"));
+            p.Lava1 = Lin(m.GetColor("_lavaColor1")); p.Lava2 = Lin(m.GetColor("_lavaColor2"));
+            p.Sun = Lin(Shader.GetGlobalColor("_SunColor")); p.AmbientG = Lin(Shader.GetGlobalColor("_AmbientColor"));
+            Vector4 ld = m.GetVector("_lightDir");
+            p.LightDir = new Vector3(ld.x, ld.y, ld.z).normalized;
+            p.NormalWidth = m.GetFloat("_normalWidth"); p.NormalIntensity = m.GetFloat("_normalIntensity");
+            p.Zoom = m.GetFloat("_zoom"); p.SharedFade = m.GetFloat("_SharedFade");
+            Vector4 co = Shader.GetGlobalVector("_CloudOffset");
+            p.CloudX = co.x; p.CloudZ = co.z;
+            float t = Time.timeSinceLevelLoad;
+            p.TimeX = t / 20f; p.TimeY = t;
+
+            // the vanilla textures around the tile: the normal reaches _normalWidth back, the
+            // fog wobble 0.0004 either way, plus the bilinear neighbour
+            Texture2D main = _vanillaTex;
+            Texture2D height = s_fiHeightTex != null ? s_fiHeightTex.GetValue(_mm) as Texture2D : null;
+            Texture2D mask = s_fiForestTex != null ? s_fiForestTex.GetValue(_mm) as Texture2D : null;
+            Texture2D fog = s_fiFogTex != null ? s_fiFogTex.GetValue(_mm) as Texture2D : null;
+            if (main == null || height == null || mask == null || fog == null) return null;
+            int margin = Mathf.CeilToInt((p.NormalWidth + 0.0005f) * _texSize) + 2;
+            float half = _texSize * 0.5f;
+            int px0 = Mathf.Clamp(Mathf.FloorToInt(x0 / _pixelSize + half) - margin, 0, _texSize - 1);
+            int pz0 = Mathf.Clamp(Mathf.FloorToInt(z0 / _pixelSize + half) - margin, 0, _texSize - 1);
+            int px1 = Mathf.Clamp(Mathf.CeilToInt((x0 + size) / _pixelSize + half) + margin, 0, _texSize - 1);
+            int pz1 = Mathf.Clamp(Mathf.CeilToInt((z0 + size) / _pixelSize + half) + margin, 0, _texSize - 1);
+            int w = px1 - px0 + 1, h = pz1 - pz0 + 1;
+            p.X0 = px0; p.Z0 = pz0; p.W = w; p.H = h;
+            Color[] hc = height.GetPixels(px0, pz0, w, h);
+            Color[] mc = main.GetPixels(px0, pz0, w, h);
+            Color[] kc = mask.GetPixels(px0, pz0, w, h);
+            Color[] fc = fog.GetPixels(px0, pz0, w, h);
+            int n = w * h;
+            p.Height = new float[n]; p.MainR = new float[n]; p.MainG = new float[n]; p.MainB = new float[n];
+            p.MaskX = new float[n]; p.MaskY = new float[n]; p.MaskZ = new float[n]; p.FogX = new float[n]; p.FogY = new float[n];
+            bool mainSrgb = main.isDataSRGB;
+            for (int i = 0; i < n; i++)
+            {
+                p.Height[i] = hc[i].r;
+                Color c = mainSrgb ? mc[i].linear : mc[i];
+                p.MainR[i] = c.r; p.MainG[i] = c.g; p.MainB[i] = c.b;
+                p.MaskX[i] = kc[i].r; p.MaskY[i] = kc[i].g; p.MaskZ[i] = kc[i].b;
+                p.FogX[i] = fc[i].r; p.FogY[i] = fc[i].g;
+            }
+            return p;
+        }
+
+        // bilinear, clamped, on the snapshot grid; (u, v) in whole-map coordinates
+        private static float Data(PortJob p, float[] a, float u, float v)
+        {
+            float x = u * p.TexSize - 0.5f - p.X0, y = v * p.TexSize - 0.5f - p.Z0;
+            int x0 = Mathf.Clamp(Mathf.FloorToInt(x), 0, p.W - 2), y0 = Mathf.Clamp(Mathf.FloorToInt(y), 0, p.H - 2);
+            float tx = Mathf.Clamp01(x - x0), ty = Mathf.Clamp01(y - y0);
+            int i = y0 * p.W + x0;
+            float a0 = a[i] + (a[i + 1] - a[i]) * tx;
+            float a1 = a[i + p.W] + (a[i + p.W + 1] - a[i + p.W]) * tx;
+            return a0 + (a1 - a0) * ty;
+        }
+
+        private static float Smooth01(float x) { x = Mathf.Clamp01(x); return x * x * (3f - 2f * x); }
+
+        // ------------------------------------------------------------------
+        // the shader, per pixel (background thread)
+        // ------------------------------------------------------------------
+        private static byte[] RenderPortTile(DJob j)
+        {
+            PortJob p = j.Port;
+            PortAssets A = p.A;
+            int n = DTileSize;
+            byte[] px = new byte[n * n * 4];
+            float mpp = j.Mpp, world = p.World;
+            float lodBg5 = A.Background.Lod(5f, mpp, world), lodBg40 = A.Background.Lod(40f, mpp, world);
+            float lodFogL = A.FogLayer.Lod(5f, mpp, world), lodWater = A.Water.Lod(80f, mpp, world);
+            float lodLava40 = A.Lava.Lod(40f, mpp, world), lodLava80 = A.Lava.Lod(80f, mpp, world), lodLava60 = A.Lava.Lod(60f, mpp, world);
+            float lodMount = A.Mountain.Lod(70f, mpp, world), lodForest = A.Forest.Lod(150f, mpp, world);
+            float lodMist15 = A.Cloud.Lod(15f, mpp, world), lodMist20 = A.Cloud.Lod(20f, mpp, world), lodCloud = A.Cloud.Lod(7f, mpp, world);
+            float tx = p.TimeX, ty = p.TimeY;
+            float s5x = tx * 20f, s5y = tx * 19.08246f, s5z = tx * 16.86f, s5w = tx * 18.882462f;
+            float rotA = ty * 0.0005f, rotB = ty * -0.00087f;
+            float rsA = Mathf.Sin(rotA), rcA = Mathf.Cos(rotA), rsB = Mathf.Sin(rotB), rcB = Mathf.Cos(rotB);
+            float coastWidth = Mathf.Clamp(p.Zoom * 50f, 2f, 10f);
+            Color lt = p.Light, amb = p.Ambient, sun = p.Sun, ambG = p.AmbientG;
+            float laR = lt.r + amb.r, laG = lt.g + amb.g, laB = lt.b + amb.b;
+            float nw = p.NormalWidth;
+            float r, g, b, a;
+
+            for (int iz = 0; iz < n; iz++)
+            {
+                float wz = j.Z0 + (iz + 0.5f) * mpp;
+                float v = wz / world + 0.5f;
+                for (int ix = 0; ix < n; ix++)
+                {
+                    float wx = j.X0 + (ix + 0.5f) * mpp;
+                    float u = wx / world + 0.5f;
+
+                    float flR, flG, flB, flA;
+                    A.FogLayer.Sample(u * 5f, v * 5f, lodFogL, out flR, out flG, out flB, out flA);
+                    float mX = Data(p, p.MaskX, u, v), mY = Data(p, p.MaskY, u, v), mZ = Data(p, p.MaskZ, u, v);
+                    float hgt = Data(p, p.Height, u, v);
+
+                    // fog, sampled with a wobble
+                    float f1 = Data(p, p.FogX, u + Mathf.Sin(v * 1700f + s5x) * 0.0004f, v + Mathf.Cos(u * 1200f + s5y) * 0.0004f);
+                    float qu = u + Mathf.Cos(v * 1846f - s5z) * 0.0004f, qv = v + Mathf.Sin(u * 1246.8f - s5w) * 0.0004f;
+                    float f2x = Data(p, p.FogX, qu, qv), f2y = Data(p, p.FogY, qu, qv);
+
+                    // normal from the height texture
+                    bool land = hgt >= 29.5f;
+                    float nx = 0f, ny = 1f, nz = 0f;
+                    if (land)
+                    {
+                        float dx = Data(p, p.Height, u - nw, v) - hgt, dz = Data(p, p.Height, u, v - nw) - hgt;
+                        float len = Mathf.Sqrt(dx * dx + p.NormalIntensity * p.NormalIntensity + dz * dz);
+                        nx = dx / len; ny = p.NormalIntensity / len; nz = dz / len;
+                    }
+                    float diff = Mathf.Max(0f, nx * p.LightDir.x + ny * p.LightDir.y + nz * p.LightDir.z);
+                    float litR = diff * lt.r * sun.r + amb.r * ambG.r;
+                    float litG = diff * lt.g * sun.g + amb.g * ambG.g;
+                    float litB = diff * lt.b * sun.b + amb.b * ambG.b;
+
+                    float cR, cG, cB, cA;
+                    if (!land)
+                    {
+                        float bgR, bgG, bgB, bgA;
+                        A.Background.Sample(u * 5f, v * 5f, lodBg5, out bgR, out bgG, out bgB, out bgA);
+                        float dt = Mathf.Clamp01((hgt - 9.5f) * 0.05f);
+                        float ash = Mathf.Clamp01((hgt - 29f) * -0.071429f);
+                        float asR = p.WaterAshDeep.r + (p.WaterAsh.r - p.WaterAshDeep.r) * dt, asG = p.WaterAshDeep.g + (p.WaterAsh.g - p.WaterAshDeep.g) * dt;
+                        float asB = p.WaterAshDeep.b + (p.WaterAsh.b - p.WaterAshDeep.b) * dt, asA = p.WaterAshDeep.a + (p.WaterAsh.a - p.WaterAshDeep.a) * dt;
+                        float wR = p.WaterDeep.r + (p.Water.r - p.WaterDeep.r) * dt, wG = p.WaterDeep.g + (p.Water.g - p.WaterDeep.g) * dt;
+                        float wB = p.WaterDeep.b + (p.Water.b - p.WaterDeep.b) * dt, wA = p.WaterDeep.a + (p.Water.a - p.WaterDeep.a) * dt;
+                        float k = Smooth01(mZ * 20f);
+                        wR += (asR - wR) * k; wG += (asG - wG) * k; wB += (asB - wB) * k; wA += (asA - wA) * k;
+                        float pR = flR + (bgR - flR) * 0.5f, pG = flG + (bgG - flG) * 0.5f, pB = flB + (bgB - flB) * 0.5f, pA = flA + (bgA - flA) * 0.5f;
+                        float baseR = pR * wR, baseG = pG * wG, baseB = pB * wB, baseA = pA * wA;
+                        float wu = u * 80f + tx * 0.1f, wv = v * 80f + Mathf.Sin(u * v * 4000f + s5x) * 0.01f;
+                        float lR, lG, lB, lA;
+                        A.Water.Sample(wu, wv, lodWater, out lR, out lG, out lB, out lA);
+                        float wf = (1f - ash) * lA;
+                        cR = baseR + (lR - baseR) * wf; cG = baseG + (lG - baseG) * wf; cB = baseB + (lB - baseB) * wf; cA = baseA + (lA - baseA) * wf;
+                    }
+                    else
+                    {
+                        float bgR, bgG, bgB, bgA;
+                        A.Background.Sample(u * 40f, v * 40f, lodBg40, out bgR, out bgG, out bgB, out bgA);
+                        float mR = Data(p, p.MainR, u, v), mG = Data(p, p.MainG, u, v), mB = Data(p, p.MainB, u, v);
+                        float mx = Mathf.Max(bgR, Mathf.Max(bgG, bgB)), mn = Mathf.Min(bgR, Mathf.Min(bgG, bgB));
+                        if (mx - mn >= 0.0001f) { bgR = mx; bgG = mx; bgB = mx; }
+                        float gR = mR * bgR, gG = mG * bgG, gB = mB * bgB, gA = bgA;   // main alpha is 1
+                        cR = gR * 1.5f; cG = gG * 1.5f; cB = gB * 1.5f; cA = gA * 1.5f;
+
+                        float hl = Mathf.Clamp01((hgt - 30.5f) * 0.2f);
+                        float lv0, d1, d2, d3;
+                        A.Lava.Sample(u * 40f, v * 40f, lodLava40, out lv0, out d1, out d2, out d3);
+                        float pu = u - 0.5f, pv = v - 0.5f;
+                        float ra, rb;
+                        A.Lava.Sample((rcA * pu + rsA * pv + 0.5f) * 80f, (rcA * pv - rsA * pu + 0.5f) * 80f, lodLava80, out ra, out d1, out d2, out d3);
+                        A.Lava.Sample((rcB * pu + rsB * pv + 0.5f) * 60f, (rcB * pv - rsB * pu + 0.5f) * 60f, lodLava60, out rb, out d1, out d2, out d3);
+                        float o1 = ra <= 0.5f ? 2f * ra * rb : 1f - 2f * (1f - ra) * (1f - rb);
+                        float o2 = lv0 <= 0.5f ? 2f * o1 * lv0 : 1f - 2f * (1f - lv0) * (1f - o1);
+                        o2 = o2 > 0f ? Mathf.Pow(o2, 2.5f) : 0f;
+                        float lcR = p.Lava1.r + (p.Lava2.r - p.Lava1.r) * o2, lcG = p.Lava1.g + (p.Lava2.g - p.Lava1.g) * o2, lcB = p.Lava1.b + (p.Lava2.b - p.Lava1.b) * o2;
+                        float lm = hl * mZ;
+                        float fk = lm <= 0.5f ? 2f * lv0 * lm : 1f - 2f * (1f - lv0) * (1f - mZ * hl);
+                        cR += (lcR - cR) * fk; cG += (lcG - cG) * fk; cB += (lcB - cB) * fk;
+                    }
+
+                    // mountains above 70 m, snow-grey on flat high ground, then the light
+                    float mtR, mtG, mtB, mtA;
+                    A.Mountain.Sample(u * 70f, v * 70f, lodMount, out mtR, out mtG, out mtB, out mtA);
+                    float mk = Mathf.Clamp01((hgt - 70f) * 0.04f) * mtA;
+                    r = cR + (mtR - cR) * mk; g = cG + (mtG - cG) * mk; b = cB + (mtB - cB) * mk; a = cA + (mtA - cA) * mk;
+                    float high = Mathf.Clamp01((hgt - 80f) * 0.05f);
+                    float flat = Mathf.Clamp01((ny - 0.14f) * 6.25f);
+                    float lum = Mathf.Clamp01((r + g + b) * 1.5f);
+                    float sk = Mathf.Max(high * flat - lum, 0f);
+                    r += (0.5f - r) * sk; g += (0.5f - g) * sk; b += (0.5f - b) * sk;
+                    r *= litR; g *= litG; b *= litB;
+
+                    // the dark line along the coast
+                    float ck = 1f - Mathf.Min(Mathf.Abs(hgt - 29.5f) / coastWidth, 1f);
+                    r += (0.02f - r) * ck; g += (0.01f - g) * ck; b += (0.01f - b) * ck; a += (1f - a) * ck;
+
+                    // mist (Mistlands)
+                    if (mY > 0f)
+                    {
+                        float m1u = u * 15f + Mathf.Sin(v * 850f + tx * 5f) * 0.01f, m1v = v * 15f + Mathf.Cos(u * 600f + tx * 4.770615f) * 0.01f;
+                        float m2u = u * 20f + Mathf.Sin(v * 750f + tx * 5f) * 0.01f, m2v = v * 20f + Mathf.Cos(u * 300f + tx * 3.270615f) * 0.01f;
+                        float e1, e2, e3, c1, c2;
+                        A.Cloud.Sample(m1u, m1v, lodMist15, out e1, out e2, out e3, out c1);
+                        A.Cloud.Sample(m2u, m2v, lodMist20, out e1, out e2, out e3, out c2);
+                        float k1 = mY;
+                        r += (laR * 0.7f * c1 - r) * k1; g += (laG * 0.5f * c1 - g) * k1; b += (laB * c1 - b) * k1; a += (c1 * c1 - a) * k1;
+                        float k2 = mY * c2;
+                        r += (laR * 1.2f - r) * k2; g += (laG * 0.7f - g) * k2; b += (laB * 0.7f - b) * k2; a += (c2 - a) * k2;
+                    }
+
+                    // forest stamps, lit at 80 %
+                    if (mX > 0f)
+                    {
+                        float fR, fG, fB, fA;
+                        A.Forest.Sample(u * 150f, v * 150f, lodForest, out fR, out fG, out fB, out fA);
+                        fR *= p.Forest.r; fG *= p.Forest.g; fB *= p.Forest.b; fA *= p.Forest.a;
+                        fR += (fR * litR - fR) * 0.8f; fG += (fG * litG - fG) * 0.8f; fB += (fB * litB - fB) * 0.8f;
+                        float fk = mX * fA;
+                        r += (fR - r) * fk; g += (fG - g) * fk; b += (fB - b) * fk; a += (fA - a) * fk;
+                    }
+
+                    // clouds
+                    {
+                        float e1, e2, e3, cl;
+                        A.Cloud.Sample(u * 7f - p.CloudX, v * 7f - p.CloudZ, lodCloud, out e1, out e2, out e3, out cl);
+                        r += (sun.r * lt.r - r) * cl; g += (sun.g * lt.g - g) * cl; b += (sun.b * lt.b - b) * cl; a += (1f - a) * cl;
+                    }
+
+                    // fog of war
+                    float s1 = Smooth01(2f * f1);
+                    float sy = Smooth01(2f * f2x), sz = Smooth01(2f * f2y);
+                    float mix = 0.5f * Mathf.Min(sy, sz) + 0.5f * s1;
+                    float fogAmt = s1 + p.SharedFade * (mix - s1);
+                    float fa = Mathf.Clamp01(fogAmt);
+                    if (fa > 0f)
+                    {
+                        float qR = flR * fogAmt * laR * p.Fog.r, qG = flG * fogAmt * laG * p.Fog.g, qB = flB * fogAmt * laB * p.Fog.b;
+                        float du = u - 0.5f, dv = v - 0.5f;
+                        float e = Smooth01(Mathf.Min(Mathf.Sqrt(du * du + dv * dv) * 2.325581f, 1f));
+                        qR -= 0.8f * e * qR; qG -= 0.8f * e * qG; qB -= 0.8f * e * qB;
+                        r += (qR - r) * fa; g += (qG - g) * fa; b += (qB - b) * fa;
+                    }
+
+                    // past the edge of the world the shader shows space; a dark fill stands in
+                    {
+                        float du = u - 0.5f, dv = v - 0.5f;
+                        float sp = Smooth01((Mathf.Sqrt(du * du + dv * dv) - 0.42f) * 99.9998f);
+                        if (sp > 0f) { r += (0.01f - r) * sp; g += (0.01f - g) * sp; b += (0.015f - b) * sp; }
+                    }
+
+                    int o = (iz * n + ix) * 4;
+                    px[o] = LinearToSrgbByte(r); px[o + 1] = LinearToSrgbByte(g); px[o + 2] = LinearToSrgbByte(b);
+                    px[o + 3] = 255;
+                }
+            }
+            return px;
+        }
+
+        // what the time of day changes in a tile: the sun and ambient colours (in 1/16 steps)
+        // and the fade of ground known from others; a change redraws the visible tiles
+        private long PortLightSig()
+        {
+            Color s = Shader.GetGlobalColor("_SunColor"), a = Shader.GetGlobalColor("_AmbientColor");
+            long q = 0;
+            q = q * 64 + Mathf.RoundToInt(Mathf.Clamp(s.r, 0f, 3f) * 16f);
+            q = q * 64 + Mathf.RoundToInt(Mathf.Clamp(s.g, 0f, 3f) * 16f);
+            q = q * 64 + Mathf.RoundToInt(Mathf.Clamp(s.b, 0f, 3f) * 16f);
+            q = q * 64 + Mathf.RoundToInt(Mathf.Clamp(a.r, 0f, 3f) * 16f);
+            q = q * 64 + Mathf.RoundToInt(Mathf.Clamp(a.g, 0f, 3f) * 16f);
+            q = q * 64 + Mathf.RoundToInt(Mathf.Clamp(a.b, 0f, 3f) * 16f);
+            if (_portMat != null) q = q * 17 + Mathf.RoundToInt(_portMat.GetFloat("_SharedFade") * 16f);
+            return q;
+        }
+    }
+}

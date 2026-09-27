@@ -75,6 +75,7 @@ namespace LivingMap
                 new ConfigDescription("DetailVanillaTone: how much colour is taken out before the tint. 0 = none, 1 = grey.", new AcceptableValueRange<float>(0f, 1f)));
             _cfgDetailSharedOpacity = Config.Bind(SecDetail, "DetailSharedOpacity", 0.5f,
                 new ConfigDescription("Ground known only from a cartography table (explored by others) is drawn this opaque, so the vanilla haze over it shows through as on the vanilla map. 1 = like your own explored ground.", new AcceptableValueRange<float>(0f, 1f)));
+            BindPortConfig();
             MigrateDetailConfig();
             _cfgDetailWorkers = Config.Bind(SecDetail, "DetailWorkerThreads", 2,
                 new ConfigDescription("Background threads that draw tiles. Takes effect on the next world load.", new AcceptableValueRange<int>(1, 4)));
@@ -166,6 +167,7 @@ namespace LivingMap
             public List<long> TerrKeys; public List<byte> TerrKinds; public float Grid;
             public Color32 Paved, Dirt, Cultivated, Cleared;
             public long Sig;
+            public PortJob Port;                    // the vanilla map shader's inputs (DetailStyle = Vanilla)
             // result
             public byte[] Pixels;
             public double Ms;
@@ -460,6 +462,7 @@ namespace LivingMap
                     if (list != null) sig += list.Count * 65537L;
                 }
             sig += (_cfgShowBuildings.Value ? 1 : 0) * 3 + (_cfgShowPaths.Value ? 1 : 0) * 5 + (_cfgShowCleared.Value ? 1 : 0) * 11;
+            if (PortWanted) sig = sig * 31 + PortLightSig();
             return sig;
         }
 
@@ -491,6 +494,7 @@ namespace LivingMap
             DJob j = new DJob();
             j.Tile = tile; j.X0 = x0; j.Z0 = z0; j.Mpp = mpp; j.Priority = priority;
             j.Sig = RegionSig(tile);
+            if (PortWanted) j.Port = SnapshotPort(x0, z0, DTileSize * mpp);
             j.WaterLevel = ZoneSystem.instance != null ? ZoneSystem.instance.m_waterLevel : 30f;
             j.ZoneSize = ZoneSystem.instance != null ? ZoneSystem.instance.m_zoneSize : 64f;
             j.Relief = _cfgDetailRelief.Value;
@@ -807,7 +811,7 @@ namespace LivingMap
                     _dPending.RemoveAt(best);
                 }
                 long t0 = Stopwatch.GetTimestamp();
-                try { j.Pixels = RenderTile(j, wg); }
+                try { j.Pixels = j.Port != null ? RenderPortTile(j) : RenderTile(j, wg); }
                 catch (Exception e)
                 {
                     j.Pixels = null;
