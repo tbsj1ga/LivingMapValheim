@@ -237,7 +237,11 @@ namespace LivingMap
         // (_SunColor, _AmbientColor, _SunFogColor) as they are - measured with 'livingmap port'.
         internal static bool s_portLinMaterial = false, s_portLinGlobals = false;
         // textures decoded from sRGB, result encoded to sRGB (the linear pipeline) or both raw
-        internal static bool s_portLinTextures = true, s_portSrgbOut = true;
+        internal static bool s_portLinTextures = false, s_portSrgbOut = true;
+        // light direction: 0 the material's _lightDir, 1 the environment's _SunDir, 2 its opposite;
+        // forest/mist/lava mask: the vanilla texture or the one the map material holds now
+        internal static int s_portLightMode = 0;
+        internal static bool s_portMaskFromMaterial = false;
         private static Color Lin(Color c) { return s_portLinMaterial ? c.linear : c; }
         private static Color LinG(Color c) { return s_portLinGlobals ? c.linear : c; }
 
@@ -256,7 +260,8 @@ namespace LivingMap
             p.Light = Lin(m.GetColor("_lightColor")); p.Ambient = Lin(m.GetColor("_ambientLightColor"));
             p.Lava1 = Lin(m.GetColor("_lavaColor1")); p.Lava2 = Lin(m.GetColor("_lavaColor2"));
             p.Sun = LinG(Shader.GetGlobalColor("_SunColor")); p.AmbientG = LinG(Shader.GetGlobalColor("_AmbientColor"));
-            Vector4 ld = m.GetVector("_lightDir");
+            Vector4 ld = s_portLightMode == 0 ? m.GetVector("_lightDir") : Shader.GetGlobalVector("_SunDir");
+            if (s_portLightMode == 2) ld = -ld;
             p.LightDir = new Vector3(ld.x, ld.y, ld.z).normalized;
             p.NormalWidth = m.GetFloat("_normalWidth"); p.NormalIntensity = m.GetFloat("_normalIntensity");
             p.Zoom = m.GetFloat("_zoom"); p.SharedFade = m.GetFloat("_SharedFade");
@@ -282,7 +287,8 @@ namespace LivingMap
             p.X0 = px0; p.Z0 = pz0; p.W = w; p.H = h;
             Color[] hc = height.GetPixels(px0, pz0, w, h);
             Color[] mc = main.GetPixels(px0, pz0, w, h);
-            Color[] kc = mask.GetPixels(px0, pz0, w, h);
+            Color[] kc = s_portMaskFromMaterial ? ReadRegion(m.GetTexture("_MaskTex"), px0, pz0, w, h) : null;
+            if (kc == null) kc = mask.GetPixels(px0, pz0, w, h);
             Color[] fc = fog.GetPixels(px0, pz0, w, h);
             int n = w * h;
             p.Height = new float[n]; p.MainR = new float[n]; p.MainG = new float[n]; p.MainB = new float[n];
@@ -297,6 +303,37 @@ namespace LivingMap
                 p.FogX[i] = fc[i].r; p.FogY[i] = fc[i].g;
             }
             return p;
+        }
+
+        // a region of any texture (a render texture too), values as the shader samples them
+        private static Color[] ReadRegion(Texture t, int x, int y, int w, int h)
+        {
+            if (t == null) return null;
+            RenderTexture src = t as RenderTexture;
+            RenderTexture tmp = null;
+            if (src == null)
+            {
+                Texture2D t2 = t as Texture2D;
+                if (t2 != null && t2.isReadable) return t2.GetPixels(x, y, w, h);
+                tmp = RenderTexture.GetTemporary(t.width, t.height, 0, RenderTextureFormat.ARGB32, RenderTextureReadWrite.Linear);
+                Graphics.Blit(t, tmp);
+                src = tmp;
+            }
+            RenderTexture prev = RenderTexture.active;
+            Texture2D read = new Texture2D(w, h, TextureFormat.RGBAFloat, false, true);
+            try
+            {
+                RenderTexture.active = src;
+                read.ReadPixels(new Rect(x, y, w, h), 0, 0, false);
+                read.Apply(false);
+                return read.GetPixels();
+            }
+            finally
+            {
+                RenderTexture.active = prev;
+                if (tmp != null) RenderTexture.ReleaseTemporary(tmp);
+                UnityEngine.Object.Destroy(read);
+            }
         }
 
         // bilinear, clamped, on the snapshot grid; (u, v) in whole-map coordinates

@@ -71,32 +71,29 @@ namespace LivingMap
                 File.WriteAllBytes(Path.Combine(dir, "port_" + stamp + "_diff.png"), EncodePng(dimg, DTileSize));
                 log.AppendLine("port vs shader: mean difference " + (diff / (n * 3)).ToString("F2") + " of 255 per channel");
 
-                // which colour space the shader works in: material colours, textures, output
-                bool keepM = s_portLinMaterial, keepG = s_portLinGlobals, keepT = s_portLinTextures, keepO = s_portSrgbOut;
-                PortAssets keepA = _port;
-                PortAssets decoded = LoadPortAssets(_portMat, true), raw = LoadPortAssets(_portMat, false);
+                // the light direction and the mask source (colour spaces as measured)
+                int keepL = s_portLightMode; bool keepK = s_portMaskFromMaterial;
+                log.AppendLine("global _SunDir " + Shader.GetGlobalVector("_SunDir").ToString("F3") + ", material _lightDir " + src.GetVector("_lightDir").ToString("F3"));
                 try
                 {
-                    s_portLinGlobals = false;
-                    for (int k = 0; k < 8; k++)
+                    for (int k = 0; k < 6; k++)
                     {
-                        s_portLinMaterial = (k & 1) != 0; s_portLinTextures = (k & 2) != 0; s_portSrgbOut = (k & 4) != 0;
-                        _port = s_portLinTextures ? decoded : raw;
+                        s_portLightMode = k % 3; s_portMaskFromMaterial = k >= 3;
                         DJob jk = new DJob();
                         jk.X0 = x0; jk.Z0 = z0; jk.Mpp = mpp;
                         jk.Port = SnapshotPort(x0, z0, size);
                         jk.Port.TimeX = j.Port.TimeX; jk.Port.TimeY = j.Port.TimeY; jk.Port.Zoom = 1000f;
                         jk.Port.CloudX = co.x; jk.Port.CloudZ = co.z;
                         byte[] ck = RenderPortTile(jk);
-                        double dk = 0;
+                        double dk = 0; double[] sd = new double[3];
                         for (int i = 0; i < n; i++)
-                            for (int c = 0; c < 3; c++) dk += Math.Abs(gpu[i * 4 + c] * 255f - ck[i * 4 + c]);
-                        string tag = "mat " + (s_portLinMaterial ? "lin" : "raw") + ", tex " + (s_portLinTextures ? "lin" : "raw") + ", out " + (s_portSrgbOut ? "srgb" : "raw");
-                        log.AppendLine("  " + tag + ": mean difference " + (dk / (n * 3)).ToString("F2"));
+                            for (int c = 0; c < 3; c++) { float d = gpu[i * 4 + c] * 255f - ck[i * 4 + c]; dk += Math.Abs(d); sd[c] += d; }
+                        string tag = "light " + (s_portLightMode == 0 ? "_lightDir" : s_portLightMode == 1 ? "_SunDir" : "-_SunDir") + ", mask " + (s_portMaskFromMaterial ? "material" : "vanilla");
+                        log.AppendLine("  " + tag + ": mean difference " + (dk / (n * 3)).ToString("F2") + ", signed rgb (" + (sd[0] / n).ToString("F1") + ", " + (sd[1] / n).ToString("F1") + ", " + (sd[2] / n).ToString("F1") + ")");
                         File.WriteAllBytes(Path.Combine(dir, "port_" + stamp + "_cpu_" + k + ".png"), EncodePng(ck, DTileSize));
                     }
                 }
-                finally { s_portLinMaterial = keepM; s_portLinGlobals = keepG; s_portLinTextures = keepT; s_portSrgbOut = keepO; _port = keepA; }
+                finally { s_portLightMode = keepL; s_portMaskFromMaterial = keepK; }
 
                 // which constant does what
                 Shader s = src.shader;
