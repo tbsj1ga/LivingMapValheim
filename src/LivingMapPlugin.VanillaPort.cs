@@ -27,6 +27,7 @@ namespace LivingMap
         private ConfigEntry<string> _cfgDetailStyle;
         private ConfigEntry<float> _cfgDetailPixel;
         private ConfigEntry<bool> _cfgDetailClouds;
+        private ConfigEntry<bool> _cfgDetailStyled;
         // coast line width: 0 from _zoom, 1 from _pixelSize (the shader multiplies one of them by 50)
         internal static int s_portCoastFrom = 0;
 
@@ -38,6 +39,8 @@ namespace LivingMap
             _cfgDetailPixel = Config.Bind(SecDetail, "DetailPixelMeters", 0f,
                 new ConfigDescription("Vanilla style: size of the map's pixels in metres. 0 = automatic: the vanilla map's pixel (about 3.5 m) at first, halved at each closer level (1.75 m, 0.9 m); a number = that size at every level.",
                     new AcceptableValueRange<float>(0f, 8f)));
+            _cfgDetailStyled = Config.Bind(SecDetail, "DetailStyledPieces", true,
+                "Vanilla style: buildings and paths drawn with pixel textures (planks, masonry, cobbles, furrows), shaded edges, lighter high roofs and shadows. Off = flat colours.");
             _cfgDetailClouds = Config.Bind(SecDetail, "DetailClouds", true,
                 "Vanilla style: the vanilla map's drifting clouds over the detailed picture (under the fog of war, as in the game). Off = no clouds there.");
         }
@@ -262,6 +265,7 @@ namespace LivingMap
             // Living Map's colours as it paints them into the map texture (gamma, with alpha)
             public Color32[] Mat; public Color32 MatUnknown, Outline, Paved, Dirt, Cultivated, Cleared;
             public bool DrawOutline;
+            public bool Styled;                  // pixel textures for buildings and paths
             // world data around the tile, on the vanilla map grid (step 1)
             public int X0, Z0, W, H;
             public float[] Height, MainR, MainG, MainB, MaskX, MaskY, MaskZ, FogX, FogY;
@@ -315,6 +319,7 @@ namespace LivingMap
             for (int i = 0; i < _cfgMatColor.Length; i++) p.Mat[i] = _cfgMatColor[i].Value;
             p.MatUnknown = _cfgMatUnknownColor.Value; p.Outline = _cfgOutlineColor.Value; p.DrawOutline = _cfgOutline.Value;
             p.Paved = _cfgPavedColor.Value; p.Dirt = _cfgDirtColor.Value; p.Cultivated = _cfgCultivatedColor.Value; p.Cleared = _cfgClearedColor.Value;
+            p.Styled = _cfgDetailStyled == null || _cfgDetailStyled.Value;
             // one fixed moment for every tile: the water, fog edge, mist and clouds move with
             // time in the shader, and tiles drawn at different moments would not meet
             p.CloudX = 0f; p.CloudZ = 0f;
@@ -418,6 +423,8 @@ namespace LivingMap
             public float[] Near;         // n x n: a tree within ~9 m (keeps the vanilla forest where trees stand)
             public float[] H; public int Gs;   // heights every DStep pixels, one sample of border
             public float Half;           // 0 or 0.5: where a pixel samples, in pixels
+            public byte[] Kind;          // n x n: 0 none, 1..4 terrain kind, 10 + material building
+            public short[] Box;          // n x n: the box covering a building pixel, -1 none
         }
 
         private static PortDetail BuildPortDetail(DJob j, WorldGenerator wg)
@@ -446,6 +453,11 @@ namespace LivingMap
             j.X0 -= (0.5f - d.Half) * mpp; j.Z0 -= (0.5f - d.Half) * mpp;
             try
             {
+                // what covers each pixel: 0 nothing, 1..4 a terrain kind, 10 + material a building;
+                // for buildings also which box (its direction and height) - for the styling pass
+                d.Kind = new byte[n * n];
+                d.Box = new short[n * n];
+                for (int k = 0; k < d.Box.Length; k++) d.Box[k] = -1;
                 float grid = j.Grid;
                 for (int i = 0; i < j.TerrKeys.Count; i++)
                 {
@@ -454,10 +466,10 @@ namespace LivingMap
                     byte kind = j.TerrKinds[i];
                     Color32 c = kind == TerrainPaved ? p.Paved : kind == TerrainDirt ? p.Dirt : kind == TerrainCultivated ? p.Cultivated : p.Cleared;
                     FillRect(d.Main, n, j, cx0, cz0, cx0 + grid, cz0 + grid, c);
+                    MarkRect(d, n, j, cx0, cz0, cx0 + grid, cz0 + grid, kind, -1);
                 }
-                // outlines only where a pixel is small enough for a one-pixel line not to swallow the
-                // building; all outlines first, then the fills; a piece gets at least its pixel
-                bool outline = p.DrawOutline && mpp < 1.2f;
+                // flat outlines only when not styled (styled buildings get a darker edge of their own)
+                bool outline = p.DrawOutline && !p.Styled && mpp < 1.2f;
                 float w = mpp, grow = mpp * 0.5f;
                 if (outline)
                 {
@@ -474,12 +486,15 @@ namespace LivingMap
                     Color32 c = r.Mat != MatNone && r.Mat < p.Mat.Length ? p.Mat[r.Mat] : p.MatUnknown;
                     float gx = Mathf.Max(0f, (mpp - (r.X1 - r.X0)) * 0.5f), gz = Mathf.Max(0f, (mpp - (r.Z1 - r.Z0)) * 0.5f);
                     FillRect(d.Main, n, j, r.X0 - gx, r.Z0 - gz, r.X1 + gx, r.Z1 + gz, c);
+                    MarkRect(d, n, j, r.X0 - gx, r.Z0 - gz, r.X1 + gx, r.Z1 + gz, (byte)(10 + Mathf.Min((int)r.Mat, 200)), -1);
                 }
                 for (int i = 0; i < j.Boxes.Count; i++)
                 {
                     DBox bx = j.Boxes[i];
                     Color32 c = bx.Mat != MatNone && bx.Mat < p.Mat.Length ? p.Mat[bx.Mat] : p.MatUnknown;
-                    FillBox(d.Main, n, j, bx, Mathf.Max(0f, grow - Mathf.Min(bx.HX, bx.HZ)), c, 1f);
+                    float g = Mathf.Max(0f, grow - Mathf.Min(bx.HX, bx.HZ));
+                    FillBox(d.Main, n, j, bx, g, c, 1f);
+                    MarkBox(d, n, j, bx, g, (byte)(10 + Mathf.Min((int)bx.Mat, 200)), (short)Mathf.Min(i, short.MaxValue));
                 }
 
                 // trees: the crown (a lone tree gets its own stamp) and a wide "a tree is near"
@@ -508,7 +523,149 @@ namespace LivingMap
                     Heightmap.Biome bm = wg.GetBiome(wx, wz, 0.02f, false);
                     d.H[sz * gs + sx] = wg.GetBiomeHeight(bm, wx, wz, out mask, false, true) + HeightDelta(j, wx, wz);
                 }
+            if (p.Styled && mpp < 3f) StylePaint(d, j, n);
             return d;
+        }
+
+        // the same pixels FillRect / FillBox cover, recorded in the kind buffer
+        private static void MarkRect(PortDetail d, int n, DJob j, float x0, float z0, float x1, float z1, byte kind, short box)
+        {
+            int ix0 = Mathf.Max(0, Mathf.FloorToInt((x0 - j.X0) / j.Mpp)), ix1 = Mathf.Min(n - 1, Mathf.CeilToInt((x1 - j.X0) / j.Mpp) - 1);
+            int iz0 = Mathf.Max(0, Mathf.FloorToInt((z0 - j.Z0) / j.Mpp)), iz1 = Mathf.Min(n - 1, Mathf.CeilToInt((z1 - j.Z0) / j.Mpp) - 1);
+            for (int iz = iz0; iz <= iz1; iz++)
+                for (int ix = ix0; ix <= ix1; ix++) { d.Kind[iz * n + ix] = kind; d.Box[iz * n + ix] = box; }
+        }
+
+        private static void MarkBox(PortDetail d, int n, DJob j, DBox b, float grow, byte kind, short box)
+        {
+            float hx = b.HX + grow, hz = b.HZ + grow;
+            float ext = Mathf.Sqrt(hx * hx + hz * hz);
+            int ix0 = Mathf.Max(0, Mathf.FloorToInt((b.X - ext - j.X0) / j.Mpp)), ix1 = Mathf.Min(n - 1, Mathf.CeilToInt((b.X + ext - j.X0) / j.Mpp));
+            int iz0 = Mathf.Max(0, Mathf.FloorToInt((b.Z - ext - j.Z0) / j.Mpp)), iz1 = Mathf.Min(n - 1, Mathf.CeilToInt((b.Z + ext - j.Z0) / j.Mpp));
+            float half = j.Mpp * 0.5f;
+            for (int iz = iz0; iz <= iz1; iz++)
+                for (int ix = ix0; ix <= ix1; ix++)
+                {
+                    float dx = j.X0 + (ix + 0.5f) * j.Mpp - b.X, dz = j.Z0 + (iz + 0.5f) * j.Mpp - b.Z;
+                    float lx = dx * b.Cos - dz * b.Sin, lz = dx * b.Sin + dz * b.Cos;
+                    if (Mathf.Abs(lx) > hx + half || Mathf.Abs(lz) > hz + half) continue;
+                    d.Kind[iz * n + ix] = kind; d.Box[iz * n + ix] = box;
+                }
+        }
+
+        private static uint Hash(int x, int z, int salt)
+        {
+            uint h = (uint)(x * 73856093) ^ (uint)(z * 19349663) ^ (uint)(salt * 83492791);
+            h ^= h >> 13; h *= 0x5bd1e995; h ^= h >> 15;
+            return h;
+        }
+
+        private static float Rand(int x, int z, int salt) { return (Hash(x, z, salt) & 0xFFFF) / 65535f; }
+
+        private static void Scale(byte[] c, int o, float f)
+        {
+            c[o] = ToByte(c[o] * f); c[o + 1] = ToByte(c[o + 1] * f); c[o + 2] = ToByte(c[o + 2] * f);
+        }
+
+        // Pixel textures over the flat paint, on the level's own pixel grid (x, z = the pixel's
+        // index across the world, so the pattern does not move between tiles): planks, masonry,
+        // metal, marble and ice for buildings, with a darker edge, lighter high roofs and a
+        // shadow; speckled dirt, cobbles, furrows and faint cleared ground for the terrain.
+        private static void StylePaint(PortDetail d, DJob j, int n)
+        {
+            float mpp = j.Mpp;
+            bool fine = mpp < 1.2f;                   // the finest level: patterns; coarser: shading only
+            int gx0 = Mathf.RoundToInt(j.X0 / mpp), gz0 = Mathf.RoundToInt(j.Z0 / mpp);
+            byte[] c = d.Main;
+            byte[] kind = d.Kind;
+            byte[] orig = (byte[])kind.Clone();     // shadows and edges read the kinds before any change
+            for (int iz = 0; iz < n; iz++)
+                for (int ix = 0; ix < n; ix++)
+                {
+                    int k = iz * n + ix, o = k * 4;
+                    byte kd = orig[k];
+                    int gx = gx0 + ix, gz = gz0 + iz;
+                    if (kd == 0)
+                    {
+                        // a building's shadow: the pixel north-west of this one is a building
+                        if (ix > 0 && iz < n - 1 && orig[(iz + 1) * n + ix - 1] >= 10) Scale(c, o, 0.72f);
+                        continue;
+                    }
+                    if (kd < 10)
+                    {
+                        // terrain: a lone cell (no terrain around it) fades toward the ground
+                        int around = 0;
+                        if (ix > 0 && orig[k - 1] > 0 && orig[k - 1] < 10) around++;
+                        if (ix < n - 1 && orig[k + 1] > 0 && orig[k + 1] < 10) around++;
+                        if (iz > 0 && orig[k - n] > 0 && orig[k - n] < 10) around++;
+                        if (iz < n - 1 && orig[k + n] > 0 && orig[k + n] < 10) around++;
+                        float f = 1f;
+                        if (kd == TerrainDirt) f = 0.88f + 0.24f * Rand(gx, gz, 1);
+                        else if (kd == TerrainPaved)
+                        {
+                            // cobbles of 2 x 2 pixels, rows offset, dark joints
+                            int row = gz >> 1, col = (gx + (row & 1)) >> 1;
+                            f = 0.86f + 0.24f * Rand(col, row, 2);
+                            if (fine && ((gz & 1) == 0 || ((gx + (row & 1)) & 1) == 0) && Rand(gx, gz, 3) < 0.35f) f *= 0.82f;
+                        }
+                        else if (kd == TerrainCultivated) f = ((gz & 1) == 0 ? 0.84f : 1.08f) * (0.95f + 0.1f * Rand(gx, gz, 4));
+                        else f = 0.95f + 0.1f * Rand(gx, gz, 5);
+                        Scale(c, o, f);
+                        if (around == 0)
+                        {
+                            // blend a lone cell half way back to what is around it
+                            int nb = ix > 0 ? k - 1 : k + 1;
+                            int ob = nb * 4;
+                            c[o] = (byte)((c[o] + c[ob]) / 2); c[o + 1] = (byte)((c[o + 1] + c[ob + 1]) / 2); c[o + 2] = (byte)((c[o + 2] + c[ob + 2]) / 2);
+                        }
+                        continue;
+                    }
+
+                    // buildings
+                    int mat = kd - 10;
+                    int bi = d.Box[k];
+                    float lx = gx, lz = gz;                 // pattern axes: the box's own if known
+                    float top = 1f;
+                    if (bi >= 0 && bi < j.Boxes.Count)
+                    {
+                        DBox b = j.Boxes[bi];
+                        float wx = (gx + 0.5f) * mpp, wz = (gz + 0.5f) * mpp;
+                        float dx = wx - b.X, dz = wz - b.Z;
+                        float ax = dx * b.Cos - dz * b.Sin, az = dx * b.Sin + dz * b.Cos;
+                        bool alongX = b.HX >= b.HZ;
+                        lx = (alongX ? ax : az) / mpp; lz = (alongX ? az : ax) / mpp;
+                        float ground = Sample(d.H, d.Gs, (b.X - j.X0) / mpp / DStep + 1f, (b.Z - j.Z0) / mpp / DStep + 1f);
+                        top = Mathf.Clamp(0.88f + 0.025f * (b.Top - ground), 0.88f, 1.16f);   // high roofs lighter
+                    }
+                    int px = Mathf.FloorToInt(lx), pz = Mathf.FloorToInt(lz);
+                    float m = 1f;
+                    if (fine)
+                    {
+                        if (mat == 0 || mat == 3 || mat == 8)          // wood: planks along the piece, knots
+                        {
+                            m = (pz & 1) == 0 ? 0.93f : 1.05f;
+                            if (((pz + 1) % 3) == 0) m *= 0.9f;
+                            if (Rand(px, pz, 11) > 0.94f) m *= 0.8f;
+                        }
+                        else if (mat == 1 || mat == 5 || mat == 6)     // masonry: bricks 2-3 px, mortar joints
+                        {
+                            int row = pz, len = 2 + (int)(Rand(0, row, 12) * 1.99f);
+                            int col = (px + row * 7) / len;
+                            m = 0.9f + 0.18f * Rand(col, row, 13);
+                            if (((px + row * 7) % len) == 0) m *= 0.84f;
+                        }
+                        else if (mat == 2)                             // iron: dark plates, light rivets
+                            m = (((px % 3) + 3) % 3 == 0 && ((pz % 3) + 3) % 3 == 0) ? 1.35f : 0.92f + 0.08f * Rand(px, pz, 14);
+                        else if (mat == 4)                             // marble: light, sparse veins
+                            m = Rand(px + pz, pz, 15) > 0.9f ? 0.86f : 1f + 0.04f * Rand(px, pz, 16);
+                        else                                           // ice and the rest: a soft shimmer
+                            m = 0.94f + 0.12f * Rand(px, pz, 17);
+                    }
+                    else m = 0.95f + 0.1f * Rand(gx, gz, 18);
+                    // the edge of a building: a darker shade of its own colour
+                    bool edge = (ix > 0 && orig[k - 1] < 10) || (ix < n - 1 && orig[k + 1] < 10) || (iz > 0 && orig[k - n] < 10) || (iz < n - 1 && orig[k + n] < 10);
+                    Scale(c, o, m * top * (edge ? 0.72f : 1f));
+                }
         }
 
         private static void Disc(float[] a, int n, DJob j, float x, float z, float r, float soft)
