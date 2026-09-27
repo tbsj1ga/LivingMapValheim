@@ -11,20 +11,29 @@ namespace LivingMap
     // clouds and fog, lit by the same sun and ambient colours the environment sets for the time
     // of day. Read from the shader's DX11 bytecode; every pattern is sampled at the same
     // whole-map coordinate as in the shader, so it keeps its size and place when zooming in.
-    // Not ported: the coordinate snapping (a zoom-dependent pixel grid), the animation of water
-    // and clouds (a tile is a snapshot) and the space picture past the edge of the world.
+    // The shader snaps the map coordinate to a grid of _zoom * _pixelSize * 35 cells across the
+    // map; the game sets _pixelSize = 200 / _zoom, so that is always 7000 cells, about 3.5 m -
+    // the stylised pixel look. The port snaps the same way (DetailPixelMeters can change it).
+    // Not ported: the animation of water and clouds (a tile is a snapshot) and the space
+    // picture past the edge of the world.
     //
     // Step 1: the world data (colour, height, forest/mist/lava mask, fog) is taken from the
     // vanilla map textures, so a tile must match the vanilla map under it.
     public partial class LivingMapPlugin
     {
         private ConfigEntry<string> _cfgDetailStyle;
+        private ConfigEntry<float> _cfgDetailPixel;
+        // coast line width: 0 from _zoom, 1 from _pixelSize (the shader multiplies one of them by 50)
+        internal static int s_portCoastFrom = 0;
 
         private void BindPortConfig()
         {
             _cfgDetailStyle = Config.Bind(SecDetail, "DetailStyle", "Vanilla",
                 new ConfigDescription("How the detailed picture is drawn. Vanilla: the game's own map look (paper, forest stamps, water lines, time-of-day light). Legacy: the earlier flat shaded picture.",
                     new AcceptableValueList<string>("Vanilla", "Legacy")));
+            _cfgDetailPixel = Config.Bind(SecDetail, "DetailPixelMeters", 0f,
+                new ConfigDescription("Vanilla style: size of the map's pixels in metres. 0 = as the vanilla map (about 3.5 m, the stylised pixel look); smaller = finer detail, 0.5 = smooth.",
+                    new AcceptableValueRange<float>(0f, 8f)));
         }
 
         private bool PortWanted { get { return _cfgDetailStyle != null && _cfgDetailStyle.Value == "Vanilla"; } }
@@ -224,6 +233,7 @@ namespace LivingMap
             public Color Forest, Water, WaterDeep, WaterAsh, WaterAshDeep, SunFog, Light, Ambient, Sun, AmbientG, Lava1, Lava2;
             public Vector3 LightDir;
             public float NormalWidth, NormalIntensity, Zoom, SharedFade, CloudX, CloudZ, TimeX, TimeY;
+            public float Cells;                  // snapping grid: cells across the whole map (0 = none)
             // world data around the tile, on the vanilla map grid (step 1)
             public int X0, Z0, W, H;
             public float[] Height, MainR, MainG, MainB, MaskX, MaskY, MaskZ, FogX, FogY;
@@ -266,7 +276,11 @@ namespace LivingMap
             if (s_portLightMode == 2 || s_portLightMode == 3) ld = -ld;
             p.LightDir = new Vector3(ld.x, ld.y, ld.z).normalized;
             p.NormalWidth = m.GetFloat("_normalWidth"); p.NormalIntensity = m.GetFloat("_normalIntensity");
-            p.Zoom = m.GetFloat("_zoom"); p.SharedFade = m.GetFloat("_SharedFade");
+            float zoom = m.GetFloat("_zoom"), pixel = m.GetFloat("_pixelSize");
+            p.Zoom = s_portCoastFrom == 0 ? zoom : pixel;
+            p.SharedFade = m.GetFloat("_SharedFade");
+            float cell = _cfgDetailPixel != null ? _cfgDetailPixel.Value : 0f;
+            p.Cells = cell > 0.01f ? p.World / cell : zoom * pixel * 35f;
             // one fixed moment for every tile: the water, fog edge, mist and clouds move with
             // time in the shader, and tiles drawn at different moments would not meet
             p.CloudX = 0f; p.CloudZ = 0f;
@@ -376,16 +390,19 @@ namespace LivingMap
             // fog and mist are lit by the environment's sun + ambient, not the material's light
             float laR = sun.r + ambG.r, laG = sun.g + ambG.g, laB = sun.b + ambG.b;
             float nw = p.NormalWidth;
+            float cells = p.Cells;
             float r, g, b, a;
 
             for (int iz = 0; iz < n; iz++)
             {
                 float wz = j.Z0 + (iz + 0.5f) * mpp;
                 float v = wz / world + 0.5f;
+                if (cells > 0f) v = Mathf.Floor(v * cells + 0.5f) / cells;
                 for (int ix = 0; ix < n; ix++)
                 {
                     float wx = j.X0 + (ix + 0.5f) * mpp;
                     float u = wx / world + 0.5f;
+                    if (cells > 0f) u = Mathf.Floor(u * cells + 0.5f) / cells;
 
                     float flR, flG, flB, flA;
                     A.FogLayer.Sample(u * 5f, v * 5f, lodFogL, out flR, out flG, out flB, out flA);

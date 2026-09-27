@@ -51,7 +51,7 @@ namespace LivingMap
                 j.X0 = x0; j.Z0 = z0; j.Mpp = mpp;
                 j.Port = SnapshotPort(x0, z0, size);
                 j.Port.TimeX = Time.timeSinceLevelLoad / 20f; j.Port.TimeY = Time.timeSinceLevelLoad;
-                j.Port.Zoom = 1000f;
+                j.Port.Zoom = 1000f; j.Port.Cells = 0f;
                 Vector4 co = Shader.GetGlobalVector("_CloudOffset");
                 j.Port.CloudX = co.x; j.Port.CloudZ = co.z;
                 byte[] cpu = RenderPortTile(j);
@@ -71,48 +71,34 @@ namespace LivingMap
                 File.WriteAllBytes(Path.Combine(dir, "port_" + stamp + "_diff.png"), EncodePng(dimg, DTileSize));
                 log.AppendLine("port vs shader: mean difference " + (diff / (n * 3)).ToString("F2") + " of 255 per channel");
 
-                // controlled light: the shader and the port under sun only / ambient only / none,
-                // the port in every variant of light direction, global and texture colour space
-                log.AppendLine("global _SunDir " + Shader.GetGlobalVector("_SunDir").ToString("F3") + ", material _lightDir " + src.GetVector("_lightDir").ToString("F3"));
-                Color keepSun = Shader.GetGlobalColor("_SunColor"), keepAmb = Shader.GetGlobalColor("_AmbientColor");
-                int keepL = s_portLightMode; bool keepG = s_portLinGlobals, keepT = s_portLinTextures;
-                PortAssets keepA = _port;
-                PortAssets decoded = LoadPortAssets(_portMat, true), raw = LoadPortAssets(_portMat, false);
-                string[] cases = { "as is", "sun only", "ambient only", "no light" };
-                try
+                // the game's own zoom and pixel size: the snapping grid and the coast line width
                 {
-                    for (int cs = 0; cs < cases.Length; cs++)
+                    float zoom = src.GetFloat("_zoom");
+                    mat.SetFloat("_zoom", zoom); mat.SetFloat("_pixelSize", 200f / zoom);
+                    float[] g2 = GpuRender(mat, DTileSize);
+                    SavePng(g2, DTileSize, Path.Combine(dir, "port_" + stamp + "_gpu_snap.png"));
+                    int keepC = s_portCoastFrom;
+                    try
                     {
-                        Color sunC = cs == 0 || cs == 1 ? keepSun : Color.black;
-                        Color ambC = cs == 0 || cs == 2 ? keepAmb : Color.black;
-                        Shader.SetGlobalColor("_SunColor", sunC); Shader.SetGlobalColor("_AmbientColor", ambC);
-                        float[] g2 = GpuRender(mat, DTileSize);
-                        double gm = 0; for (int i = 0; i < n; i++) for (int c = 0; c < 3; c++) gm += g2[i * 4 + c] * 255f;
-                        log.AppendLine(" case " + cases[cs] + ": shader mean " + (gm / (n * 3)).ToString("F1"));
-                        SavePng(g2, DTileSize, Path.Combine(dir, "port_" + stamp + "_gpu_case" + cs + ".png"));
-                        for (int k = 0; k < 16; k++)
+                        for (int k = 0; k < 2; k++)
                         {
-                            s_portLightMode = k % 4; s_portLinGlobals = (k & 4) != 0; s_portLinTextures = (k & 8) != 0;
-                            _port = s_portLinTextures ? decoded : raw;
+                            s_portCoastFrom = k;
                             DJob jk = new DJob();
                             jk.X0 = x0; jk.Z0 = z0; jk.Mpp = mpp;
                             jk.Port = SnapshotPort(x0, z0, size);
-                            jk.Port.TimeX = j.Port.TimeX; jk.Port.TimeY = j.Port.TimeY; jk.Port.Zoom = 1000f;
+                            jk.Port.TimeX = j.Port.TimeX; jk.Port.TimeY = j.Port.TimeY;
+                            jk.Port.Zoom = k == 0 ? zoom : 200f / zoom;
+                            jk.Port.Cells = 7000f;
                             jk.Port.CloudX = co.x; jk.Port.CloudZ = co.z;
                             byte[] ck = RenderPortTile(jk);
-                            double dk = 0; double[] sd = new double[3];
+                            double dk = 0;
                             for (int i = 0; i < n; i++)
-                                for (int c = 0; c < 3; c++) { float d = g2[i * 4 + c] * 255f - ck[i * 4 + c]; dk += Math.Abs(d); sd[c] += d; }
-                            string tag = (s_portLightMode == 0 ? "_lightDir" : s_portLightMode == 1 ? "_SunDir" : s_portLightMode == 2 ? "-_SunDir" : "-_lightDir")
-                                         + ", globals " + (s_portLinGlobals ? "lin" : "raw") + ", tex " + (s_portLinTextures ? "lin" : "raw");
-                            log.AppendLine("   " + tag + ": " + (dk / (n * 3)).ToString("F2") + " signed (" + (sd[0] / n).ToString("F1") + ", " + (sd[1] / n).ToString("F1") + ", " + (sd[2] / n).ToString("F1") + ")");
+                                for (int c = 0; c < 3; c++) dk += Math.Abs(g2[i * 4 + c] * 255f - ck[i * 4 + c]);
+                            log.AppendLine("  snapped, zoom " + zoom.ToString("F3") + ", coast width from " + (k == 0 ? "_zoom" : "_pixelSize") + ": mean difference " + (dk / (n * 3)).ToString("F2"));
+                            File.WriteAllBytes(Path.Combine(dir, "port_" + stamp + "_cpu_snap" + k + ".png"), EncodePng(ck, DTileSize));
                         }
                     }
-                }
-                finally
-                {
-                    Shader.SetGlobalColor("_SunColor", keepSun); Shader.SetGlobalColor("_AmbientColor", keepAmb);
-                    s_portLightMode = keepL; s_portLinGlobals = keepG; s_portLinTextures = keepT; _port = keepA;
+                    finally { s_portCoastFrom = keepC; mat.SetFloat("_zoom", 1000f); mat.SetFloat("_pixelSize", 1000f); }
                 }
 
                 // which constant does what

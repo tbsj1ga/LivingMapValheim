@@ -723,7 +723,7 @@ namespace LivingMap
                 {
                     t.Tex = new Texture2D(DTileSize, DTileSize, TextureFormat.RGBA32, false, false);
                     t.Tex.wrapMode = TextureWrapMode.Clamp;
-                    t.Tex.filterMode = FilterMode.Bilinear;
+                    t.Tex.filterMode = j.Port != null && j.Port.Cells > 0f ? FilterMode.Point : FilterMode.Bilinear;   // crisp map pixels
                 }
                 t.Tex.LoadRawTextureData(j.Pixels);
                 t.Tex.Apply(false, false);
