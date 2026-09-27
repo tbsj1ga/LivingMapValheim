@@ -123,7 +123,9 @@ namespace LivingMap
         private const int DEnqueuesPerFrame = 4;
         private const float DRedrawMinAge = 5f;
         private const float DObjectsMaxMpp = 2f;
-        private static readonly float[] DLevels = { 4f, 2f, 1f };
+        // metres per tile pixel of each level; the vanilla style uses the vanilla map's pixel
+        // (the world / 7000) and its halves, so a tile pixel is exactly one map pixel
+        private static float[] DLevels = { 4f, 2f, 1f };
 
         private class DTile
         {
@@ -133,7 +135,8 @@ namespace LivingMap
             public RawImage Img;
             public bool Ready, Queued, Failed;
             public long LightSig;                   // the light it was drawn under (vanilla style)
-            public byte[] Pending; public long PendingLight;   // drawn again under new light, shown with the others
+            public byte[] Pending, Pending2; public long PendingLight;   // drawn again under new light, shown with the others
+            public Texture2D Tex2; public RawImage Img2;          // vanilla style: the fog of war over the clouds
             public long Sig;
             public float RenderedAt, LastUsed;
         }
@@ -172,7 +175,7 @@ namespace LivingMap
             public PortJob Port;                    // the vanilla map shader's inputs (DetailStyle = Vanilla)
             public long LightSig; public bool Relight;
             // result
-            public byte[] Pixels;
+            public byte[] Pixels, Pixels2;          // Pixels2: the fog layer (vanilla style)
             public double Ms;
         }
 
@@ -183,7 +186,7 @@ namespace LivingMap
         private Thread[] _dWorkers;
         private volatile bool _dStop;
         private bool _dBroken;
-        private RectTransform _dRoot, _dBack, _dFront;
+        private RectTransform _dRoot, _dBack, _dFront, _dFogBack, _dFogFront;
         private CanvasGroup _dGroup;
         private int _dRecheckCursor, _dEnqueuedThisFrame;
         private readonly List<DTile> _dScratch = new List<DTile>();
@@ -266,6 +269,7 @@ namespace LivingMap
             RawImage img = mm.m_mapImageLarge;
             Rect uv = img.uvRect;
             float world = _texSize * _pixelSize;                    // metres across UV 0..1
+            UpdateLevels(world);
             float spanX = uv.width * world;
             float start = _cfgDetailStartSpan.Value;
             float alpha = Mathf.Clamp01((start - spanX) / (start * 0.2f));
@@ -289,9 +293,10 @@ namespace LivingMap
             int level = -1;
             for (int i = 0; i < DLevels.Length; i++)
             {
-                if (DLevels[i] < finest - 0.01f) break;
+                if (DLevels[i] < finest * 0.85f) break;
                 level = i;
-                if (DLevels[i] <= need) break;
+                // vanilla style: a map pixel stays at most ~6 screen pixels (they shrink as you zoom in)
+                if (DLevels[i] <= need * (PortWanted ? 6f : 1f)) break;
             }
             if (level < 0) level = 0;
 
@@ -301,11 +306,17 @@ namespace LivingMap
             float cx = (vx0 + vx1) * 0.5f, cz = (vz0 + vz1) * 0.5f;
             float now = Time.realtimeSinceStartup;
 
-            foreach (DTile t in _dTiles.Values) if (t.Img != null && t.Img.enabled) t.Img.enabled = false;
+            foreach (DTile t in _dTiles.Values)
+            {
+                if (t.Img != null && t.Img.enabled) t.Img.enabled = false;
+                if (t.Img2 != null && t.Img2.enabled) t.Img2.enabled = false;
+            }
 
             // fallback one level coarser, behind
             if (level > 0) ShowLevel(level - 1, vx0, vx1, vz0, vz1, uv, world, now, false, cx, cz);
             ShowLevel(level, vx0, vx1, vz0, vz1, uv, world, now, true, cx, cz);
+            if (level > 0) HideCoveredFog(level);
+            UpdateClouds(uv);
 
             UploadDone();
             RecheckTiles(now);
@@ -351,14 +362,78 @@ namespace LivingMap
                         Enqueue(tile, dx * dx + dz * dz);
                     }
                     if (!tile.Ready || tile.Img == null) continue;
-                    RectTransform rt = tile.Img.rectTransform;
-                    if (rt.parent != (request ? _dFront : _dBack)) rt.SetParent(request ? _dFront : _dBack, false);
-                    Vector2 a0 = new Vector2((wx / world + 0.5f - uv.xMin) / uv.width, (wz / world + 0.5f - uv.yMin) / uv.height);
-                    Vector2 a1 = new Vector2(((wx + t) / world + 0.5f - uv.xMin) / uv.width, ((wz + t) / world + 0.5f - uv.yMin) / uv.height);
-                    rt.anchorMin = a0; rt.anchorMax = a1;
-                    rt.offsetMin = Vector2.zero; rt.offsetMax = Vector2.zero;
-                    tile.Img.enabled = true;
+                    // a vanilla-style pixel is centred on its grid point, like the map's own pixels
+                    float sx = wx, sz = wz;
+                    if (tile.Img2 != null) { sx -= mpp * 0.5f; sz -= mpp * 0.5f; }
+                    Vector2 a0 = new Vector2((sx / world + 0.5f - uv.xMin) / uv.width, (sz / world + 0.5f - uv.yMin) / uv.height);
+                    Vector2 a1 = new Vector2(((sx + t) / world + 0.5f - uv.xMin) / uv.width, ((sz + t) / world + 0.5f - uv.yMin) / uv.height);
+                    Place(tile.Img, request ? _dFront : _dBack, a0, a1);
+                    if (tile.Img2 != null) Place(tile.Img2, request ? _dFogFront : _dFogBack, a0, a1);
                 }
+        }
+
+        private static void Place(RawImage img, RectTransform parent, Vector2 a0, Vector2 a1)
+        {
+            RectTransform rt = img.rectTransform;
+            if (rt.parent != parent) rt.SetParent(parent, false);
+            rt.anchorMin = a0; rt.anchorMax = a1;
+            rt.offsetMin = Vector2.zero; rt.offsetMax = Vector2.zero;
+            img.enabled = true;
+        }
+
+        // A coarser tile stays behind the current level while it loads; its fog is hidden where
+        // all four finer tiles over it are shown, or the two fog layers would add up.
+        private void HideCoveredFog(int level)
+        {
+            foreach (DTile t in _dTiles.Values)
+            {
+                if (t.Level != level - 1 || t.Img2 == null || !t.Img2.enabled) continue;
+                bool covered = true;
+                for (int dz = 0; dz < 2 && covered; dz++)
+                    for (int dx = 0; dx < 2 && covered; dx++)
+                    {
+                        DTile c;
+                        if (!_dTiles.TryGetValue(TileKey(level, t.TX * 2 + dx, t.TZ * 2 + dz), out c) || c.Img == null || !c.Img.enabled) covered = false;
+                    }
+                if (covered) t.Img2.enabled = false;
+            }
+        }
+
+        // The vanilla style's drifting clouds: the cloud texture over the whole view, moved like
+        // in the shader (map coordinate x 7 - _CloudOffset) and tinted sun x light colour.
+        private RawImage _dClouds;
+
+        private void UpdateClouds(Rect uv)
+        {
+            if (_dClouds == null) return;
+            bool on = PortWanted && _port != null && _port.CloudTex != null && _cfgDetailClouds.Value && _portMat != null;
+            if (_dClouds.enabled != on) _dClouds.enabled = on;
+            if (!on) return;
+            if (_dClouds.texture != _port.CloudTex) _dClouds.texture = _port.CloudTex;
+            Vector4 off = Shader.GetGlobalVector("_CloudOffset");
+            _dClouds.uvRect = new Rect(uv.x * 7f - off.x, uv.y * 7f - off.z, uv.width * 7f, uv.height * 7f);
+            Color sun = Shader.GetGlobalColor("_SunColor"), lt = _portMat.GetColor("_lightColor");
+            Color c = new Color(Mathf.Clamp01(sun.r * lt.r), Mathf.Clamp01(sun.g * lt.g), Mathf.Clamp01(sun.b * lt.b), 1f);
+            _dClouds.color = QualitySettings.activeColorSpace == ColorSpace.Linear ? c.gamma : c;   // vertex colours are gamma
+        }
+
+        // Levels follow the style; a change drops the tiles (their keys are per level).
+        private void UpdateLevels(float world)
+        {
+            float first = PortWanted ? world / 7000f : 4f;
+            if (Mathf.Abs(DLevels[0] - first) < 0.0001f) return;
+            DLevels = new[] { first, first * 0.5f, first * 0.25f };
+            foreach (DTile t in _dTiles.Values) DestroyTile(t);
+            _dTiles.Clear();
+        }
+
+        private static void DestroyTile(DTile t)
+        {
+            if (t.Img != null) UnityEngine.Object.Destroy(t.Img.gameObject);
+            if (t.Img2 != null) UnityEngine.Object.Destroy(t.Img2.gameObject);
+            if (t.Tex != null) UnityEngine.Object.Destroy(t.Tex);
+            if (t.Tex2 != null) UnityEngine.Object.Destroy(t.Tex2);
+            t.Img = null; t.Img2 = null; t.Tex = null; t.Tex2 = null; t.Ready = false;
         }
 
         private void EnsureDetailLayer(RawImage img)
@@ -375,6 +450,12 @@ namespace LivingMap
             _dGroup.blocksRaycasts = false; _dGroup.interactable = false;
             _dBack = NewLayer("back", _dRoot);
             _dFront = NewLayer("front", _dRoot);
+            RectTransform clouds = NewLayer("clouds", _dRoot);
+            _dClouds = clouds.gameObject.AddComponent<RawImage>();
+            _dClouds.raycastTarget = false;
+            _dClouds.enabled = false;
+            _dFogBack = NewLayer("fog back", _dRoot);
+            _dFogFront = NewLayer("fog front", _dRoot);
             if (_fiMistColor == null) _fiMistColor = typeof(Minimap).GetField("m_mistlandsColor", BindingFlags.Instance | BindingFlags.NonPublic | BindingFlags.Public);
             if (_fiObjectsBySector == null)
             {
@@ -402,14 +483,9 @@ namespace LivingMap
 
         private void DestroyDetailLayer()
         {
-            foreach (DTile t in _dTiles.Values)
-            {
-                if (t.Img != null) UnityEngine.Object.Destroy(t.Img.gameObject);
-                if (t.Tex != null) UnityEngine.Object.Destroy(t.Tex);
-                t.Img = null; t.Tex = null; t.Ready = false;
-            }
+            foreach (DTile t in _dTiles.Values) DestroyTile(t);
             if (_dRoot != null) UnityEngine.Object.Destroy(_dRoot.gameObject);
-            _dRoot = null; _dBack = null; _dFront = null; _dGroup = null;
+            _dRoot = null; _dBack = null; _dFront = null; _dFogBack = null; _dFogFront = null; _dGroup = null; _dClouds = null;
         }
 
         private void DetailTeardown()
@@ -715,10 +791,11 @@ namespace LivingMap
                 if (!_dTiles.TryGetValue(t.Key, out live) || live != t) continue;   // evicted meanwhile
                 if (j.Relight && t.Ready && t.Tex != null)
                 {
-                    t.Pending = j.Pixels; t.PendingLight = j.LightSig;      // shown together with the others
+                    t.Pending = j.Pixels; t.Pending2 = j.Pixels2; t.PendingLight = j.LightSig;   // shown together with the others
                     continue;
                 }
-                t.Pending = null; t.LightSig = j.LightSig;
+                t.Pending = null; t.Pending2 = null; t.LightSig = j.LightSig;
+                SetFogTexture(t, j.Pixels2);
                 if (t.Tex == null)
                 {
                     t.Tex = new Texture2D(DTileSize, DTileSize, TextureFormat.RGBA32, false, false);
@@ -742,6 +819,33 @@ namespace LivingMap
                     Logger.LogInfo("Detail: " + _dRendered + " tiles drawn, " + (_dMsTotal / _dRendered).ToString("0") + " ms per tile on average (last " + j.Ms.ToString("0") +
                                    " ms at " + j.Mpp + " m/px, " + j.Trees.Count + " trees/rocks, " + j.Boxes.Count + " boxes); cached " + _dTiles.Count);
             }
+        }
+
+        private void SetFogTexture(DTile t, byte[] px)
+        {
+            if (px == null)
+            {
+                if (t.Img2 != null) { UnityEngine.Object.Destroy(t.Img2.gameObject); t.Img2 = null; }
+                if (t.Tex2 != null) { UnityEngine.Object.Destroy(t.Tex2); t.Tex2 = null; }
+                return;
+            }
+            if (t.Tex2 == null)
+            {
+                t.Tex2 = new Texture2D(DTileSize, DTileSize, TextureFormat.RGBA32, false, false);
+                t.Tex2.wrapMode = TextureWrapMode.Clamp;
+                t.Tex2.filterMode = FilterMode.Point;
+            }
+            t.Tex2.LoadRawTextureData(px);
+            t.Tex2.Apply(false, false);
+            if (t.Img2 == null)
+            {
+                GameObject go = new GameObject("fog", typeof(RectTransform));
+                go.transform.SetParent(_dFogFront, false);
+                t.Img2 = go.AddComponent<RawImage>();
+                t.Img2.raycastTarget = false;
+                t.Img2.enabled = false;
+            }
+            t.Img2.texture = t.Tex2;
         }
 
         // The vanilla style is lit by the time of day. When the light changes enough, the visible
@@ -773,7 +877,8 @@ namespace LivingMap
                 if (t.Pending == null || t.PendingLight != _dLight || t.Tex == null) continue;
                 t.Tex.LoadRawTextureData(t.Pending);
                 t.Tex.Apply(false, false);
-                t.LightSig = t.PendingLight; t.Pending = null;
+                SetFogTexture(t, t.Pending2);
+                t.LightSig = t.PendingLight; t.Pending = null; t.Pending2 = null;
             }
         }
 
@@ -804,8 +909,7 @@ namespace LivingMap
             for (int i = 0; i < _dScratch.Count && drop > 0; i++, drop--)
             {
                 DTile t = _dScratch[i];
-                if (t.Img != null) UnityEngine.Object.Destroy(t.Img.gameObject);
-                if (t.Tex != null) UnityEngine.Object.Destroy(t.Tex);
+                DestroyTile(t);
                 _dTiles.Remove(t.Key);
             }
         }

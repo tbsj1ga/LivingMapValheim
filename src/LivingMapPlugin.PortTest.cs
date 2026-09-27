@@ -54,7 +54,8 @@ namespace LivingMap
                 j.Port.Zoom = 1000f; j.Port.Cells = 0f;
                 Vector4 co = Shader.GetGlobalVector("_CloudOffset");
                 j.Port.CloudX = co.x; j.Port.CloudZ = co.z;
-                byte[] cpu = RenderPortTile(j);
+                j.Port.Clouds = false; j.Port.CellPerPixel = false;
+                byte[] cpu = Composite(RenderPortTile(j), j.Pixels2);
                 File.WriteAllBytes(Path.Combine(dir, "port_" + stamp + "_cpu.png"), EncodePng(cpu, DTileSize));
                 double diff = 0; int n = DTileSize * DTileSize;
                 byte[] dimg = new byte[n * 4];
@@ -90,7 +91,8 @@ namespace LivingMap
                             jk.Port.Zoom = k == 0 ? zoom : 200f / zoom;
                             jk.Port.Cells = 7000f;
                             jk.Port.CloudX = co.x; jk.Port.CloudZ = co.z;
-                            byte[] ck = RenderPortTile(jk);
+                            jk.Port.Clouds = false; jk.Port.CellPerPixel = false;
+                            byte[] ck = Composite(RenderPortTile(jk), jk.Pixels2);
                             double dk = 0;
                             for (int i = 0; i < n; i++)
                                 for (int c = 0; c < 3; c++) dk += Math.Abs(g2[i * 4 + c] * 255f - ck[i * 4 + c]);
@@ -129,6 +131,23 @@ namespace LivingMap
             finally { UnityEngine.Object.Destroy(mat); }
             Logger.LogInfo(log.ToString());
             return "livingmap port: port_*_gpu/cpu/diff.png written to " + dir + "; details in the BepInEx log";
+        }
+
+        // the fog layer over the base, as the UI blends them (in linear light)
+        private static byte[] Composite(byte[] px, byte[] fog)
+        {
+            if (fog == null) return px;
+            for (int o = 0; o < px.Length; o += 4)
+            {
+                float a = fog[o + 3] / 255f;
+                if (a <= 0f) continue;
+                for (int c = 0; c < 3; c++)
+                {
+                    float lin = SrgbToLinear(px[o + c] / 255f) * (1f - a) + SrgbToLinear(fog[o + c] / 255f) * a;
+                    px[o + c] = LinearToSrgbByte(lin);
+                }
+            }
+            return px;
         }
 
         private static string Changed(float[] a, float[] b)

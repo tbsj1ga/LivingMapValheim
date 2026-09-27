@@ -23,6 +23,7 @@ namespace LivingMap
     {
         private ConfigEntry<string> _cfgDetailStyle;
         private ConfigEntry<float> _cfgDetailPixel;
+        private ConfigEntry<bool> _cfgDetailClouds;
         // coast line width: 0 from _zoom, 1 from _pixelSize (the shader multiplies one of them by 50)
         internal static int s_portCoastFrom = 0;
 
@@ -32,8 +33,10 @@ namespace LivingMap
                 new ConfigDescription("How the detailed picture is drawn. Vanilla: the game's own map look (paper, forest stamps, water lines, time-of-day light). Legacy: the earlier flat shaded picture.",
                     new AcceptableValueList<string>("Vanilla", "Legacy")));
             _cfgDetailPixel = Config.Bind(SecDetail, "DetailPixelMeters", 0f,
-                new ConfigDescription("Vanilla style: size of the map's pixels in metres. 0 = as the vanilla map (about 3.5 m, the stylised pixel look); smaller = finer detail, 0.5 = smooth.",
+                new ConfigDescription("Vanilla style: size of the map's pixels in metres. 0 = automatic: the vanilla map's pixel (about 3.5 m) at first, halved at each closer level (1.75 m, 0.9 m); a number = that size at every level.",
                     new AcceptableValueRange<float>(0f, 8f)));
+            _cfgDetailClouds = Config.Bind(SecDetail, "DetailClouds", true,
+                "Vanilla style: the vanilla map's drifting clouds over the detailed picture (under the fog of war, as in the game). Off = no clouds there.");
         }
 
         private bool PortWanted { get { return _cfgDetailStyle != null && _cfgDetailStyle.Value == "Vanilla"; } }
@@ -78,6 +81,7 @@ namespace LivingMap
         private class PortAssets
         {
             public PortTex Background, FogLayer, Water, Lava, Mountain, Cloud, Forest;
+            public Texture2D CloudTex;           // the clouds as white with alpha, for the drifting layer
         }
 
         private PortAssets _port;
@@ -173,6 +177,21 @@ namespace LivingMap
             return p;
         }
 
+        private static Texture2D CloudTexture(PortTex c)
+        {
+            int w = c.W[0], h = c.H[0];
+            Texture2D t = new Texture2D(w, h, TextureFormat.RGBA32, true, true);
+            Color32[] px = new Color32[w * h];
+            float[] a = c.A[0];
+            for (int i = 0; i < px.Length; i++) px[i] = new Color32(255, 255, 255, (byte)Mathf.Clamp(Mathf.RoundToInt(a[i] * 255f), 0, 255));
+            t.SetPixels32(px);
+            t.Apply(true, true);
+            t.wrapMode = TextureWrapMode.Repeat;
+            t.filterMode = FilterMode.Trilinear;
+            t.name = "LivingMap clouds";
+            return t;
+        }
+
         // main thread; false when the map material is not the one this port was read from
         private static PortAssets LoadPortAssets(Material m, bool decode)
         {
@@ -210,6 +229,7 @@ namespace LivingMap
                 p.Forest = ReadPattern(m.GetTexture("_ForestTex"));
                 if (p.Background == null || p.FogLayer == null || p.Water == null || p.Lava == null || p.Mountain == null || p.Cloud == null || p.Forest == null)
                     throw new Exception("a pattern texture of the map material is missing");
+                p.CloudTex = CloudTexture(p.Cloud);
                 _port = p; _portMat = m;
                 return true;
             }
@@ -234,6 +254,8 @@ namespace LivingMap
             public Vector3 LightDir;
             public float NormalWidth, NormalIntensity, Zoom, SharedFade, CloudX, CloudZ, TimeX, TimeY;
             public float Cells;                  // snapping grid: cells across the whole map (0 = none)
+            public bool CellPerPixel;            // the grid is the tile's own pixels: sample at the grid points
+            public bool Clouds;                  // clouds drift in their own layer (not drawn into the tile)
             // world data around the tile, on the vanilla map grid (step 1)
             public int X0, Z0, W, H;
             public float[] Height, MainR, MainG, MainB, MaskX, MaskY, MaskZ, FogX, FogY;
@@ -280,7 +302,9 @@ namespace LivingMap
             p.Zoom = s_portCoastFrom == 0 ? zoom : pixel;
             p.SharedFade = m.GetFloat("_SharedFade");
             float cell = _cfgDetailPixel != null ? _cfgDetailPixel.Value : 0f;
-            p.Cells = cell > 0.01f ? p.World / cell : zoom * pixel * 35f;
+            p.CellPerPixel = cell <= 0.01f;                 // automatic: one map pixel per tile pixel
+            p.Cells = p.CellPerPixel ? p.World / (size / DTileSize) : p.World / cell;
+            p.Clouds = _cfgDetailClouds == null || _cfgDetailClouds.Value;
             // one fixed moment for every tile: the water, fog edge, mist and clouds move with
             // time in the shader, and tiles drawn at different moments would not meet
             p.CloudX = 0f; p.CloudZ = 0f;
@@ -375,6 +399,8 @@ namespace LivingMap
             PortAssets A = p.A;
             int n = DTileSize;
             byte[] px = new byte[n * n * 4];
+            byte[] fogPx = new byte[n * n * 4];             // fog of war (and space) over the clouds
+            j.Pixels2 = fogPx;
             float mpp = j.Mpp, world = p.World;
             float lodBg5 = A.Background.Lod(5f, mpp, world), lodBg40 = A.Background.Lod(40f, mpp, world);
             float lodFogL = A.FogLayer.Lod(5f, mpp, world), lodWater = A.Water.Lod(80f, mpp, world);
@@ -395,12 +421,12 @@ namespace LivingMap
 
             for (int iz = 0; iz < n; iz++)
             {
-                float wz = j.Z0 + (iz + 0.5f) * mpp;
+                float wz = j.Z0 + (iz + (p.CellPerPixel ? 0f : 0.5f)) * mpp;
                 float v = wz / world + 0.5f;
                 if (cells > 0f) v = Mathf.Floor(v * cells + 0.5f) / cells;
                 for (int ix = 0; ix < n; ix++)
                 {
-                    float wx = j.X0 + (ix + 0.5f) * mpp;
+                    float wx = j.X0 + (ix + (p.CellPerPixel ? 0f : 0.5f)) * mpp;
                     float u = wx / world + 0.5f;
                     if (cells > 0f) u = Mathf.Floor(u * cells + 0.5f) / cells;
 
@@ -516,7 +542,8 @@ namespace LivingMap
                         r += (fR - r) * fk; g += (fG - g) * fk; b += (fB - b) * fk; a += (fA - a) * fk;
                     }
 
-                    // clouds
+                    // clouds (drawn here only when they do not drift in their own layer)
+                    if (!p.Clouds)
                     {
                         float e1, e2, e3, cl;
                         A.Cloud.Sample(u * 7f - p.CloudX, v * 7f - p.CloudZ, lodCloud, out e1, out e2, out e3, out cl);
@@ -529,26 +556,33 @@ namespace LivingMap
                     float mix = 0.5f * Mathf.Min(sy, sz) + 0.5f * s1;
                     float fogAmt = s1 + p.SharedFade * (mix - s1);
                     float fa = Mathf.Clamp01(fogAmt);
+                    float qR = 0f, qG = 0f, qB = 0f;
+                    float du = u - 0.5f, dv = v - 0.5f;
+                    float dist = Mathf.Sqrt(du * du + dv * dv);
                     if (fa > 0f)
                     {
-                        float qR = flR * fogAmt * laR * p.SunFog.r, qG = flG * fogAmt * laG * p.SunFog.g, qB = flB * fogAmt * laB * p.SunFog.b;
-                        float du = u - 0.5f, dv = v - 0.5f;
-                        float e = Smooth01(Mathf.Min(Mathf.Sqrt(du * du + dv * dv) * 2.325581f, 1f));
+                        qR = flR * fogAmt * laR * p.SunFog.r; qG = flG * fogAmt * laG * p.SunFog.g; qB = flB * fogAmt * laB * p.SunFog.b;
+                        float e = Smooth01(Mathf.Min(dist * 2.325581f, 1f));
                         qR -= 0.8f * e * qR; qG -= 0.8f * e * qG; qB -= 0.8f * e * qB;
-                        r += (qR - r) * fa; g += (qG - g) * fa; b += (qB - b) * fa;
                     }
-
                     // past the edge of the world the shader shows space; a dark fill stands in
-                    {
-                        float du = u - 0.5f, dv = v - 0.5f;
-                        float sp = Smooth01((Mathf.Sqrt(du * du + dv * dv) - 0.42f) * 99.9998f);
-                        if (sp > 0f) { r += (0.01f - r) * sp; g += (0.01f - g) * sp; b += (0.015f - b) * sp; }
-                    }
+                    float sp = Smooth01((dist - 0.42f) * 99.9998f);
 
                     int o = (iz * n + ix) * 4;
                     if (s_portSrgbOut) { px[o] = LinearToSrgbByte(r); px[o + 1] = LinearToSrgbByte(g); px[o + 2] = LinearToSrgbByte(b); }
                     else { px[o] = RawByte(r); px[o + 1] = RawByte(g); px[o + 2] = RawByte(b); }
                     px[o + 3] = 255;
+
+                    // the fog layer: lerp(lerp(x, fog, fa), space, sp) as one colour and alpha
+                    float al = 1f - (1f - fa) * (1f - sp);
+                    if (al > 0f)
+                    {
+                        float kf = fa * (1f - sp) / al, ks = sp / al;
+                        float cr = qR * kf + 0.01f * ks, cg = qG * kf + 0.01f * ks, cb = qB * kf + 0.015f * ks;
+                        if (s_portSrgbOut) { fogPx[o] = LinearToSrgbByte(cr); fogPx[o + 1] = LinearToSrgbByte(cg); fogPx[o + 2] = LinearToSrgbByte(cb); }
+                        else { fogPx[o] = RawByte(cr); fogPx[o + 1] = RawByte(cg); fogPx[o + 2] = RawByte(cb); }
+                        fogPx[o + 3] = (byte)Mathf.Clamp(Mathf.RoundToInt(al * 255f), 0, 255);
+                    }
                 }
             }
             return px;
