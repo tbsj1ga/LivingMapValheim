@@ -967,7 +967,7 @@ namespace LivingMap
                     _dPending.RemoveAt(best);
                 }
                 long t0 = Stopwatch.GetTimestamp();
-                try { j.Pixels = j.Port != null ? RenderPortTile(j) : RenderTile(j, wg); }
+                try { j.Pixels = j.Port != null ? RenderPortTile(j, wg) : RenderTile(j, wg); }
                 catch (Exception e)
                 {
                     j.Pixels = null;

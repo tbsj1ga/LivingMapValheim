@@ -17,8 +17,11 @@ namespace LivingMap
     // Not ported: the animation of water and clouds (a tile is a snapshot) and the space
     // picture past the edge of the world.
     //
-    // Step 1: the world data (colour, height, forest/mist/lava mask, fog) is taken from the
-    // vanilla map textures, so a tile must match the vanilla map under it.
+    // The shader's inputs: the vanilla map textures (biome colour, mist and lava masks, fog of
+    // war) with Living Map's own data on top, at the tile's resolution - paths, fields and
+    // buildings painted into the colour, heights from the world generator with the players'
+    // terrain edits, and the forest mask from the trees that stand (or the vanilla forest with
+    // the cleared/planted corrections where the zone's objects are not known).
     public partial class LivingMapPlugin
     {
         private ConfigEntry<string> _cfgDetailStyle;
@@ -256,6 +259,9 @@ namespace LivingMap
             public float Cells;                  // snapping grid: cells across the whole map (0 = none)
             public bool CellPerPixel;            // the grid is the tile's own pixels: sample at the grid points
             public bool Clouds;                  // clouds drift in their own layer (not drawn into the tile)
+            // Living Map's colours as it paints them into the map texture (gamma, with alpha)
+            public Color32[] Mat; public Color32 MatUnknown, Outline, Paved, Dirt, Cultivated, Cleared;
+            public bool DrawOutline;
             // world data around the tile, on the vanilla map grid (step 1)
             public int X0, Z0, W, H;
             public float[] Height, MainR, MainG, MainB, MaskX, MaskY, MaskZ, FogX, FogY;
@@ -305,6 +311,10 @@ namespace LivingMap
             p.CellPerPixel = cell <= 0.01f;                 // automatic: one map pixel per tile pixel
             p.Cells = p.CellPerPixel ? p.World / (size / DTileSize) : p.World / cell;
             p.Clouds = _cfgDetailClouds == null || _cfgDetailClouds.Value;
+            p.Mat = new Color32[_cfgMatColor.Length];
+            for (int i = 0; i < _cfgMatColor.Length; i++) p.Mat[i] = _cfgMatColor[i].Value;
+            p.MatUnknown = _cfgMatUnknownColor.Value; p.Outline = _cfgOutlineColor.Value; p.DrawOutline = _cfgOutline.Value;
+            p.Paved = _cfgPavedColor.Value; p.Dirt = _cfgDirtColor.Value; p.Cultivated = _cfgCultivatedColor.Value; p.Cleared = _cfgClearedColor.Value;
             // one fixed moment for every tile: the water, fog edge, mist and clouds move with
             // time in the shader, and tiles drawn at different moments would not meet
             p.CloudX = 0f; p.CloudZ = 0f;
@@ -395,7 +405,113 @@ namespace LivingMap
         // ------------------------------------------------------------------
         private static byte[] RenderPortTile(DJob j)
         {
+            return RenderPortTile(j, null);
+        }
+
+        // Living Map's data at the tile's sample points: colour (sRGB bytes with paths and
+        // buildings), height grid, tree mask. The sample point of pixel (ix, iz) is its grid point
+        // with one map pixel per tile pixel, else the pixel centre.
+        private class PortDetail
+        {
+            public byte[] Main;          // n x n RGBA, gamma
+            public float[] Trees;        // n x n tree cover 0..1 (zones whose objects are known)
+            public float[] H; public int Gs;   // heights every DStep pixels, one sample of border
+            public float Half;           // 0 or 0.5: where a pixel samples, in pixels
+        }
+
+        private static PortDetail BuildPortDetail(DJob j, WorldGenerator wg)
+        {
             PortJob p = j.Port;
+            int n = DTileSize;
+            float mpp = j.Mpp, world = p.World;
+            PortDetail d = new PortDetail();
+            d.Half = p.CellPerPixel ? 0f : 0.5f;
+
+            // colour: the vanilla biome colour, then Living Map's paint
+            d.Main = new byte[n * n * 4];
+            for (int iz = 0; iz < n; iz++)
+            {
+                float v = (j.Z0 + (iz + d.Half) * mpp) / world + 0.5f;
+                for (int ix = 0; ix < n; ix++)
+                {
+                    float u = (j.X0 + (ix + d.Half) * mpp) / world + 0.5f;
+                    int o = (iz * n + ix) * 4;
+                    d.Main[o] = LinearToSrgbByte(Data(p, p.MainR, u, v)); d.Main[o + 1] = LinearToSrgbByte(Data(p, p.MainG, u, v));
+                    d.Main[o + 2] = LinearToSrgbByte(Data(p, p.MainB, u, v)); d.Main[o + 3] = 255;
+                }
+            }
+            // the painters fill pixels whose centre is inside; shift so "centre" = sample point
+            float x0 = j.X0, z0 = j.Z0;
+            j.X0 -= (0.5f - d.Half) * mpp; j.Z0 -= (0.5f - d.Half) * mpp;
+            try
+            {
+                float grid = j.Grid;
+                for (int i = 0; i < j.TerrKeys.Count; i++)
+                {
+                    long key = j.TerrKeys[i];
+                    float cx0 = (int)(key >> 32) * grid, cz0 = (int)key * grid;
+                    byte kind = j.TerrKinds[i];
+                    Color32 c = kind == TerrainPaved ? p.Paved : kind == TerrainDirt ? p.Dirt : kind == TerrainCultivated ? p.Cultivated : p.Cleared;
+                    FillRect(d.Main, n, j, cx0, cz0, cx0 + grid, cz0 + grid, c);
+                }
+                float w = Mathf.Max(0.5f, mpp);
+                for (int i = 0; i < j.Pieces.Count; i++)
+                {
+                    PieceRec r = j.Pieces[i];
+                    Color32 c = r.Mat != MatNone && r.Mat < p.Mat.Length ? p.Mat[r.Mat] : p.MatUnknown;
+                    if (p.DrawOutline) FillRect(d.Main, n, j, r.X0 - w, r.Z0 - w, r.X1 + w, r.Z1 + w, p.Outline);
+                    FillRect(d.Main, n, j, r.X0, r.Z0, r.X1, r.Z1, c);
+                }
+                if (p.DrawOutline)
+                    for (int i = 0; i < j.Boxes.Count; i++) FillBox(d.Main, n, j, j.Boxes[i], w, p.Outline, 1f);
+                for (int i = 0; i < j.Boxes.Count; i++)
+                {
+                    DBox bx = j.Boxes[i];
+                    Color32 c = bx.Mat != MatNone && bx.Mat < p.Mat.Length ? p.Mat[bx.Mat] : p.MatUnknown;
+                    FillBox(d.Main, n, j, bx, 0f, c, 1f);
+                }
+
+                // trees: a soft disc a little wider than the crown, so neighbours merge into forest
+                d.Trees = new float[n * n];
+                for (int i = 0; i < j.Trees.Count; i++)
+                {
+                    DTree t = j.Trees[i];
+                    if (t.Rock) continue;
+                    float rr = t.R * 1.3f;
+                    int ix0 = Mathf.Max(0, Mathf.FloorToInt((t.X - rr - j.X0) / mpp)), ix1 = Mathf.Min(n - 1, Mathf.CeilToInt((t.X + rr - j.X0) / mpp));
+                    int iz0 = Mathf.Max(0, Mathf.FloorToInt((t.Z - rr - j.Z0) / mpp)), iz1 = Mathf.Min(n - 1, Mathf.CeilToInt((t.Z + rr - j.Z0) / mpp));
+                    float soft = Mathf.Max(mpp, rr * 0.35f);
+                    for (int iz = iz0; iz <= iz1; iz++)
+                        for (int ix = ix0; ix <= ix1; ix++)
+                        {
+                            float dx = j.X0 + (ix + 0.5f) * mpp - t.X, dz = j.Z0 + (iz + 0.5f) * mpp - t.Z;
+                            float cov = Mathf.Clamp01((rr - Mathf.Sqrt(dx * dx + dz * dz)) / soft);
+                            int k = iz * n + ix;
+                            if (cov > d.Trees[k]) d.Trees[k] = cov;
+                        }
+                }
+            }
+            finally { j.X0 = x0; j.Z0 = z0; }
+
+            // heights: the world generator plus the players' edits, every DStep pixels
+            int gs = n / DStep + 3;
+            d.Gs = gs;
+            d.H = new float[gs * gs];
+            Color mask;
+            for (int sz = 0; sz < gs; sz++)
+                for (int sx = 0; sx < gs; sx++)
+                {
+                    float wx = j.X0 + ((sx - 1) * DStep + d.Half) * mpp, wz = j.Z0 + ((sz - 1) * DStep + d.Half) * mpp;
+                    Heightmap.Biome bm = wg.GetBiome(wx, wz, 0.02f, false);
+                    d.H[sz * gs + sx] = wg.GetBiomeHeight(bm, wx, wz, out mask, false, true) + HeightDelta(j, wx, wz);
+                }
+            return d;
+        }
+
+        private static byte[] RenderPortTile(DJob j, WorldGenerator wg)
+        {
+            PortJob p = j.Port;
+            PortDetail det = wg != null && j.Trees != null && j.TerrKeys != null ? BuildPortDetail(j, wg) : null;
             PortAssets A = p.A;
             int n = DTileSize;
             byte[] px = new byte[n * n * 4];
@@ -434,6 +550,25 @@ namespace LivingMap
                     A.FogLayer.Sample(u * 5f, v * 5f, lodFogL, out flR, out flG, out flB, out flA);
                     float mX = Data(p, p.MaskX, u, v), mY = Data(p, p.MaskY, u, v), mZ = Data(p, p.MaskZ, u, v);
                     float hgt = Data(p, p.Height, u, v);
+                    float hvan = hgt;                                // the normal keeps the vanilla baseline
+                    int di = -1;
+                    if (det != null)
+                    {
+                        // the snapped point, back to world metres and to this tile's pixel
+                        float sxw = (u - 0.5f) * world, szw = (v - 0.5f) * world;
+                        float fx = (sxw - j.X0) / mpp - det.Half, fz = (szw - j.Z0) / mpp - det.Half;
+                        int pxi = Mathf.Clamp(Mathf.RoundToInt(fx), 0, n - 1), pzi = Mathf.Clamp(Mathf.RoundToInt(fz), 0, n - 1);
+                        di = pzi * n + pxi;
+                        hgt = Sample(det.H, det.Gs, fx / DStep + 1f, fz / DStep + 1f);
+                        float edit = HeightDelta(j, sxw, szw);
+                        hvan += edit;
+                        if (j.LiveZones.Contains(ZoneOf(j, sxw, szw))) mX = det.Trees[di];
+                        else
+                        {
+                            int fk = FogIndex(j, sxw, szw);
+                            if (fk >= 0 && j.ForestFix[fk] != 0) mX = j.ForestFix[fk] > 0 ? 1f : 0f;
+                        }
+                    }
 
                     // fog, sampled with a wobble
                     float f1 = Data(p, p.FogX, u + Mathf.Sin(v * 1700f + s5x) * 0.0004f, v + Mathf.Cos(u * 1200f + s5y) * 0.0004f);
@@ -445,7 +580,14 @@ namespace LivingMap
                     float nx = 0f, ny = 1f, nz = 0f;
                     if (land)
                     {
-                        float dx = Data(p, p.Height, u - nw, v) - hgt, dz = Data(p, p.Height, u, v - nw) - hgt;
+                        float dx, dz;
+                        if (det != null)
+                        {
+                            float sxw = (u - 0.5f) * world, szw = (v - 0.5f) * world, nwm = nw * world;
+                            dx = Data(p, p.Height, u - nw, v) + HeightDelta(j, sxw - nwm, szw) - hvan;
+                            dz = Data(p, p.Height, u, v - nw) + HeightDelta(j, sxw, szw - nwm) - hvan;
+                        }
+                        else { dx = Data(p, p.Height, u - nw, v) - hgt; dz = Data(p, p.Height, u, v - nw) - hgt; }
                         float len = Mathf.Sqrt(dx * dx + p.NormalIntensity * p.NormalIntensity + dz * dz);
                         nx = dx / len; ny = p.NormalIntensity / len; nz = dz / len;
                     }
@@ -479,7 +621,14 @@ namespace LivingMap
                     {
                         float bgR, bgG, bgB, bgA;
                         A.Background.Sample(u * 40f, v * 40f, lodBg40, out bgR, out bgG, out bgB, out bgA);
-                        float mR = Data(p, p.MainR, u, v), mG = Data(p, p.MainG, u, v), mB = Data(p, p.MainB, u, v);
+                        float mR, mG, mB;
+                        if (det != null)
+                        {
+                            int o4 = di * 4;
+                            if (s_portLinTextures) { mR = s_srgbToLinear[det.Main[o4]]; mG = s_srgbToLinear[det.Main[o4 + 1]]; mB = s_srgbToLinear[det.Main[o4 + 2]]; }
+                            else { mR = det.Main[o4] / 255f; mG = det.Main[o4 + 1] / 255f; mB = det.Main[o4 + 2] / 255f; }
+                        }
+                        else { mR = Data(p, p.MainR, u, v); mG = Data(p, p.MainG, u, v); mB = Data(p, p.MainB, u, v); }
                         float mx = Mathf.Max(bgR, Mathf.Max(bgG, bgB)), mn = Mathf.Min(bgR, Mathf.Min(bgG, bgB));
                         if (mx - mn >= 0.0001f) { bgR = mx; bgG = mx; bgB = mx; }
                         float gR = mR * bgR, gG = mG * bgG, gB = mB * bgB, gA = bgA;   // main alpha is 1
