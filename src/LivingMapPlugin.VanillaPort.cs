@@ -470,7 +470,7 @@ namespace LivingMap
                 }
                 // flat outlines only when not styled (styled buildings get a darker edge of their own)
                 bool outline = p.DrawOutline && !p.Styled && mpp < 1.2f;
-                float w = mpp, grow = mpp * 0.5f;
+                float w = mpp;
                 if (outline)
                 {
                     for (int i = 0; i < j.Pieces.Count; i++)
@@ -484,17 +484,18 @@ namespace LivingMap
                 {
                     PieceRec r = j.Pieces[i];
                     Color32 c = r.Mat != MatNone && r.Mat < p.Mat.Length ? p.Mat[r.Mat] : p.MatUnknown;
-                    float gx = Mathf.Max(0f, (mpp - (r.X1 - r.X0)) * 0.5f), gz = Mathf.Max(0f, (mpp - (r.Z1 - r.Z0)) * 0.5f);
-                    FillRect(d.Main, n, j, r.X0 - gx, r.Z0 - gz, r.X1 + gx, r.Z1 + gz, c);
-                    MarkRect(d, n, j, r.X0 - gx, r.Z0 - gz, r.X1 + gx, r.Z1 + gz, (byte)(10 + Mathf.Min((int)r.Mat, 200)), -1);
+                    // FillRect already takes every pixel the footprint touches, so even a small
+                    // piece keeps a pixel; no extra growth
+                    FillRect(d.Main, n, j, r.X0, r.Z0, r.X1, r.Z1, c);
+                    MarkRect(d, n, j, r.X0, r.Z0, r.X1, r.Z1, (byte)(10 + Mathf.Min((int)r.Mat, 200)), -1);
                 }
                 for (int i = 0; i < j.Boxes.Count; i++)
                 {
                     DBox bx = j.Boxes[i];
                     Color32 c = bx.Mat != MatNone && bx.Mat < p.Mat.Length ? p.Mat[bx.Mat] : p.MatUnknown;
-                    float g = Mathf.Max(0f, grow - Mathf.Min(bx.HX, bx.HZ));
-                    FillBox(d.Main, n, j, bx, g, c, 1f);
-                    MarkBox(d, n, j, bx, g, (byte)(10 + Mathf.Min((int)bx.Mat, 200)), (short)Mathf.Min(i, short.MaxValue));
+                    // FillBox covers a pixel whose centre is within half a pixel: no extra growth
+                    FillBox(d.Main, n, j, bx, 0f, c, 1f);
+                    MarkBox(d, n, j, bx, 0f, (byte)(10 + Mathf.Min((int)bx.Mat, 200)), (short)Mathf.Min(i, short.MaxValue));
                 }
 
                 // trees: the crown (a lone tree gets its own stamp) and a wide "a tree is near"
@@ -505,8 +506,10 @@ namespace LivingMap
                 {
                     DTree t = j.Trees[i];
                     if (t.Rock) continue;
-                    Disc(d.Trees, n, j, t.X, t.Z, t.R * 1.3f, Mathf.Max(mpp, t.R * 0.45f));
-                    Disc(d.Near, n, j, t.X, t.Z, 9f, 3f);
+                    // crisp edges, one pixel wide: a soft edge turns each tree into a blurred disc
+                    // of the stamp pattern at the finest level
+                    Disc(d.Trees, n, j, t.X, t.Z, t.R * 1.3f, mpp);
+                    Disc(d.Near, n, j, t.X, t.Z, 8f, mpp);
                 }
             }
             finally { j.X0 = x0; j.Z0 = z0; }
@@ -574,7 +577,7 @@ namespace LivingMap
         private static void StylePaint(PortDetail d, DJob j, int n)
         {
             float mpp = j.Mpp;
-            bool fine = mpp < 1.2f;                   // the finest level: patterns; coarser: shading only
+            bool fine = mpp < 2.5f;                   // both close levels: patterns (the first level is not styled)
             int gx0 = Mathf.RoundToInt(j.X0 / mpp), gz0 = Mathf.RoundToInt(j.Z0 / mpp);
             byte[] c = d.Main;
             byte[] kind = d.Kind;
@@ -725,7 +728,6 @@ namespace LivingMap
                     A.FogLayer.Sample(u * 5f, v * 5f, lodFogL, out flR, out flG, out flB, out flA);
                     float mX = Data(p, p.MaskX, u, v), mY = Data(p, p.MaskY, u, v), mZ = Data(p, p.MaskZ, u, v);
                     float hgt = Data(p, p.Height, u, v);
-                    float hvan = hgt;                                // the normal keeps the vanilla baseline
                     int di = -1;
                     if (det != null)
                     {
@@ -735,8 +737,6 @@ namespace LivingMap
                         int pxi = Mathf.Clamp(Mathf.RoundToInt(fx), 0, n - 1), pzi = Mathf.Clamp(Mathf.RoundToInt(fz), 0, n - 1);
                         di = pzi * n + pxi;
                         hgt = Sample(det.H, det.Gs, fx / DStep + 1f, fz / DStep + 1f);
-                        float edit = HeightDelta(j, sxw, szw);
-                        hvan += edit;
                         if (j.LiveZones.Contains(ZoneOf(j, sxw, szw))) mX = Mathf.Max(mX * det.Near[di], det.Trees[di]);
                         else
                         {
@@ -758,9 +758,13 @@ namespace LivingMap
                         float dx, dz;
                         if (det != null)
                         {
+                            // the terrain keeps the vanilla 25 m baseline; the players' edits are
+                            // measured across one pixel and scaled to it, or a raised ring would
+                            // light a ghost of itself 25 m away
                             float sxw = (u - 0.5f) * world, szw = (v - 0.5f) * world, nwm = nw * world;
-                            dx = Data(p, p.Height, u - nw, v) + HeightDelta(j, sxw - nwm, szw) - hvan;
-                            dz = Data(p, p.Height, u, v - nw) + HeightDelta(j, sxw, szw - nwm) - hvan;
+                            float e0 = HeightDelta(j, sxw, szw), step = Mathf.Max(mpp, 0.5f), k = nwm / step;
+                            dx = Data(p, p.Height, u - nw, v) - Data(p, p.Height, u, v) + Mathf.Clamp((HeightDelta(j, sxw - step, szw) - e0) * k, -40f, 40f);
+                            dz = Data(p, p.Height, u, v - nw) - Data(p, p.Height, u, v) + Mathf.Clamp((HeightDelta(j, sxw, szw - step) - e0) * k, -40f, 40f);
                         }
                         else { dx = Data(p, p.Height, u - nw, v) - hgt; dz = Data(p, p.Height, u, v - nw) - hgt; }
                         float len = Mathf.Sqrt(dx * dx + p.NormalIntensity * p.NormalIntensity + dz * dz);
