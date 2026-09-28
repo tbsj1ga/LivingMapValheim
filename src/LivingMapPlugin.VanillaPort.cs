@@ -419,8 +419,8 @@ namespace LivingMap
         private class PortDetail
         {
             public byte[] Main;          // n x n RGBA, gamma
-            public float[] Trees;        // n x n crown cover 0..1 (zones whose objects are known)
-            public float[] Density;      // n x n: how much forest the standing trees make (smooth)
+            public float[] MaskX;        // the forest mask on the vanilla grid with Living Map's cleared /
+                                         // planted corrections - sampled bilinearly, like the main layer's
             public byte[] Ground;        // n x n RGBA: the colour before Living Map's paint
             public float[] H; public int Gs;   // heights every DStep pixels, one sample of border
             public float Half;           // 0 or 0.5: where a pixel samples, in pixels
@@ -497,19 +497,21 @@ namespace LivingMap
                     PaintBox(d, n, j, bx, c, (byte)(10 + Mathf.Min((int)bx.Mat, 200)), (short)Mathf.Min(i, short.MaxValue));
                 }
 
-                // trees: the crown, so a lone tree outside the forest gets its own stamp
-                d.Trees = new float[n * n];
-                d.Density = new float[n * n];
-                for (int i = 0; i < j.Trees.Count; i++)
-                {
-                    DTree t = j.Trees[i];
-                    if (t.Rock) continue;
-                    // crisp edge, one pixel wide: a soft edge turns a tree into a blurred disc
-                    Disc(d.Trees, n, j, t.X, t.Z, t.R * 1.3f, mpp);
-                    Gauss(d.Density, n, j, t.X, t.Z, 5f);
-                }
+                SoftenTerrainEdges(d, n);
             }
             finally { j.X0 = x0; j.Z0 = z0; }
+
+            // forest: the vanilla mask with the corrections, one value per map pixel; the shader
+            // pattern is cut by it smoothly (a cleared cell is a soft patch, not a square)
+            d.MaskX = (float[])p.MaskX.Clone();
+            for (int gz = 0; gz < p.H; gz++)
+                for (int gx = 0; gx < p.W; gx++)
+                {
+                    int fx = p.X0 + gx - j.FogX0, fz = p.Z0 + gz - j.FogZ0;
+                    if (fx < 0 || fz < 0 || fx >= j.FogW || fz >= j.FogH) continue;
+                    sbyte fix = j.ForestFix[fz * j.FogW + fx];
+                    if (fix != 0) d.MaskX[gz * p.W + gx] = fix > 0 ? 1f : 0f;
+                }
 
             // heights: the world generator plus the players' edits, every DStep pixels
             int gs = n / DStep + 3;
@@ -525,6 +527,31 @@ namespace LivingMap
                 }
             if (p.Styled && mpp < 3f) StylePaint(d, j, n);
             return d;
+        }
+
+        // The edge of a path, a field or paving blends half into the ground next to it; a lone
+        // cell blends further. On every level, before the styling.
+        private static void SoftenTerrainEdges(PortDetail d, int n)
+        {
+            byte[] kind = d.Kind, c = d.Main, gr = d.Ground;
+            for (int iz = 0; iz < n; iz++)
+                for (int ix = 0; ix < n; ix++)
+                {
+                    int k = iz * n + ix;
+                    byte kd = kind[k];
+                    if (kd == 0 || kd >= 10) continue;
+                    int around = 0;
+                    if (ix > 0 && kind[k - 1] > 0 && kind[k - 1] < 10) around++;
+                    if (ix < n - 1 && kind[k + 1] > 0 && kind[k + 1] < 10) around++;
+                    if (iz > 0 && kind[k - n] > 0 && kind[k - n] < 10) around++;
+                    if (iz < n - 1 && kind[k + n] > 0 && kind[k + n] < 10) around++;
+                    if (around == 4) continue;
+                    float keep = around == 0 ? 0.35f : 0.55f;
+                    int o = k * 4;
+                    c[o] = (byte)(gr[o] + (c[o] - gr[o]) * keep);
+                    c[o + 1] = (byte)(gr[o + 1] + (c[o + 1] - gr[o + 1]) * keep);
+                    c[o + 2] = (byte)(gr[o + 2] + (c[o + 2] - gr[o + 2]) * keep);
+                }
         }
 
         private static uint Hash(int x, int z, int salt)
@@ -548,7 +575,10 @@ namespace LivingMap
         private static void StylePaint(PortDetail d, DJob j, int n)
         {
             float mpp = j.Mpp;
-            bool fine = mpp < 2.5f;                   // both close levels: patterns (the first level is not styled)
+            bool fine = true;
+            // strength: a third at 2.5 m, three quarters at 1.75 m, full from 1.25 m - the
+            // textures grow in as you zoom, instead of appearing at once
+            float amp = Mathf.Clamp01((3.2f - mpp) / 2f);
             int gx0 = Mathf.RoundToInt(j.X0 / mpp), gz0 = Mathf.RoundToInt(j.Z0 / mpp);
             byte[] c = d.Main;
             byte[] kind = d.Kind;
@@ -562,17 +592,12 @@ namespace LivingMap
                     if (kd == 0)
                     {
                         // a building's shadow: the pixel north-west of this one is a building
-                        if (ix > 0 && iz < n - 1 && orig[(iz + 1) * n + ix - 1] >= 10) Scale(c, o, 0.72f);
+                        if (ix > 0 && iz < n - 1 && orig[(iz + 1) * n + ix - 1] >= 10) Scale(c, o, 1f - 0.28f * amp);
                         continue;
                     }
                     if (kd < 10)
                     {
-                        // terrain: a lone cell (no terrain around it) fades toward the ground
-                        int around = 0;
-                        if (ix > 0 && orig[k - 1] > 0 && orig[k - 1] < 10) around++;
-                        if (ix < n - 1 && orig[k + 1] > 0 && orig[k + 1] < 10) around++;
-                        if (iz > 0 && orig[k - n] > 0 && orig[k - n] < 10) around++;
-                        if (iz < n - 1 && orig[k + n] > 0 && orig[k + n] < 10) around++;
+                        // terrain: a pattern of its own (the edges were softened already)
                         float f = 1f;
                         if (kd == TerrainDirt) f = 0.88f + 0.24f * Rand(gx, gz, 1);
                         else if (kd == TerrainPaved)
@@ -584,16 +609,7 @@ namespace LivingMap
                         }
                         else if (kd == TerrainCultivated) f = ((gz & 1) == 0 ? 0.84f : 1.08f) * (0.95f + 0.1f * Rand(gx, gz, 4));
                         else f = 0.95f + 0.1f * Rand(gx, gz, 5);
-                        Scale(c, o, f);
-                        // worn into the ground: the path is mixed with the ground under it, more
-                        // at its edge and in a lone cell, so it follows the terrain's texture
-                        float keep = kd == TerrainPaved ? 0.8f : kd == TerrainCultivated ? 0.75f : kd == TerrainDirt ? 0.62f : 0.45f;
-                        if (around < 4) keep *= 0.7f;
-                        if (around == 0) keep *= 0.6f;
-                        byte[] gr = d.Ground;
-                        c[o] = (byte)(gr[o] + (c[o] - gr[o]) * keep);
-                        c[o + 1] = (byte)(gr[o + 1] + (c[o + 1] - gr[o + 1]) * keep);
-                        c[o + 2] = (byte)(gr[o + 2] + (c[o + 2] - gr[o + 2]) * keep);
+                        Scale(c, o, 1f + (f - 1f) * amp);
                         continue;
                     }
 
@@ -640,26 +656,9 @@ namespace LivingMap
                     else m = 0.95f + 0.1f * Rand(gx, gz, 18);
                     // the edge of a building: a darker shade of its own colour
                     bool edge = (ix > 0 && orig[k - 1] < 10) || (ix < n - 1 && orig[k + 1] < 10) || (iz > 0 && orig[k - n] < 10) || (iz < n - 1 && orig[k + n] < 10);
-                    Scale(c, o, m * top * (edge ? 0.72f : 1f));
+                    float s = m * top * (edge ? 0.72f : 1f);
+                    Scale(c, o, 1f + (s - 1f) * amp);
                 }
-        }
-
-        // a smooth bump (sigma in metres) added to a field: the sum over the trees is a forest
-        // density whose edge follows the trees, with no circles or 12 m squares
-        private static void Gauss(float[] a, int n, DJob j, float x, float z, float sigma)
-        {
-            float mpp = j.Mpp, r = sigma * 3f, inv = 1f / (sigma * sigma);
-            int ix0 = Mathf.Max(0, Mathf.FloorToInt((x - r - j.X0) / mpp)), ix1 = Mathf.Min(n - 1, Mathf.CeilToInt((x + r - j.X0) / mpp));
-            int iz0 = Mathf.Max(0, Mathf.FloorToInt((z - r - j.Z0) / mpp)), iz1 = Mathf.Min(n - 1, Mathf.CeilToInt((z + r - j.Z0) / mpp));
-            for (int iz = iz0; iz <= iz1; iz++)
-            {
-                float dz = j.Z0 + (iz + 0.5f) * mpp - z;
-                for (int ix = ix0; ix <= ix1; ix++)
-                {
-                    float dx = j.X0 + (ix + 0.5f) * mpp - x;
-                    a[iz * n + ix] += Mathf.Exp(-(dx * dx + dz * dz) * inv);
-                }
-            }
         }
 
         // Paint + record: a pixel whose centre is inside; a side thinner than a pixel is widened
@@ -698,21 +697,6 @@ namespace LivingMap
                     int k = iz * n + ix;
                     Blend(d.Main, k * 4, c.r, c.g, c.b, a);
                     d.Kind[k] = kind; d.Box[k] = box;
-                }
-        }
-
-        private static void Disc(float[] a, int n, DJob j, float x, float z, float r, float soft)
-        {
-            float mpp = j.Mpp;
-            int ix0 = Mathf.Max(0, Mathf.FloorToInt((x - r - j.X0) / mpp)), ix1 = Mathf.Min(n - 1, Mathf.CeilToInt((x + r - j.X0) / mpp));
-            int iz0 = Mathf.Max(0, Mathf.FloorToInt((z - r - j.Z0) / mpp)), iz1 = Mathf.Min(n - 1, Mathf.CeilToInt((z + r - j.Z0) / mpp));
-            for (int iz = iz0; iz <= iz1; iz++)
-                for (int ix = ix0; ix <= ix1; ix++)
-                {
-                    float dx = j.X0 + (ix + 0.5f) * mpp - x, dz = j.Z0 + (iz + 0.5f) * mpp - z;
-                    float cov = Mathf.Clamp01((r - Mathf.Sqrt(dx * dx + dz * dz)) / soft);
-                    int k = iz * n + ix;
-                    if (cov > a[k]) a[k] = cov;
                 }
         }
 
@@ -767,21 +751,8 @@ namespace LivingMap
                         int pxi = Mathf.Clamp(Mathf.RoundToInt(fx), 0, n - 1), pzi = Mathf.Clamp(Mathf.RoundToInt(fz), 0, n - 1);
                         di = pzi * n + pxi;
                         hgt = Sample(det.H, det.Gs, fx / DStep + 1f, fz / DStep + 1f);
-                        // forest: the vanilla mask with Living Map's cleared / planted corrections (as
-                        // the main layer draws it); where the zone's trees are known, a tree outside
-                        // that forest adds its own stamp
-                        if (j.LiveZones.Contains(ZoneOf(j, sxw, szw)))
-                        {
-                            // the trees are known: the vanilla forest where they stand (a smooth
-                            // density, so a clearing has a natural edge), a lone tree its stamp
-                            float near = Smooth01(det.Density[di] * 1.4f - 0.25f);
-                            mX = Mathf.Max(mX * near, det.Trees[di]);
-                        }
-                        else
-                        {
-                            int fk = FogIndex(j, sxw, szw);
-                            if (fk >= 0 && j.ForestFix[fk] != 0) mX = j.ForestFix[fk] > 0 ? 1f : 0f;
-                        }
+                        // forest: as the main layer draws it (vanilla mask + corrections, smooth)
+                        mX = Data(p, det.MaskX, u, v);
                     }
 
                     // fog, sampled with a wobble

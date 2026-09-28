@@ -122,7 +122,7 @@ namespace LivingMap
         private const int DUploadsPerFrame = 2;
         private const int DEnqueuesPerFrame = 4;
         private const float DRedrawMinAge = 5f;
-        private const float DObjectsMaxMpp = 2f;
+        private const float DObjectsMaxMpp = 2.6f;
         // metres per tile pixel of each level; the vanilla style uses the vanilla map's pixel
         // (the world / 7000) and its halves, so a tile pixel is exactly one map pixel
         private static float[] DLevels = { 4f, 2f, 1f };
@@ -298,8 +298,8 @@ namespace LivingMap
             {
                 if (DLevels[i] < finest * 0.85f) break;
                 level = i;
-                // vanilla style: a map pixel stays at most ~6 screen pixels (they shrink as you zoom in)
-                if (DLevels[i] <= need * (PortWanted ? 6f : 1f)) break;
+                // vanilla style: a map pixel stays at most ~4 screen pixels (they shrink as you zoom in)
+                if (DLevels[i] <= need * (PortWanted ? 4f : 1f)) break;
             }
             if (level < 0) level = 0;
 
