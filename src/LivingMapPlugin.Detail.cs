@@ -302,8 +302,8 @@ namespace LivingMap
             {
                 if (DLevels[i] < finest * 0.85f) break;
                 level = i;
-                // vanilla style: a map pixel stays at most ~4 screen pixels (they shrink as you zoom in)
-                if (DLevels[i] <= need * (PortWanted ? 4f : 1f)) break;
+                // vanilla style: a map pixel stays at most ~3 screen pixels (they shrink as you zoom in)
+                if (DLevels[i] <= need * (PortWanted ? 3f : 1f)) break;
             }
             if (level < 0) level = 0;
 

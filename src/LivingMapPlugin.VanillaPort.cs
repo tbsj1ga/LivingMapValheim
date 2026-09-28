@@ -576,11 +576,11 @@ namespace LivingMap
         {
             float mpp = j.Mpp;
             bool fine = true;
-            // strength: the textures (planks, masonry, straw...) a third at 2.5 m, three quarters
-            // at 1.75 m, full from 1.25 m; the shapes (edges, shadows, roof slopes, high roofs)
+            // strength: the textures (planks, masonry, straw...) about 60 % at 2.5 m, full from
+            // 1.75 m; the shapes (edges, shadows, roof slopes, high roofs)
             // already about half on the first level and full from 2.2 m - they grow in as you
             // zoom instead of appearing at once
-            float amp = Mathf.Clamp01((3.2f - mpp) / 2f);
+            float amp = Mathf.Clamp01((3.6f - mpp) / 1.8f);
             float shape = Mathf.Clamp01((4.6f - mpp) / 2.4f);
             Vector3 L = j.Port.LightDir;
             float flatLit = 0.72f + 0.55f * Mathf.Max(0f, L.y);
@@ -805,9 +805,11 @@ namespace LivingMap
                             // measured across one pixel and scaled to it, or a raised ring would
                             // light a ghost of itself 25 m away
                             float sxw = (u - 0.5f) * world, szw = (v - 0.5f) * world, nwm = nw * world;
-                            float e0 = HeightDelta(j, sxw, szw), step = Mathf.Max(mpp, 0.5f), k = nwm / step;
-                            dx = Data(p, p.Height, u - nw, v) - Data(p, p.Height, u, v) + Mathf.Clamp((HeightDelta(j, sxw - step, szw) - e0) * k, -40f, 40f);
-                            dz = Data(p, p.Height, u, v - nw) - Data(p, p.Height, u, v) + Mathf.Clamp((HeightDelta(j, sxw, szw - step) - e0) * k, -40f, 40f);
+                            // (at a quarter of the true slope: a half-metre bump in a floor would
+                            // otherwise light up like a cliff)
+                            float e0 = HeightDelta(j, sxw, szw), step = Mathf.Max(mpp, 0.5f), k = nwm / step * 0.25f;
+                            dx = Data(p, p.Height, u - nw, v) - Data(p, p.Height, u, v) + Mathf.Clamp((HeightDelta(j, sxw - step, szw) - e0) * k, -8f, 8f);
+                            dz = Data(p, p.Height, u, v - nw) - Data(p, p.Height, u, v) + Mathf.Clamp((HeightDelta(j, sxw, szw - step) - e0) * k, -8f, 8f);
                         }
                         else { dx = Data(p, p.Height, u - nw, v) - hgt; dz = Data(p, p.Height, u, v - nw) - hgt; }
                         float len = Mathf.Sqrt(dx * dx + p.NormalIntensity * p.NormalIntensity + dz * dz);
