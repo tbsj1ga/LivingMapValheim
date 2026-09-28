@@ -385,18 +385,22 @@ namespace LivingMap
         }
 
         // A coarser tile stays behind the current level while it loads; its fog is hidden where
-        // all four finer tiles over it are shown, or the two fog layers would add up.
+        // the finer tiles over it are all shown, or the two fog layers would add up.
         private void HideCoveredFog(int level)
         {
+            float fine = DTileSize * DLevels[level], coarse = DTileSize * DLevels[level - 1];
             foreach (DTile t in _dTiles.Values)
             {
                 if (t.Level != level - 1 || t.Img2 == null || !t.Img2.enabled) continue;
+                float x0 = t.TX * coarse, z0 = t.TZ * coarse;
+                int fx0 = Mathf.FloorToInt(x0 / fine), fx1 = Mathf.FloorToInt((x0 + coarse - 0.01f) / fine);
+                int fz0 = Mathf.FloorToInt(z0 / fine), fz1 = Mathf.FloorToInt((z0 + coarse - 0.01f) / fine);
                 bool covered = true;
-                for (int dz = 0; dz < 2 && covered; dz++)
-                    for (int dx = 0; dx < 2 && covered; dx++)
+                for (int fz = fz0; fz <= fz1 && covered; fz++)
+                    for (int fx = fx0; fx <= fx1 && covered; fx++)
                     {
                         DTile c;
-                        if (!_dTiles.TryGetValue(TileKey(level, t.TX * 2 + dx, t.TZ * 2 + dz), out c) || c.Img == null || !c.Img.enabled) covered = false;
+                        if (!_dTiles.TryGetValue(TileKey(level, fx, fz), out c) || c.Img == null || !c.Img.enabled) covered = false;
                     }
                 if (covered) t.Img2.enabled = false;
             }
@@ -424,8 +428,13 @@ namespace LivingMap
         private void UpdateLevels(float world)
         {
             float first = PortWanted ? world / 7000f : 4f;
-            if (Mathf.Abs(DLevels[0] - first) < 0.0001f) return;
-            DLevels = new[] { first, first * 0.5f, first * 0.25f };
+            int count = PortWanted ? 5 : 3;
+            if (Mathf.Abs(DLevels[0] - first) < 0.0001f && DLevels.Length == count) return;
+            // the vanilla style steps by 1/sqrt(2) (3.5, 2.5, 1.75, 1.25, 0.9 m): each change of
+            // pixel size is half the area, not a quarter; the legacy picture keeps 4 / 2 / 1 m
+            float step = PortWanted ? 0.70710678f : 0.5f;
+            DLevels = new float[count];
+            for (int i = 0; i < count; i++) DLevels[i] = first * Mathf.Pow(step, i);
             foreach (DTile t in _dTiles.Values) DestroyTile(t);
             _dTiles.Clear();
         }

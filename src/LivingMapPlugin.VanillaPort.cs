@@ -420,7 +420,6 @@ namespace LivingMap
         {
             public byte[] Main;          // n x n RGBA, gamma
             public float[] Trees;        // n x n crown cover 0..1 (zones whose objects are known)
-            public float[] Near;         // n x n: a tree within ~9 m (keeps the vanilla forest where trees stand)
             public float[] H; public int Gs;   // heights every DStep pixels, one sample of border
             public float Half;           // 0 or 0.5: where a pixel samples, in pixels
             public byte[] Kind;          // n x n: 0 none, 1..4 terrain kind, 10 + material building
@@ -498,18 +497,14 @@ namespace LivingMap
                     MarkBox(d, n, j, bx, 0f, (byte)(10 + Mathf.Min((int)bx.Mat, 200)), (short)Mathf.Min(i, short.MaxValue));
                 }
 
-                // trees: the crown (a lone tree gets its own stamp) and a wide "a tree is near"
-                // cover that keeps the vanilla forest pattern where trees still stand
+                // trees: the crown, so a lone tree outside the forest gets its own stamp
                 d.Trees = new float[n * n];
-                d.Near = new float[n * n];
                 for (int i = 0; i < j.Trees.Count; i++)
                 {
                     DTree t = j.Trees[i];
                     if (t.Rock) continue;
-                    // crisp edges, one pixel wide: a soft edge turns each tree into a blurred disc
-                    // of the stamp pattern at the finest level
+                    // crisp edge, one pixel wide: a soft edge turns a tree into a blurred disc
                     Disc(d.Trees, n, j, t.X, t.Z, t.R * 1.3f, mpp);
-                    Disc(d.Near, n, j, t.X, t.Z, 8f, mpp);
                 }
             }
             finally { j.X0 = x0; j.Z0 = z0; }
@@ -737,12 +732,12 @@ namespace LivingMap
                         int pxi = Mathf.Clamp(Mathf.RoundToInt(fx), 0, n - 1), pzi = Mathf.Clamp(Mathf.RoundToInt(fz), 0, n - 1);
                         di = pzi * n + pxi;
                         hgt = Sample(det.H, det.Gs, fx / DStep + 1f, fz / DStep + 1f);
-                        if (j.LiveZones.Contains(ZoneOf(j, sxw, szw))) mX = Mathf.Max(mX * det.Near[di], det.Trees[di]);
-                        else
-                        {
-                            int fk = FogIndex(j, sxw, szw);
-                            if (fk >= 0 && j.ForestFix[fk] != 0) mX = j.ForestFix[fk] > 0 ? 1f : 0f;
-                        }
+                        // forest: the vanilla mask with Living Map's cleared / planted corrections (as
+                        // the main layer draws it); where the zone's trees are known, a tree outside
+                        // that forest adds its own stamp
+                        int fk = FogIndex(j, sxw, szw);
+                        if (fk >= 0 && j.ForestFix[fk] != 0) mX = j.ForestFix[fk] > 0 ? 1f : 0f;
+                        if (det.Trees[di] > mX && j.LiveZones.Contains(ZoneOf(j, sxw, szw))) mX = det.Trees[di];
                     }
 
                     // fog, sampled with a wobble
