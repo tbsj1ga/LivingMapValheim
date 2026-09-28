@@ -77,8 +77,13 @@ namespace LivingMap
 
         private static readonly string[] MatNames =
         {
-            "Wood", "Stone", "Iron", "HardWood", "Marble", "Ashstone", "Ancient", "Ice", "Timberwood"
+            "Wood", "Stone", "Iron", "HardWood", "Marble", "Ashstone", "Ancient", "Ice", "Timberwood",
+            "Roof_Thatch", "Roof_Darkwood", "Roof_Turf", "Roof_Slate"
         };
+        // WearNTear.MaterialType has these many values; the entries after them are roof kinds
+        // recognised by the prefab name (all roofs are Wood / HardWood to the game)
+        private const int GameMatCount = 9;
+        private const byte MatRoofThatch = 9, MatRoofDarkwood = 10, MatRoofTurf = 11, MatRoofSlate = 12;
 
         private void BindConfig()
         {
@@ -155,7 +160,11 @@ namespace LivingMap
                 new Color(0.45f, 0.20f, 0.20f, 1f),
                 new Color(0.36f, 0.52f, 0.36f, 1f),
                 new Color(0.65f, 0.85f, 0.95f, 1f),
-                new Color(0.70f, 0.45f, 0.30f, 1f)
+                new Color(0.70f, 0.45f, 0.30f, 1f),
+                new Color(0.80f, 0.66f, 0.34f, 1f),     // thatch (straw)
+                new Color(0.33f, 0.27f, 0.24f, 1f),     // darkwood (tar)
+                new Color(0.42f, 0.55f, 0.26f, 1f),     // turf
+                new Color(0.47f, 0.48f, 0.52f, 1f)      // grausten slate
             };
             for (int i = 0; i < MatNames.Length; i++)
                 _cfgMatColor[i] = Config.Bind(SecColors, "Material_" + MatNames[i], defaults[i],

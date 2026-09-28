@@ -525,7 +525,7 @@ namespace LivingMap
                     Heightmap.Biome bm = wg.GetBiome(wx, wz, 0.02f, false);
                     d.H[sz * gs + sx] = wg.GetBiomeHeight(bm, wx, wz, out mask, false, true) + HeightDelta(j, wx, wz);
                 }
-            if (p.Styled && mpp < 3f) StylePaint(d, j, n);
+            if (p.Styled) StylePaint(d, j, n);
             return d;
         }
 
@@ -576,9 +576,14 @@ namespace LivingMap
         {
             float mpp = j.Mpp;
             bool fine = true;
-            // strength: a third at 2.5 m, three quarters at 1.75 m, full from 1.25 m - the
-            // textures grow in as you zoom, instead of appearing at once
+            // strength: the textures (planks, masonry, straw...) a third at 2.5 m, three quarters
+            // at 1.75 m, full from 1.25 m; the shapes (edges, shadows, roof slopes, high roofs)
+            // already about half on the first level and full from 2.2 m - they grow in as you
+            // zoom instead of appearing at once
             float amp = Mathf.Clamp01((3.2f - mpp) / 2f);
+            float shape = Mathf.Clamp01((4.6f - mpp) / 2.4f);
+            Vector3 L = j.Port.LightDir;
+            float flatLit = 0.72f + 0.55f * Mathf.Max(0f, L.y);
             int gx0 = Mathf.RoundToInt(j.X0 / mpp), gz0 = Mathf.RoundToInt(j.Z0 / mpp);
             byte[] c = d.Main;
             byte[] kind = d.Kind;
@@ -592,7 +597,7 @@ namespace LivingMap
                     if (kd == 0)
                     {
                         // a building's shadow: the pixel north-west of this one is a building
-                        if (ix > 0 && iz < n - 1 && orig[(iz + 1) * n + ix - 1] >= 10) Scale(c, o, 1f - 0.28f * amp);
+                        if (ix > 0 && iz < n - 1 && orig[(iz + 1) * n + ix - 1] >= 10) Scale(c, o, 1f - 0.28f * shape);
                         continue;
                     }
                     if (kd < 10)
@@ -630,8 +635,36 @@ namespace LivingMap
                         top = Mathf.Clamp(0.88f + 0.025f * (b.Top - ground), 0.88f, 1.16f);   // high roofs lighter
                     }
                     int px = Mathf.FloorToInt(lx), pz = Mathf.FloorToInt(lz);
-                    float m = 1f;
-                    if (fine)
+                    float m = 1f, slope = 1f;
+                    bool roof = bi >= 0 && bi < j.Boxes.Count && j.Boxes[bi].Roof;
+                    if (roof)
+                    {
+                        DBox b = j.Boxes[bi];
+                        // rows run across the slope: coordinates along the downhill direction
+                        float hx = b.NX, hz = b.NZ, hl = Mathf.Sqrt(hx * hx + hz * hz);
+                        if (hl < 0.05f) { hx = b.Cos; hz = -b.Sin; hl = 1f; }
+                        hx /= hl; hz /= hl;
+                        float wx = (gx + 0.5f) * mpp - b.X, wz = (gz + 0.5f) * mpp - b.Z;
+                        int down = Mathf.FloorToInt((wx * hx + wz * hz) / mpp), across = Mathf.FloorToInt((-wx * hz + wz * hx) / mpp);
+                        if (mat == MatRoofThatch) m = ((down & 1) == 0 ? 0.93f : 1.05f) * (0.9f + 0.2f * Rand(gx, gz, 21));
+                        else if (mat == MatRoofDarkwood)
+                        {
+                            int col = (across + (down & 1)) >> 1;
+                            m = 0.9f + 0.16f * Rand(col, down, 22);
+                            if (((across + (down & 1)) & 1) == 0 && Rand(across, down, 23) < 0.5f) m *= 0.85f;
+                        }
+                        else if (mat == MatRoofTurf) m = 0.85f + 0.3f * Rand(gx, gz, 24);
+                        else if (mat == MatRoofSlate)
+                        {
+                            int len = 2, col = (across + down) / len;
+                            m = 0.88f + 0.2f * Rand(col, down, 25);
+                            if ((down & 1) == 0) m *= 0.9f;
+                        }
+                        else m = (down & 1) == 0 ? 0.93f : 1.05f;
+                        // the slope in the sun's light, relative to a level roof; a ridge is a light line
+                        slope = b.Ridge ? 1.12f : (0.72f + 0.55f * Mathf.Max(0f, b.NX * L.x + b.NY * L.y + b.NZ * L.z)) / flatLit;
+                    }
+                    else if (fine)
                     {
                         if (mat == 0 || mat == 3 || mat == 8)          // wood: planks along the piece, knots
                         {
@@ -656,8 +689,8 @@ namespace LivingMap
                     else m = 0.95f + 0.1f * Rand(gx, gz, 18);
                     // the edge of a building: a darker shade of its own colour
                     bool edge = (ix > 0 && orig[k - 1] < 10) || (ix < n - 1 && orig[k + 1] < 10) || (iz > 0 && orig[k - n] < 10) || (iz < n - 1 && orig[k + n] < 10);
-                    float s = m * top * (edge ? 0.72f : 1f);
-                    Scale(c, o, 1f + (s - 1f) * amp);
+                    float sh = top * slope * (edge ? 0.72f : 1f);
+                    Scale(c, o, (1f + (m - 1f) * amp) * (1f + (sh - 1f) * shape));
                 }
         }
 

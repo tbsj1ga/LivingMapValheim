@@ -69,7 +69,7 @@ namespace LivingMap
                 if (wnt != null)
                 {
                     int m = (int)wnt.m_materialType;
-                    mat = (m >= 0 && m < MatNames.Length) ? (byte)m : MatNone;
+                    mat = (m >= 0 && m < GameMatCount) ? (byte)m : MatNone;
                 }
 
                 PieceRec rec = new PieceRec();

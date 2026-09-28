@@ -20,6 +20,8 @@ namespace LivingMap
             public bool IsTerrain;        // the _TerrainCompiler record of a zone
             public byte Mat;
             public Vector3 Min, Max;      // prefab-local AABB of its "piece"-layer colliders
+            public bool Roof, Ridge;      // a roof piece; a ridge (two slopes back to back)
+            public Vector3 RoofN;         // prefab-local normal of its slope (up for a ridge or a flat one)
         }
 
         private FieldInfo _fiObjectsByID;
@@ -264,8 +266,21 @@ namespace LivingMap
             if (wnt != null)
             {
                 int m = (int)wnt.m_materialType;
-                if (m >= 0 && m < MatNames.Length) info.Mat = (byte)m;
+                if (m >= 0 && m < GameMatCount) info.Mat = (byte)m;
             }
+
+            // roofs by their family (the game gives them the material of the wood they are made of)
+            string pname = prefab.name.ToLowerInvariant();
+            if (pname.Contains("roof") && !pname.Contains("wall_roof"))
+            {
+                info.Roof = true;
+                if (pname.Contains("darkwood_roof")) info.Mat = MatRoofDarkwood;
+                else if (pname.Contains("turf_roof")) info.Mat = MatRoofTurf;
+                else if (pname.Contains("grausten_roof")) info.Mat = MatRoofSlate;
+                else if (pname.Contains("wood_roof")) info.Mat = MatRoofThatch;
+            }
+            Vector3 bestN = Vector3.up, sumH = Vector3.zero;
+            float bestH = 0f;
 
             // the same colliders the physics scan used to see, measured once on the prefab and
             // kept in its local space; the rotation of each placed object is applied later
@@ -284,6 +299,18 @@ namespace LivingMap
                 if (!LocalBox(col, out c, out e)) continue;
 
                 Matrix4x4 m = toRoot * col.transform.localToWorldMatrix;
+                if (info.Roof)
+                {
+                    // a sloped plate: its up vector leans toward the downhill side (measured on
+                    // wood_roof: (0.44, 0.90, 0), so the slope runs down along local +x)
+                    Vector3 up = m.MultiplyVector(Vector3.up).normalized;
+                    if (up.y > 0.3f)
+                    {
+                        Vector3 h = new Vector3(up.x, 0f, up.z);
+                        sumH += h;
+                        if (h.magnitude > bestH) { bestH = h.magnitude; bestN = up; }
+                    }
+                }
                 for (int k = 0; k < 8; k++)
                 {
                     Vector3 v = m.MultiplyPoint3x4(new Vector3(
@@ -303,6 +330,13 @@ namespace LivingMap
             info.IsPiece = true;
             info.Min = min;
             info.Max = max;
+            if (info.Roof)
+            {
+                // two slopes that cancel out: a ridge; nearly level: flat
+                if (bestH < 0.15f) info.RoofN = Vector3.up;
+                else if (sumH.magnitude < bestH * 0.5f) { info.RoofN = Vector3.up; info.Ridge = true; }
+                else info.RoofN = bestN;
+            }
             return info;
         }
 

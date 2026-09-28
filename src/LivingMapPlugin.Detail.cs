@@ -122,7 +122,7 @@ namespace LivingMap
         private const int DUploadsPerFrame = 2;
         private const int DEnqueuesPerFrame = 4;
         private const float DRedrawMinAge = 5f;
-        private const float DObjectsMaxMpp = 2.6f;
+        private const float DObjectsMaxMpp = 3.6f;      // the vanilla style's first level too (roof slopes)
         // metres per tile pixel of each level; the vanilla style uses the vanilla map's pixel
         // (the world / 7000) and its halves, so a tile pixel is exactly one map pixel
         private static float[] DLevels = { 4f, 2f, 1f };
@@ -150,7 +150,11 @@ namespace LivingMap
         }
 
         private struct DTree { public float X, Z, R; public bool Rock; }
-        private struct DBox { public float X, Z, HX, HZ, Cos, Sin, Top; public byte Mat; }
+        private struct DBox
+        {
+            public float X, Z, HX, HZ, Cos, Sin, Top; public byte Mat;
+            public bool Roof, Ridge; public float NX, NY, NZ;     // a roof: its slope's world normal
+        }
 
         private class DJob
         {
@@ -759,6 +763,11 @@ namespace LivingMap
             b.Cos = Mathf.Cos(yaw); b.Sin = Mathf.Sin(yaw);
             b.Top = p.y + info.Max.y;
             b.Mat = info.Mat;
+            if (info.Roof)
+            {
+                Vector3 nrm = q * info.RoofN;
+                b.Roof = true; b.Ridge = info.Ridge; b.NX = nrm.x; b.NY = nrm.y; b.NZ = nrm.z;
+            }
             j.Boxes.Add(b);
         }
 
