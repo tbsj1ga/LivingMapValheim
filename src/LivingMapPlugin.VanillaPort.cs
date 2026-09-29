@@ -269,6 +269,11 @@ namespace LivingMap
             // world data around the tile, on the vanilla map grid (step 1)
             public int X0, Z0, W, H;
             public float[] Height, MainR, MainG, MainB, MaskX, MaskY, MaskZ, FogX, FogY;
+            // the colour texture's own grid: the vanilla map's, or Living Map's map texture (N x)
+            public int MainScale = 1, MainX0, MainZ0, MainW, MainH;
+            // the first level: the very textures the map material shows (Living Map's colour with
+            // the buildings and paths it draws, its forest mask) - the old picture exactly
+            public bool Classic;
         }
 
         private static readonly FieldInfo s_fiHeightTex = typeof(Minimap).GetField("m_heightTexture", BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic);
@@ -290,6 +295,11 @@ namespace LivingMap
         private static Color LinG(Color c) { return s_portLinGlobals ? c.linear : c; }
 
         private PortJob SnapshotPort(float x0, float z0, float size)
+        {
+            return SnapshotPort(x0, z0, size, false);
+        }
+
+        private PortJob SnapshotPort(float x0, float z0, float size, bool classic)
         {
             if (!EnsurePort()) return null;
             Material m = _portMat;
@@ -341,23 +351,87 @@ namespace LivingMap
             int w = px1 - px0 + 1, h = pz1 - pz0 + 1;
             p.X0 = px0; p.Z0 = pz0; p.W = w; p.H = h;
             Color[] hc = height.GetPixels(px0, pz0, w, h);
-            Color[] mc = main.GetPixels(px0, pz0, w, h);
             Color[] kc = s_portMaskFromMaterial ? ReadRegion(m.GetTexture("_MaskTex"), px0, pz0, w, h) : null;
             if (kc == null) kc = mask.GetPixels(px0, pz0, w, h);
             Color[] fc = fog.GetPixels(px0, pz0, w, h);
             int n = w * h;
-            p.Height = new float[n]; p.MainR = new float[n]; p.MainG = new float[n]; p.MainB = new float[n];
+            p.Height = new float[n];
             p.MaskX = new float[n]; p.MaskY = new float[n]; p.MaskZ = new float[n]; p.FogX = new float[n]; p.FogY = new float[n];
-            bool mainSrgb = main.isDataSRGB && s_portLinTextures;
             for (int i = 0; i < n; i++)
             {
                 p.Height[i] = hc[i].r;
-                Color c = mainSrgb ? mc[i].linear : mc[i];
-                p.MainR[i] = c.r; p.MainG[i] = c.g; p.MainB[i] = c.b;
                 p.MaskX[i] = kc[i].r; p.MaskY[i] = kc[i].g; p.MaskZ[i] = kc[i].b;
                 p.FogX[i] = fc[i].r; p.FogY[i] = fc[i].g;
             }
+
+            // colour: the vanilla map, or for the first level the texture the map shows now
+            p.Classic = classic;
+            p.MainScale = 1; p.MainX0 = px0; p.MainZ0 = pz0; p.MainW = w; p.MainH = h;
+            Color32[] m32 = null;
+            Texture shown = classic ? m.GetTexture("_MainTex") : null;
+            if (shown != null && shown.width % _texSize == 0)
+            {
+                int sc = shown.width / _texSize;
+                m32 = ReadRegion32(shown, px0 * sc, pz0 * sc, w * sc, h * sc);
+                if (m32 != null) { p.MainScale = sc; p.MainX0 = px0 * sc; p.MainZ0 = pz0 * sc; p.MainW = w * sc; p.MainH = h * sc; }
+                // and its forest mask (with the cleared / planted corrections)
+                Color32[] k32 = ReadRegion32(m.GetTexture("_MaskTex"), px0, pz0, w, h);
+                if (k32 != null)
+                    for (int i = 0; i < n; i++) p.MaskX[i] = s_srgbToLinear[k32[i].r];
+            }
+            int nm = p.MainW * p.MainH;
+            p.MainR = new float[nm]; p.MainG = new float[nm]; p.MainB = new float[nm];
+            if (m32 != null)
+            {
+                for (int i = 0; i < nm; i++)
+                {
+                    Color32 c = m32[i];
+                    if (s_portLinTextures) { p.MainR[i] = s_srgbToLinear[c.r]; p.MainG[i] = s_srgbToLinear[c.g]; p.MainB[i] = s_srgbToLinear[c.b]; }
+                    else { p.MainR[i] = c.r / 255f; p.MainG[i] = c.g / 255f; p.MainB[i] = c.b / 255f; }
+                }
+            }
+            else
+            {
+                Color[] mc = main.GetPixels(px0, pz0, w, h);
+                bool mainSrgb = main.isDataSRGB && s_portLinTextures;
+                for (int i = 0; i < nm; i++)
+                {
+                    Color c = mainSrgb ? mc[i].linear : mc[i];
+                    p.MainR[i] = c.r; p.MainG[i] = c.g; p.MainB[i] = c.b;
+                }
+            }
             return p;
+        }
+
+        // a region of any texture as its stored 8-bit values (an sRGB one stays encoded)
+        private static Color32[] ReadRegion32(Texture t, int x, int y, int w, int h)
+        {
+            if (t == null) return null;
+            x = Mathf.Clamp(x, 0, t.width - 1); y = Mathf.Clamp(y, 0, t.height - 1);
+            w = Mathf.Min(w, t.width - x); h = Mathf.Min(h, t.height - y);
+            RenderTexture src = t as RenderTexture;
+            RenderTexture tmp = null;
+            if (src == null)
+            {
+                tmp = RenderTexture.GetTemporary(t.width, t.height, 0, RenderTextureFormat.ARGB32, RenderTextureReadWrite.sRGB);
+                Graphics.Blit(t, tmp);
+                src = tmp;
+            }
+            RenderTexture prev = RenderTexture.active;
+            Texture2D read = new Texture2D(w, h, TextureFormat.RGBA32, false, false);
+            try
+            {
+                RenderTexture.active = src;
+                read.ReadPixels(new Rect(x, y, w, h), 0, 0, false);
+                read.Apply(false);
+                return read.GetPixels32();
+            }
+            finally
+            {
+                RenderTexture.active = prev;
+                if (tmp != null) RenderTexture.ReleaseTemporary(tmp);
+                UnityEngine.Object.Destroy(read);
+            }
         }
 
         // a region of any texture (a render texture too), values as the shader samples them
@@ -403,6 +477,18 @@ namespace LivingMap
             return a0 + (a1 - a0) * ty;
         }
 
+        private static float DataMain(PortJob p, float[] a, float u, float v)
+        {
+            float s = p.TexSize * p.MainScale;
+            float x = u * s - 0.5f - p.MainX0, y = v * s - 0.5f - p.MainZ0;
+            int x0 = Mathf.Clamp(Mathf.FloorToInt(x), 0, p.MainW - 2), y0 = Mathf.Clamp(Mathf.FloorToInt(y), 0, p.MainH - 2);
+            float tx = Mathf.Clamp01(x - x0), ty = Mathf.Clamp01(y - y0);
+            int i = y0 * p.MainW + x0;
+            float a0 = a[i] + (a[i + 1] - a[i]) * tx;
+            float a1 = a[i + p.MainW] + (a[i + p.MainW + 1] - a[i + p.MainW]) * tx;
+            return a0 + (a1 - a0) * ty;
+        }
+
         private static float Smooth01(float x) { x = Mathf.Clamp01(x); return x * x * (3f - 2f * x); }
 
         // ------------------------------------------------------------------
@@ -445,8 +531,8 @@ namespace LivingMap
                 {
                     float u = (j.X0 + (ix + d.Half) * mpp) / world + 0.5f;
                     int o = (iz * n + ix) * 4;
-                    d.Main[o] = LinearToSrgbByte(Data(p, p.MainR, u, v)); d.Main[o + 1] = LinearToSrgbByte(Data(p, p.MainG, u, v));
-                    d.Main[o + 2] = LinearToSrgbByte(Data(p, p.MainB, u, v)); d.Main[o + 3] = 255;
+                    d.Main[o] = LinearToSrgbByte(DataMain(p, p.MainR, u, v)); d.Main[o + 1] = LinearToSrgbByte(DataMain(p, p.MainG, u, v));
+                    d.Main[o + 2] = LinearToSrgbByte(DataMain(p, p.MainB, u, v)); d.Main[o + 3] = 255;
                 }
             }
             // the painters fill pixels whose centre is inside; shift so "centre" = sample point
@@ -576,12 +662,11 @@ namespace LivingMap
         {
             float mpp = j.Mpp;
             bool fine = true;
-            // strength: the textures (planks, masonry, straw...) about 60 % at 2.5 m, full from
-            // 1.75 m; the shapes (edges, shadows, roof slopes, high roofs)
-            // already about half on the first level and full from 2.2 m - they grow in as you
-            // zoom instead of appearing at once
-            float amp = Mathf.Clamp01((3.6f - mpp) / 1.8f);
-            float shape = Mathf.Clamp01((4.6f - mpp) / 2.4f);
+            // strength grows level by level instead of appearing at once: the textures (planks,
+            // masonry, straw...) from a sixth at 3 m to full at 1.5 m; the shapes (edges,
+            // shadows, roof slopes, high roofs) from a quarter at 3 m to full at 1.8 m
+            float amp = Mathf.Clamp01((3.3f - mpp) / 1.8f);
+            float shape = Mathf.Clamp01((3.4f - mpp) / 1.6f);
             Vector3 L = j.Port.LightDir;
             float flatLit = 0.72f + 0.55f * Mathf.Max(0f, L.y);
             int gx0 = Mathf.RoundToInt(j.X0 / mpp), gz0 = Mathf.RoundToInt(j.Z0 / mpp);
@@ -736,7 +821,7 @@ namespace LivingMap
         private static byte[] RenderPortTile(DJob j, WorldGenerator wg)
         {
             PortJob p = j.Port;
-            PortDetail det = wg != null && j.Trees != null && j.TerrKeys != null ? BuildPortDetail(j, wg) : null;
+            PortDetail det = wg != null && !p.Classic && j.Trees != null && j.TerrKeys != null ? BuildPortDetail(j, wg) : null;
             PortAssets A = p.A;
             int n = DTileSize;
             byte[] px = new byte[n * n * 4];
@@ -852,7 +937,7 @@ namespace LivingMap
                             if (s_portLinTextures) { mR = s_srgbToLinear[det.Main[o4]]; mG = s_srgbToLinear[det.Main[o4 + 1]]; mB = s_srgbToLinear[det.Main[o4 + 2]]; }
                             else { mR = det.Main[o4] / 255f; mG = det.Main[o4 + 1] / 255f; mB = det.Main[o4 + 2] / 255f; }
                         }
-                        else { mR = Data(p, p.MainR, u, v); mG = Data(p, p.MainG, u, v); mB = Data(p, p.MainB, u, v); }
+                        else { mR = DataMain(p, p.MainR, u, v); mG = DataMain(p, p.MainG, u, v); mB = DataMain(p, p.MainB, u, v); }
                         float mx = Mathf.Max(bgR, Mathf.Max(bgG, bgB)), mn = Mathf.Min(bgR, Mathf.Min(bgG, bgB));
                         if (mx - mn >= 0.0001f) { bgR = mx; bgG = mx; bgB = mx; }
                         float gR = mR * bgR, gG = mG * bgG, gB = mB * bgB, gA = bgA;   // main alpha is 1

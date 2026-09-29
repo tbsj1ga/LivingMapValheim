@@ -122,7 +122,7 @@ namespace LivingMap
         private const int DUploadsPerFrame = 2;
         private const int DEnqueuesPerFrame = 4;
         private const float DRedrawMinAge = 5f;
-        private const float DObjectsMaxMpp = 3.6f;      // the vanilla style's first level too (roof slopes)
+        private const float DObjectsMaxMpp = 3.2f;      // from the vanilla style's 3 m level (roof slopes)
         // metres per tile pixel of each level; the vanilla style uses the vanilla map's pixel
         // (the world / 7000) and its halves, so a tile pixel is exactly one map pixel
         private static float[] DLevels = { 4f, 2f, 1f };
@@ -434,13 +434,14 @@ namespace LivingMap
             float[] want;
             if (PortWanted)
             {
-                // the vanilla map's pixel (world / 7000, about 3.5 m) in steps of 1/sqrt(2):
-                // each change of pixel size is half the area, not a quarter. The first level is
-                // a little finer (3 m), so buildings and paths already show some texture there.
+                // first the vanilla map's pixel (world / 7000, about 3.5 m) drawn from the very
+                // textures the map shows - the old picture exactly, so switching to the layer is
+                // invisible; then 3 m and on in steps of 2^(-1/4) down to about 1.25 m, so the
+                // detail grows in small steps
                 float c = world / 7000f;
-                want = new float[5];
-                for (int i = 0; i < want.Length; i++) want[i] = c * Mathf.Pow(0.70710678f, i);
-                want[0] = Mathf.Min(want[0], 3f);
+                want = new float[7];
+                want[0] = c;
+                for (int i = 1; i < want.Length; i++) want[i] = 3f * Mathf.Pow(0.84089642f, i - 1);
             }
             else want = new[] { 4f, 2f, 1f };
             bool same = want.Length == DLevels.Length;
@@ -602,7 +603,7 @@ namespace LivingMap
             DJob j = new DJob();
             j.Tile = tile; j.X0 = x0; j.Z0 = z0; j.Mpp = mpp; j.Priority = priority;
             j.Sig = RegionSig(tile);
-            if (PortWanted) j.Port = SnapshotPort(x0, z0, DTileSize * mpp);
+            if (PortWanted) j.Port = SnapshotPort(x0, z0, DTileSize * mpp, tile.Level == 0);
             if (_dLight == 0 && j.Port != null) _dLight = PortLightSig();
             j.LightSig = _dLight; j.Relight = relight;
             j.WaterLevel = ZoneSystem.instance != null ? ZoneSystem.instance.m_waterLevel : 30f;
