@@ -39,7 +39,7 @@ if (-not (Test-Path $managed)) { throw "Game assemblies not found: $managed (set
 if (-not (Test-Path $core))    { throw "BepInEx core not found: $core (set BEPINEX_PROFILE or edit build.ps1)" }
 
 $refs = @(
-    "assembly_valheim", "assembly_utils", "SoftReferenceableAssets",
+    "assembly_valheim", "assembly_utils", "assembly_guiutils", "SoftReferenceableAssets",
     "UnityEngine", "UnityEngine.CoreModule", "UnityEngine.PhysicsModule",
     "UnityEngine.UI", "UnityEngine.UIModule", "UnityEngine.ImageConversionModule",
     "netstandard", "mscorlib", "System", "System.Core"

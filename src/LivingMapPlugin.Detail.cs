@@ -193,6 +193,7 @@ namespace LivingMap
         {
             if (_disabledByErrors) return;
             try { if (_ready) UpdateVanillaClouds(); } catch (Exception e) { Logger.LogError("[clouds] " + e); }
+            try { NoticeTick(); } catch (Exception e) { _noticeDone = true; Logger.LogError("[notice] " + e); }
             if (_probeImg != null)
             {
                 try { ProbeTick(); }

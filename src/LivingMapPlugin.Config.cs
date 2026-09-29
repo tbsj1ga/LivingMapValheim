@@ -213,6 +213,7 @@ namespace LivingMap
 
             // --- 08 Detail
             BindDetailConfig();
+            BindNoticeConfig();
         }
 
         // ------------------------------------------------------------------
