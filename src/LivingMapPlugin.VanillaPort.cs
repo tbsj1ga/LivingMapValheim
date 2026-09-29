@@ -34,17 +34,17 @@ namespace LivingMap
 
         private void BindPortConfig()
         {
-            _cfgDetailStyle = Config.Bind(SecDetail, "DetailStyle", "Vanilla",
-                new ConfigDescription("How the detailed picture is drawn. Vanilla: the game's own map look (paper, forest stamps, water lines, time-of-day light). Legacy: the earlier flat shaded picture.",
-                    new AcceptableValueList<string>("Vanilla", "Legacy")));
-            _cfgDetailPixel = Config.Bind(SecDetail, "DetailPixelMeters", 0f,
-                new ConfigDescription("Vanilla style: size of the map's pixels in metres. 0 = automatic: the vanilla map's pixel (about 3.5 m) at first, halved at each closer level (1.75 m, 0.9 m); a number = that size at every level.",
-                    new AcceptableValueRange<float>(0f, 8f)));
-            _cfgDetailStyled = Config.Bind(SecDetail, "DetailStyledPieces", true,
-                "Vanilla style: buildings and paths drawn with pixel textures (planks, masonry, cobbles, furrows), shaded edges, lighter high roofs and shadows. Off = flat colours.");
             _cfgDetailCloudStyle = Config.Bind(SecDetail, "DetailClouds", CloudsSmooth,
-                new ConfigDescription("Vanilla style, the clouds over the detailed picture. Smooth: their own layer, drifting smoothly like on the vanilla map, a little dimmer (a layer cannot be brighter than white, the game's clouds can). Exact: drawn into the picture with the game's own brightness, following the drift in steps of about 20 m. Off: no clouds there.",
-                    new AcceptableValueList<string>(CloudsSmooth, CloudsExact, CloudsOff)));
+                Ui("Clouds on the map. Smooth: drifting smoothly over the close-up detail, a little dimmer than the game's. Exact: with the game's own brightness, moving in small steps. Off: no clouds on the map at all, zoomed out too.",
+                    new AcceptableValueList<string>(CloudsSmooth, CloudsExact, CloudsOff), UiDetail, "Clouds", 90, false));
+            _cfgDetailStyled = Config.Bind(SecDetail, "DetailStyledPieces", true,
+                Ui("Close up, draw buildings and paths with textures - planks, masonry, straw, cobbles, furrows - with shaded edges, lit roof slopes and shadows. Off: flat colours.", UiDetail, "Building textures", 85, false));
+            _cfgDetailStyle = Config.Bind(SecDetail, "DetailStyle", "Vanilla",
+                Ui("How the close-up detail is drawn. Vanilla: in the game's own map style. Legacy: the earlier flat shaded picture.",
+                    new AcceptableValueList<string>("Vanilla", "Legacy"), UiAdvanced, "Detail: style", 18, true));
+            _cfgDetailPixel = Config.Bind(SecDetail, "DetailPixelMeters", 0f,
+                Ui("Size of the map's pixels close up, in metres. 0 = automatic: they get finer step by step as you zoom in. A number = that size at every level.",
+                    new AcceptableValueRange<float>(0f, 8f), UiAdvanced, "Detail: pixel size (m)", 17, true));
         }
 
         private bool PortWanted { get { return _cfgDetailStyle != null && _cfgDetailStyle.Value == "Vanilla"; } }

@@ -87,66 +87,65 @@ namespace LivingMap
 
         private void BindConfig()
         {
+            // Player settings first (1. Map layers, 3. Colours), the technical ones marked advanced.
             // --- 01 General
-            _cfgEnabled = Config.Bind(SecGeneral, "Enabled", true, "Master switch.");
+            _cfgEnabled = Config.Bind(SecGeneral, "Enabled", true,
+                Ui("Living Map on or off. Off: the vanilla map, as if the mod were not there.", UiLayers, "Living Map on", 100, false));
             _cfgPersist = Config.Bind(SecGeneral, "SaveOverlay", true,
-                "Remember what was collected between sessions, in a file per world. The host collects everything again within seconds anyway; this matters on a client of a dedicated server, which only ever gets what the server has sent it.");
+                Ui("Remember what was collected between sessions, in a file per world. Matters on a dedicated server, where you only get what the server has sent you; the host collects everything again within seconds anyway.", UiAdvanced, "Remember between sessions", 100, true));
 
             // --- 02 Layers
-            _cfgShowBuildings = Config.Bind(SecLayers, "ShowBuildings", true, "Show build pieces.");
-            _cfgOnlyPlayerBuilt = Config.Bind(SecLayers, "OnlyPlayerBuilt", false,
-                "Show only pieces placed by players. Pieces that came with a location - ruins, draugr villages, dvergr outposts, stone circles - carry no creator and are skipped. Switching it drops the stored pieces and collects them again: the host has them all within seconds, a client of a dedicated server gets pieces from earlier sessions back only by passing by them.");
+            _cfgShowBuildings = Config.Bind(SecLayers, "ShowBuildings", true,
+                Ui("Show buildings on the map.", UiLayers, "Buildings", 90, false));
             _cfgShowPaths = Config.Bind(SecLayers, "ShowPaths", true,
-                "Show ground painted with the hoe: dirt paths, cultivated soil and paving.");
-            _cfgShowCleared = Config.Bind(SecLayers, "ShowClearedGround", false,
-                "Also mark ground that was merely levelled or raised, with no paint applied. This covers everything you have terraformed, so it paints wide areas.");
+                Ui("Show dirt paths, fields and paving made with the hoe and the cultivator.", UiLayers, "Paths and fields", 85, false));
             _cfgShowForest = Config.Bind(SecLayers, "ShowClearedForest", true,
-                "Erase the map's forest pattern where the trees are gone. The vanilla forest layer comes from the world generator and never changes, so a clear-cut around your base still shows as woods; this compares it with the trees that actually exist in the object database. On the host every generated zone is checked; on a client of a dedicated server only zones you have been near this session, remembered between sessions. Clearings the game itself makes around locations show up too. Needs BuildingScanSource = ZDO.");
-            _cfgForestRadius = Config.Bind(SecLayers, "ClearedForestRadius", 12f,
-                new ConfigDescription("Metres around a map pixel that are checked for trees when deciding whether the pixel is cleared forest. 12 = the pixel and its neighbours, a 36 x 36 m window. Larger ignores natural gaps between trees, smaller follows the edge of a clearing more closely.",
-                    new AcceptableValueRange<float>(6f, 96f)));
-            _cfgForestMaxTrees = Config.Bind(SecLayers, "ClearedForestMaxTrees", 2,
-                new ConfigDescription("Trees allowed inside that window for the pixel to still count as cleared. A natural wood has 6 to 40 in a 36 x 36 m window, a clearing with a couple of trees left standing has 1 or 2.",
-                    new AcceptableValueRange<int>(0, 50)));
+                Ui("Remove the forest from the map where you have cut it down (the vanilla map always shows the forest the world started with).", UiLayers, "Cleared forest", 80, false));
             _cfgShowPlanted = Config.Bind(SecLayers, "ShowPlantedForest", true,
-                "Draw the map's own forest pattern where trees stand but the map shows none: a grove you planted, or woods the generator's mask missed. It is the vanilla pattern, so it looks like any other forest. Limited to the biomes where the vanilla map draws forest at all (Meadows, Black Forest, Plains) unless PlantedForestAnyBiome is on. Needs BuildingScanSource = ZDO.");
-            _cfgPlantedMinTrees = Config.Bind(SecLayers, "PlantedForestMinTrees", 6,
-                new ConfigDescription("Trees a map pixel (12 x 12 m at vanilla map resolution) must hold to be drawn as forest. A planted grove has 15 or more; the edge of a natural wood that the mask cuts off mid-pixel has up to about 5.",
-                    new AcceptableValueRange<int>(1, 30)));
-            _cfgPlantedAnyBiome = Config.Bind(SecLayers, "PlantedForestAnyBiome", false,
-                "Draw forest in biomes where the vanilla map never does: swamps, mountains, Mistlands, Ashlands. Their natural woods then get the forest pattern as well, which changes the look of the whole map.");
+                Ui("Draw forest where you have planted a grove.", UiLayers, "Planted forest", 75, false));
+            _cfgOnlyPlayerBuilt = Config.Bind(SecLayers, "OnlyPlayerBuilt", false,
+                Ui("Only buildings placed by players: ruins, villages and other buildings that come with the world are left out.", UiLayers, "Only player buildings", 70, false));
             _cfgRespectFog = Config.Bind(SecLayers, "RespectFog", true,
-                "Only draw on explored ground. Off shows everything the mod knows about, which on the host is the whole world.");
+                Ui("Only draw on ground you have explored. Off shows everything the mod knows about - on the host, the whole world.", UiLayers, "Only explored ground", 65, false));
+            _cfgShowCleared = Config.Bind(SecLayers, "ShowClearedGround", false,
+                Ui("Also mark ground that was only levelled or raised, not painted. Covers everything you have terraformed, so it paints wide areas.", UiLayers, "Levelled ground", 60, false));
+            _cfgForestRadius = Config.Bind(SecLayers, "ClearedForestRadius", 12f,
+                Ui("Metres around a map pixel checked for trees when deciding whether it is cleared forest. Larger ignores natural gaps between trees, smaller follows the edge of a clearing more closely.",
+                    new AcceptableValueRange<float>(6f, 96f), UiAdvanced, "Cleared forest: search radius (m)", 60, true));
+            _cfgForestMaxTrees = Config.Bind(SecLayers, "ClearedForestMaxTrees", 2,
+                Ui("Trees that may still stand in that area for it to count as cleared. A natural wood has 6 to 40 there.",
+                    new AcceptableValueRange<int>(0, 50), UiAdvanced, "Cleared forest: trees left", 59, true));
+            _cfgPlantedMinTrees = Config.Bind(SecLayers, "PlantedForestMinTrees", 6,
+                Ui("Trees a map pixel (12 x 12 m) must hold to be drawn as planted forest. A planted grove has 15 or more.",
+                    new AcceptableValueRange<int>(1, 30), UiAdvanced, "Planted forest: trees needed", 58, true));
+            _cfgPlantedAnyBiome = Config.Bind(SecLayers, "PlantedForestAnyBiome", false,
+                Ui("Also draw planted forest where the vanilla map never draws forest (swamps, mountains, Mistlands, Ashlands). Their natural woods then get the forest pattern too.", UiAdvanced, "Planted forest in every biome", 57, true));
 
             // --- 03 Scanning
             _cfgScanSource = Config.Bind(SecScanning, "BuildingScanSource", "ZDO",
-                new ConfigDescription(
-                    "Where build pieces are read from. ZDO walks the game's object database: on the host (single player, or the player hosting the game) that is every piece in the whole world at once, and pieces that were torn down disappear from the map; on a client of a dedicated server it is everything the server has sent this session. Physics is the old way: only colliders in the loaded zones around you, within ScanRadius. ZDO falls back to Physics on its own if the database cannot be read.",
-                    new AcceptableValueList<string>("ZDO", "Physics")));
+                Ui("Where buildings are read from. ZDO: the game's object database - the whole world on the host, what the server has sent on a dedicated server. Physics: only what is loaded around you (the old way). ZDO falls back to Physics by itself if needed.",
+                    new AcceptableValueList<string>("ZDO", "Physics"), UiAdvanced, "Read buildings from", 50, true));
             _cfgPathSource = Config.Bind(SecScanning, "PathScanSource", "ZDO",
-                new ConfigDescription(
-                    "Where hoe-painted ground is read from. ZDO reads each zone's terrain record from the object database (the same _TerrainCompiler data the game saves): on the host every modified zone of the world at once, on a client of a dedicated server the zones the server has sent this session. Only records whose revision changed are re-read. Heightmap is the old way: sampling the loaded terrain around you within ScanRadius. ZDO needs BuildingScanSource = ZDO and falls back to Heightmap on its own if the records cannot be read.",
-                    new AcceptableValueList<string>("ZDO", "Heightmap")));
+                Ui("Where painted ground is read from. ZDO: the terrain records in the object database. Heightmap: the loaded terrain around you (the old way). ZDO needs buildings read from ZDO too.",
+                    new AcceptableValueList<string>("ZDO", "Heightmap"), UiAdvanced, "Read paths from", 49, true));
             _cfgZdoInterval = Config.Bind(SecScanning, "ZdoScanInterval", 5f,
-                new ConfigDescription("Seconds between full passes over the object database: how long a new or removed piece takes to reach the map.",
-                    new AcceptableValueRange<float>(1f, 120f)));
+                Ui("Seconds between passes over the object database: how long a new or removed building takes to reach the map.",
+                    new AcceptableValueRange<float>(1f, 120f), UiAdvanced, "Update every (s)", 48, true));
 
             // --- 04 Rendering
             _cfgMapScale = Config.Bind(SecRendering, "MapTextureScale", 2,
-                new ConfigDescription(
-                    "Resolution multiplier for the map layer: how crisp buildings and paths are drawn. The terrain here stays the vanilla 12 m texture; close up, the detail layer in 08 Detail draws the terrain itself in detail. Vanilla 2048 is 12 m per pixel. 2 = 4096 = 6 m/px (~67 MB of video memory), 4 = 8192 = 3 m/px (~268 MB), 8 = 16384 = 1.5 m/px (~1 GB, only worth it on a card with plenty of VRAM). Video memory only, nothing is held in RAM. If the card refuses the size the mod steps down automatically. Takes effect on the next world load.",
-                    new AcceptableValueList<int>(1, 2, 4, 8)));
+                Ui("How sharp buildings and paths are on the zoomed-out map: 1 = 12 m a pixel, 2 = 6 m (~67 MB of video memory), 4 = 3 m (~268 MB), 8 = 1.5 m (~1 GB). Close up, the detail layer draws them itself. Takes effect on the next world load.",
+                    new AcceptableValueList<int>(1, 2, 4, 8), UiAdvanced, "Map layer resolution", 45, true));
             _cfgPieceSize = Config.Bind(SecRendering, "MinPieceSizeMeters", 2f,
-                new ConfigDescription("Smallest size, in metres, that a build piece is drawn at. Pieces use their real footprint; this is the floor so thin walls stay visible however sharp the map texture is. Raise it if buildings read as too faint.",
-                    new AcceptableValueRange<float>(0.1f, 8f)));
+                Ui("Smallest size a building piece is drawn at on the zoomed-out map, so thin walls stay visible.",
+                    new AcceptableValueRange<float>(0.1f, 8f), UiAdvanced, "Smallest piece (m)", 44, true));
             _cfgOutline = Config.Bind(SecRendering, "BuildingOutline", true,
-                "Draw a dark halo behind every build piece. Without it a wooden building blends into the dirt path it usually stands on.");
+                Ui("A dark edge around buildings on the zoomed-out map, so a wooden house does not blend into the dirt it stands on.", UiAdvanced, "Building outline", 43, true));
             _cfgOutlineWidth = Config.Bind(SecRendering, "OutlineWidthMeters", 1f,
-                new ConfigDescription("How far the halo extends past a piece, in metres.",
-                    new AcceptableValueRange<float>(0.1f, 4f)));
+                Ui("How wide that edge is.", new AcceptableValueRange<float>(0.1f, 4f), UiAdvanced, "Outline width (m)", 42, true));
             _cfgTerrainGrid = Config.Bind(SecRendering, "TerrainGridSize", 2f,
-                new ConfigDescription("Metres per cell of the path layer. The terrain records hold 1 m; 2 is plenty up to MapTextureScale 4, at 8 the difference shows. Halving it means four times the cells in memory and in the file. Changing it drops the stored path cells: the host has them back within one pass, a client of a dedicated server as the server sends the zones again.",
-                    new AcceptableValueRange<float>(0.5f, 8f)));
+                Ui("Metres per cell of the paths layer. Smaller is finer but takes four times the memory for half the size. Changing it collects the paths again.",
+                    new AcceptableValueRange<float>(0.5f, 8f), UiAdvanced, "Paths cell size (m)", 41, true));
 
             // --- 05 Colors
             _cfgMatColor = new ConfigEntry<Color>[MatNames.Length];
@@ -166,47 +165,51 @@ namespace LivingMap
                 new Color(0.42f, 0.55f, 0.26f, 1f),     // turf
                 new Color(0.47f, 0.48f, 0.52f, 1f)      // grausten slate
             };
+            string[] names =
+            {
+                "Wood", "Stone", "Iron", "Core wood", "Marble", "Ashstone", "Ancient", "Ice", "Timber",
+                "Roof: thatch", "Roof: darkwood", "Roof: turf", "Roof: slate"
+            };
             for (int i = 0; i < MatNames.Length; i++)
                 _cfgMatColor[i] = Config.Bind(SecColors, "Material_" + MatNames[i], defaults[i],
-                    "Colour for " + MatNames[i] + " pieces.");
+                    Ui("Colour of " + names[i].ToLowerInvariant() + " on the map.", UiColours, names[i], 100 - i, false));
             _cfgMatUnknownColor = Config.Bind(SecColors, "Material_Unknown", new Color(0.85f, 0.30f, 0.75f, 1f),
-                "Colour for pieces with no material information.");
+                Ui("Colour of pieces whose material is not known.", UiColours, "Other pieces", 80, false));
             _cfgCultivatedColor = Config.Bind(SecColors, "Terrain_Cultivated", new Color(0.36f, 0.26f, 0.12f, 0.85f),
-                "Colour for cultivated soil (the cultivator).");
+                Ui("Colour of cultivated soil.", UiColours, "Fields", 79, false));
             _cfgPavedColor = Config.Bind(SecColors, "Terrain_Paved", new Color(0.62f, 0.62f, 0.66f, 0.9f),
-                "Colour for paved ground (the hoe's paving).");
+                Ui("Colour of paving.", UiColours, "Paving", 78, false));
             _cfgDirtColor = Config.Bind(SecColors, "Terrain_DirtPath", new Color(0.42f, 0.36f, 0.30f, 0.8f),
-                "Colour for dirt paths (the hoe's path tool). Kept deliberately dull so buildings stand out against it.");
+                Ui("Colour of dirt paths.", UiColours, "Dirt paths", 77, false));
             _cfgClearedColor = Config.Bind(SecColors, "Terrain_Cleared", new Color(0.50f, 0.47f, 0.36f, 0.5f),
-                "Colour for levelled ground with no paint, when ShowClearedGround is on.");
+                Ui("Colour of levelled ground (when it is shown).", UiColours, "Levelled ground", 76, false));
             _cfgOutlineColor = Config.Bind(SecColors, "Building_Outline", new Color(0.10f, 0.07f, 0.04f, 0.85f),
-                "Colour of the halo drawn behind build pieces, when BuildingOutline is on.");
+                Ui("Colour of the building outline on the zoomed-out map.", UiColours, "Building outline", 75, false));
 
             // --- 06 Advanced
             _cfgZdoPerFrame = Config.Bind(SecAdvanced, "ZdoObjectsPerFrame", 4000,
-                new ConfigDescription("Objects examined per frame during a pass over the object database. A world of 70 000 objects takes about 18 frames at the default; raise it if you would rather have the map update sooner than smoother.",
-                    new AcceptableValueRange<int>(500, 50000)));
+                Ui("Objects looked at per frame while reading the object database. Higher updates the map sooner, lower is smoother.",
+                    new AcceptableValueRange<int>(500, 50000), UiAdvanced, "Objects per frame", 30, true));
             _cfgScanRadius = Config.Bind(SecAdvanced, "ScanRadius", 64f,
-                new ConfigDescription("Radius in metres scanned around the player by the old scanners: build pieces with BuildingScanSource = Physics, paths with PathScanSource = Heightmap. Unused with the default ZDO sources. Objects exist only while their zone is loaded, so much above ~128 gains nothing.",
-                    new AcceptableValueRange<float>(16f, 256f)));
+                Ui("Radius scanned around you by the old Physics / Heightmap readers. Unused with the default ZDO.",
+                    new AcceptableValueRange<float>(16f, 256f), UiAdvanced, "Old scan radius (m)", 29, true));
             _cfgMaxPieces = Config.Bind(SecAdvanced, "MaxPieces", 300000,
-                new ConfigDescription("Hard cap on stored build pieces; beyond it new pieces are not recorded, with one warning in the log. 300 000 pieces take about 7 MB.",
-                    new AcceptableValueRange<int>(1000, 3000000)));
+                Ui("Most building pieces remembered (300 000 take about 7 MB).",
+                    new AcceptableValueRange<int>(1000, 3000000), UiAdvanced, "Max pieces", 28, true));
             _cfgMaxTerrain = Config.Bind(SecAdvanced, "MaxTerrainCells", 500000,
-                new ConfigDescription("Hard cap on stored path cells; beyond it new cells are not recorded, with one warning in the log.",
-                    new AcceptableValueRange<int>(1000, 5000000)));
+                Ui("Most path cells remembered.", new AcceptableValueRange<int>(1000, 5000000), UiAdvanced, "Max path cells", 27, true));
 
             // --- 07 Debug
             _cfgDebug = Config.Bind(SecDebug, "Debug", false,
-                "Verbose logging, with timings of every scan and redraw, and a self-check of terrain records against the loaded terrain.");
+                Ui("Verbose log with timings, for bug reports.", UiDebug, "Debug log", 20, true));
             _cfgDebugMarker = Config.Bind(SecDebug, "DebugMarker", false,
-                "Draw a magenta cross at your own position on the map. Use it once to confirm the layer lines up with the vanilla player arrow; while it is on, every update is a full rebuild.");
+                Ui("A magenta cross at your position, to check the layer lines up with the map.", UiDebug, "Position marker", 19, true));
             _cfgIncremental = Config.Bind(SecDebug, "IncrementalRedraw", true,
-                "Draw new shapes on top of the existing map texture; a full rebuild happens only when something disappeared, a layer was switched, or too much arrived at once. Off = rebuild the whole texture on every change, as before 0.11.0. Only for pinning down a drawing glitch.");
+                Ui("Draw only what changed. Off redraws everything on each change - only for tracking down a drawing glitch.", UiDebug, "Draw changes only", 18, true));
             _cfgLinearFix = Config.Bind(SecDebug, "LinearColorFix", true,
-                "Convert the colours to linear before drawing on the GPU. The game renders in linear colour space, and the conversion is applied only then; without it everything comes out pale and washed out. Off only to check whether the colours are the problem.");
+                Ui("Colour conversion for the game's linear colour space. Off only to check whether colours are the problem.", UiDebug, "Colour conversion", 17, true));
             _cfgMapFlipY = Config.Bind(SecDebug, "MapLayerFlipY", false,
-                "Flip the drawn shapes vertically. Only needed if the graphics API renders the map layer upside down - check with DebugMarker, set it once and the whole layer lines up.");
+                Ui("Flip the layer vertically, for a graphics API that draws it upside down.", UiDebug, "Flip layer", 16, true));
 
             // --- 08 Detail
             BindDetailConfig();

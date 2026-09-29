@@ -30,70 +30,39 @@ namespace LivingMap
         private ConfigEntry<bool> _cfgDetail;
         private ConfigEntry<float> _cfgDetailStartSpan;
         private ConfigEntry<float> _cfgDetailFinest;
-        private ConfigEntry<float> _cfgDetailRelief;
-        private ConfigEntry<float> _cfgDetailForestShade;
         private ConfigEntry<bool> _cfgDetailObjects;
-        private ConfigEntry<Color> _cfgDetailWaterShallow;
-        private ConfigEntry<Color> _cfgDetailWaterDeep;
-        private ConfigEntry<Color> _cfgDetailTreeColor;
-        private ConfigEntry<Color> _cfgDetailRockColor;
         private ConfigEntry<int> _cfgDetailWorkers;
-        private ConfigEntry<bool> _cfgDetailVanillaTone;
-        private ConfigEntry<Color> _cfgDetailToneTint;
-        private ConfigEntry<float> _cfgDetailToneDesaturate;
-        private ConfigEntry<float> _cfgDetailSharedOpacity;
+        // the Legacy picture's tuning (no longer settings)
+        private const float LegacyRelief = 1f, LegacyForestShade = 0.35f, LegacyToneDesaturate = 0.5f, LegacySharedOpacity = 0.5f;
+        private static readonly Color LegacyWaterShallow = new Color(0.27f, 0.28f, 0.33f, 1f), LegacyWaterDeep = new Color(0.22f, 0.24f, 0.30f, 1f);
+        private static readonly Color LegacyTree = new Color(0.55f, 0.62f, 0.45f, 1f), LegacyRock = new Color(0.50f, 0.50f, 0.48f, 1f);
+        private static readonly Color LegacyToneTint = new Color(0.38f, 0.48f, 0.44f, 1f);
 
         private void BindDetailConfig()
         {
             _cfgDetail = Config.Bind(SecDetail, "DetailEnabled", true,
-                "When the big map is zoomed in, draw a detailed picture over it: shaded relief, water by depth, forest, rocks, paths and buildings, down to 1 m per pixel. Zoomed out and on the minimap nothing changes.");
+                Ui("When you zoom the big map in, draw it in detail: buildings with their roofs, paths, fields and the forest as they are, in the vanilla map's style. The minimap is not changed.", UiDetail, "Close-up detail", 100, false));
             _cfgDetailStartSpan = Config.Bind(SecDetail, "DetailStartSpanMeters", 6000f,
-                new ConfigDescription("The detailed picture starts once the map window shows at most this many metres across. Vanilla style: its levels are spread from here to the closest zoom, so a larger value starts the detail earlier and makes each step smaller. Legacy: it fades in down to 80% of this.",
-                    new AcceptableValueRange<float>(500f, 8000f)));
+                Ui("How far out the detail begins, as the width of the map on screen in metres. Larger: the detail starts earlier and grows more gradually as you zoom in; smaller: it starts later, closer in.",
+                    new AcceptableValueRange<float>(1000f, 12000f), UiDetail, "Detail starts at map width (m)", 95, false));
             _cfgDetailFinest = Config.Bind(SecDetail, "DetailFinestMetersPerPixel", 1f,
-                new ConfigDescription("The finest level drawn: 1, 2 or 4 metres per pixel. Coarser = fewer tiles to draw.",
-                    new AcceptableValueList<float>(1f, 2f, 4f)));
-            _cfgDetailRelief = Config.Bind(SecDetail, "DetailRelief", 1f,
-                new ConfigDescription("Strength of the hill shading. 0 = flat colours.", new AcceptableValueRange<float>(0f, 3f)));
-            _cfgDetailForestShade = Config.Bind(SecDetail, "DetailForestShade", 0.35f,
-                new ConfigDescription("How much darker forest is drawn where single trees are not known (4 m per pixel, or zones the object database does not hold). 0 = not shown.", new AcceptableValueRange<float>(0f, 0.9f)));
+                Ui("The finest detail level allowed, in metres per pixel. Coarser means fewer tiles to draw.",
+                    new AcceptableValueList<float>(1f, 2f, 4f), UiAdvanced, "Detail: finest level (m)", 20, true));
             _cfgDetailObjects = Config.Bind(SecDetail, "DetailObjects", true,
-                "At 2 and 1 m per pixel, draw trees and rocks where they stand and buildings as rotated boxes shaded by height, read from the object database. Off = the forest pattern and the stored footprints only.");
-            _cfgDetailWaterShallow = Config.Bind(SecDetail, "DetailWaterShallow", new Color(0.27f, 0.28f, 0.33f, 1f),
-                "Colour of shallow water in the detailed picture (as drawn; the vanilla map's water).");
-            _cfgDetailWaterDeep = Config.Bind(SecDetail, "DetailWaterDeep", new Color(0.22f, 0.24f, 0.30f, 1f),
-                "Colour of deep water in the detailed picture (as drawn).");
-            _cfgDetailTreeColor = Config.Bind(SecDetail, "DetailTreeColor", new Color(0.55f, 0.62f, 0.45f, 1f),
-                "Colour of tree crowns in the detailed picture (before DetailVanillaTone).");
-            _cfgDetailRockColor = Config.Bind(SecDetail, "DetailRockColor", new Color(0.50f, 0.50f, 0.48f, 1f),
-                "Colour of rocks in the detailed picture (before DetailVanillaTone). Rocks under water are not drawn.");
-            _cfgDetailVanillaTone = Config.Bind(SecDetail, "DetailVanillaTone", true,
-                "Tone the detailed picture - terrain, trees, rocks, paths and buildings; water has its own colours - the way the game's map shader tones the map: darker and less saturated, so zooming in keeps the vanilla look. Off = the raw colours.");
-            _cfgDetailToneTint = Config.Bind(SecDetail, "DetailToneTint", new Color(0.38f, 0.48f, 0.44f, 1f),
-                "DetailVanillaTone: every colour is multiplied by this (measured against the vanilla map).");
-            _cfgDetailToneDesaturate = Config.Bind(SecDetail, "DetailToneDesaturate", 0.5f,
-                new ConfigDescription("DetailVanillaTone: how much colour is taken out before the tint. 0 = none, 1 = grey.", new AcceptableValueRange<float>(0f, 1f)));
-            _cfgDetailSharedOpacity = Config.Bind(SecDetail, "DetailSharedOpacity", 0.5f,
-                new ConfigDescription("Ground known only from a cartography table (explored by others) is drawn this opaque, so the vanilla haze over it shows through as on the vanilla map. 1 = like your own explored ground.", new AcceptableValueRange<float>(0f, 1f)));
+                Ui("Close up, read buildings (turned, with roofs and heights) straight from the objects near you. Off: the stored outlines only.", UiAdvanced, "Detail: read objects", 19, true));
             BindPortConfig();
             MigrateDetailConfig();
             _cfgDetailWorkers = Config.Bind(SecDetail, "DetailWorkerThreads", 2,
-                new ConfigDescription("Background threads that draw tiles. Takes effect on the next world load.", new AcceptableValueRange<int>(1, 4)));
+                Ui("Background threads that draw the detail. Takes effect on the next world load.",
+                    new AcceptableValueRange<int>(1, 4), UiAdvanced, "Detail: threads", 15, true));
         }
 
-        // Once per config file: colours still at the defaults of the first detail builds move to
-        // the vanilla-toned ones; anything the user picked is kept.
+        // Once per config file: defaults that changed move to the new ones; anything the user
+        // picked is kept.
         private void MigrateDetailConfig()
         {
-            ConfigEntry<int> ver = Config.Bind(SecDetail, "DetailConfigVersion", 1, "Internal: which defaults this section has been updated to. Do not edit.");
+            ConfigEntry<int> ver = Config.Bind(SecDetail, "DetailConfigVersion", 1, Hidden("Internal: which defaults this section has been updated to. Do not edit."));
             if (ver.Value >= 3) return;
-            if (ver.Value < 2)
-            {
-                MoveDefault(_cfgDetailWaterShallow, new Color(0.36f, 0.50f, 0.56f, 1f));
-                MoveDefault(_cfgDetailWaterDeep, new Color(0.14f, 0.22f, 0.30f, 1f));
-                MoveDefault(_cfgDetailTreeColor, new Color(0.20f, 0.30f, 0.14f, 1f));
-                MoveDefault(_cfgDetailRockColor, new Color(0.52f, 0.52f, 0.50f, 1f));
-            }
             // 3: the detail starts further out (its levels are spread over the zoom)
             if (Mathf.Approximately(_cfgDetailStartSpan.Value, 3000f)) _cfgDetailStartSpan.Value = 6000f;
             ver.Value = 3;
@@ -104,18 +73,10 @@ namespace LivingMap
         // palette (and paths and buildings look like the ones the shader draws zoomed out).
         private Color32 Tone(Color c)
         {
-            if (!_cfgDetailVanillaTone.Value) return c;
-            float ds = Mathf.Clamp01(_cfgDetailToneDesaturate.Value);
-            Color t = _cfgDetailToneTint.Value;
+            float ds = LegacyToneDesaturate;
+            Color t = LegacyToneTint;
             float l = 0.299f * c.r + 0.587f * c.g + 0.114f * c.b;
             return new Color((c.r + (l - c.r) * ds) * t.r, (c.g + (l - c.g) * ds) * t.g, (c.b + (l - c.b) * ds) * t.b, c.a);
-        }
-
-        private static void MoveDefault(ConfigEntry<Color> e, Color old)
-        {
-            Color v = e.Value;
-            if (Mathf.Abs(v.r - old.r) < 0.005f && Mathf.Abs(v.g - old.g) < 0.005f && Mathf.Abs(v.b - old.b) < 0.005f)
-                e.Value = (Color)e.DefaultValue;
         }
 
         // ------------------------------------------------------------------
@@ -648,12 +609,12 @@ namespace LivingMap
             j.LightSig = _dLight; j.Relight = relight;
             j.WaterLevel = ZoneSystem.instance != null ? ZoneSystem.instance.m_waterLevel : 30f;
             j.ZoneSize = ZoneSystem.instance != null ? ZoneSystem.instance.m_zoneSize : 64f;
-            j.Relief = _cfgDetailRelief.Value;
-            j.ForestShade = _cfgDetailForestShade.Value;
-            j.WaterShallow = _cfgDetailWaterShallow.Value;
-            j.WaterDeep = _cfgDetailWaterDeep.Value;
-            j.Tree = _cfgDetailTreeColor.Value;
-            j.Rock = _cfgDetailRockColor.Value;
+            j.Relief = LegacyRelief;
+            j.ForestShade = LegacyForestShade;
+            j.WaterShallow = LegacyWaterShallow;
+            j.WaterDeep = LegacyWaterDeep;
+            j.Tree = LegacyTree;
+            j.Rock = LegacyRock;
             Color mist = mm.m_blackforestColor;
             try { if (_fiMistColor != null) mist = (Color)_fiMistColor.GetValue(mm); } catch { }
             j.Biome = new Color32[10];
@@ -667,7 +628,7 @@ namespace LivingMap
             j.PixelSize = _pixelSize; j.TexSize = _texSize;
             j.FogX0 = fx0; j.FogZ0 = fz0; j.FogW = w; j.FogH = w;
             j.Fog = new float[w * w];
-            float shared = Mathf.Clamp01(_cfgDetailSharedOpacity.Value);
+            float shared = LegacySharedOpacity;
             j.ForestFix = new sbyte[w * w];
             BitArray ex = _fiExplored != null ? _fiExplored.GetValue(mm) as BitArray : null;
             BitArray exo = _fiExploredOthers != null ? _fiExploredOthers.GetValue(mm) as BitArray : null;
