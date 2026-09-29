@@ -26,7 +26,8 @@ namespace LivingMap
     {
         private ConfigEntry<string> _cfgDetailStyle;
         private ConfigEntry<float> _cfgDetailPixel;
-        private ConfigEntry<bool> _cfgDetailClouds;
+        private ConfigEntry<string> _cfgDetailCloudStyle;
+        private const string CloudsSmooth = "Smooth", CloudsExact = "Exact", CloudsOff = "Off";
         private ConfigEntry<bool> _cfgDetailStyled;
         // coast line width: 0 from _zoom, 1 from _pixelSize (the shader multiplies one of them by 50)
         internal static int s_portCoastFrom = 0;
@@ -41,11 +42,13 @@ namespace LivingMap
                     new AcceptableValueRange<float>(0f, 8f)));
             _cfgDetailStyled = Config.Bind(SecDetail, "DetailStyledPieces", true,
                 "Vanilla style: buildings and paths drawn with pixel textures (planks, masonry, cobbles, furrows), shaded edges, lighter high roofs and shadows. Off = flat colours.");
-            _cfgDetailClouds = Config.Bind(SecDetail, "DetailClouds", true,
-                "Vanilla style: the vanilla map's clouds in the detailed picture, drawn into it exactly as the game draws them (they can be brighter than white, which a separate layer cannot show); they follow the drift in steps of about 20 m. Off = no clouds there.");
+            _cfgDetailCloudStyle = Config.Bind(SecDetail, "DetailClouds", CloudsSmooth,
+                new ConfigDescription("Vanilla style, the clouds over the detailed picture. Smooth: their own layer, drifting smoothly like on the vanilla map, a little dimmer (a layer cannot be brighter than white, the game's clouds can). Exact: drawn into the picture with the game's own brightness, following the drift in steps of about 20 m. Off: no clouds there.",
+                    new AcceptableValueList<string>(CloudsSmooth, CloudsExact, CloudsOff)));
         }
 
         private bool PortWanted { get { return _cfgDetailStyle != null && _cfgDetailStyle.Value == "Vanilla"; } }
+        private string CloudStyle { get { return _cfgDetailCloudStyle != null ? _cfgDetailCloudStyle.Value : CloudsSmooth; } }
 
         // ------------------------------------------------------------------
         // pattern textures, read once per map
@@ -326,7 +329,7 @@ namespace LivingMap
             p.Cells = p.CellPerPixel ? p.World / (size / DTileSize) : p.World / cell;
             // Clouds = "not drawn into the tile": only when switched off; drawn, they are part
             // of the tile at the current drift
-            p.Clouds = _cfgDetailClouds != null && !_cfgDetailClouds.Value;
+            p.Clouds = CloudStyle != CloudsExact;
             p.Mat = new Color32[_cfgMatColor.Length];
             for (int i = 0; i < _cfgMatColor.Length; i++) p.Mat[i] = _cfgMatColor[i].Value;
             p.MatUnknown = _cfgMatUnknownColor.Value; p.Outline = _cfgOutlineColor.Value; p.DrawOutline = _cfgOutline.Value;
@@ -1072,7 +1075,7 @@ namespace LivingMap
             q = q * 31 + Q(a.r, 20f); q = q * 31 + Q(a.g, 20f); q = q * 31 + Q(a.b, 20f);
             q = q * 31 + Q(f.r, 20f); q = q * 31 + Q(f.g, 20f); q = q * 31 + Q(f.b, 20f);
             q = q * 31 + Q(d.x, 14f); q = q * 31 + Q(d.y, 14f); q = q * 31 + Q(d.z, 14f);
-            if (_cfgDetailClouds == null || _cfgDetailClouds.Value)
+            if (CloudStyle == CloudsExact)
             {
                 // the clouds' drift: a step of 0.006 in the cloud coordinate is about 20 m
                 Vector4 co = Shader.GetGlobalVector("_CloudOffset");

@@ -298,13 +298,25 @@ namespace LivingMap
             float need = spanX / Mathf.Max(1f, screenPx);
             float finest = Mathf.Max(1f, _cfgDetailFinest.Value);
             int level = -1;
-            for (int i = 0; i < DLevels.Length; i++)
+            if (PortWanted)
             {
-                if (DLevels[i] < finest * 0.85f) break;
-                level = i;
-                // vanilla style: a map pixel stays at most ~3 screen pixels (they shrink as you zoom in)
-                if (DLevels[i] <= need * (PortWanted ? 3f : 1f)) break;
+                // by how far the zoom has come from where the layer starts to the game's closest
+                // zoom, in equal steps of the wheel: the first level where the layer appears, the
+                // finest at the closest zoom - whatever the screen's resolution
+                Rect r = img.rectTransform.rect;
+                float aspect = r.height > 0f ? r.width / r.height : 1f;
+                float spanMin = Mathf.Max(1f, mm.m_minZoom * aspect * world);
+                float t = start > spanMin ? Mathf.Clamp01(Mathf.Log(start / Mathf.Max(spanX, spanMin)) / Mathf.Log(start / spanMin)) : 1f;
+                level = Mathf.Min(DLevels.Length - 1, Mathf.FloorToInt(t * DLevels.Length));
+                while (level > 0 && DLevels[level] < finest * 0.85f) level--;
             }
+            else
+                for (int i = 0; i < DLevels.Length; i++)
+                {
+                    if (DLevels[i] < finest - 0.01f) break;
+                    level = i;
+                    if (DLevels[i] <= need) break;       // the coarsest whose pixel is no bigger than a screen pixel
+                }
             if (level < 0) level = 0;
 
             float vx0 = (uv.xMin - 0.5f) * world, vx1 = (uv.xMax - 0.5f) * world;
@@ -418,8 +430,8 @@ namespace LivingMap
         private void UpdateClouds(Rect uv)
         {
             if (_dClouds == null) return;
-            // the clouds are drawn into the tiles now (a layer cannot show them brighter than white)
-            bool on = false;
+            // the Smooth clouds: their own drifting layer (Exact draws them into the tiles)
+            bool on = PortWanted && CloudStyle == CloudsSmooth && _port != null && _port.CloudTex != null && _portMat != null;
             if (_dClouds.enabled != on) _dClouds.enabled = on;
             if (!on) return;
             if (_dClouds.texture != _port.CloudTex) _dClouds.texture = _port.CloudTex;
