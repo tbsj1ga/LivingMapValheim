@@ -66,7 +66,10 @@ namespace LivingMap
         {
             try
             {
-                if (!keep && _cfgDetail != null) _cfgDetail.Value = false;
+                // the question is "keep the detailed map on?": Yes turns it on (it may have been
+                // off), No turns it off
+                if (_cfgDetail != null) _cfgDetail.Value = keep;
+                Logger.LogInfo("What's-new note " + NoticeVersion + " answered: " + (keep ? "keep the detailed map on" : "turn the detailed map off") + ".");
                 _cfgNoticeSeen.Value = NoticeVersion;
                 Config.Save();
             }
