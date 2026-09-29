@@ -310,6 +310,7 @@ namespace LivingMap
             float vx0 = (uv.xMin - 0.5f) * world, vx1 = (uv.xMax - 0.5f) * world;
             float vz0 = (uv.yMin - 0.5f) * world, vz1 = (uv.yMax - 0.5f) * world;
             while (level > 0 && TileCount(level, vx0, vx1, vz0, vz1) > DVisibleLimit) level--;
+            _dShownLevel = level; _dShownNeed = need; _dShownAt = Time.realtimeSinceStartup;
             float cx = (vx0 + vx1) * 0.5f, cz = (vz0 + vz1) * 0.5f;
             float now = Time.realtimeSinceStartup;
 
@@ -430,6 +431,20 @@ namespace LivingMap
         }
 
         // Levels follow the style; a change drops the tiles (their keys are per level).
+        // for 'livingmap status': what the detail layer showed last
+        private int _dShownLevel = -1;
+        private float _dShownNeed, _dShownAt = -100f;
+
+        private string DetailStatus()
+        {
+            if (!_cfgDetail.Value) return "detail layer off";
+            if (_dShownLevel < 0) return "detail layer not shown yet (zoom the big map in past DetailStartSpanMeters)";
+            float lv = _dShownLevel < DLevels.Length ? DLevels[_dShownLevel] : 0f;
+            return string.Format("detail layer {0}, last shown {6:0} s ago: level {1} of {2} ({3:0.##} m per map pixel), {4:0.##} m per screen pixel, so a map pixel is {5:0.#} screen pixels",
+                PortWanted ? "vanilla style" : "legacy", _dShownLevel + 1, DLevels.Length, lv, _dShownNeed, _dShownNeed > 0f ? lv / _dShownNeed : 0f,
+                Time.realtimeSinceStartup - _dShownAt);
+        }
+
         private void UpdateLevels(float world)
         {
             float[] want;
