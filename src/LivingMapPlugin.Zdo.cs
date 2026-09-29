@@ -270,15 +270,10 @@ namespace LivingMap
             }
 
             // roofs by their family (the game gives them the material of the wood they are made of)
-            string pname = prefab.name.ToLowerInvariant();
-            if (pname.Contains("roof") && !pname.Contains("wall_roof"))
-            {
-                info.Roof = true;
-                if (pname.Contains("darkwood_roof")) info.Mat = MatRoofDarkwood;
-                else if (pname.Contains("turf_roof")) info.Mat = MatRoofTurf;
-                else if (pname.Contains("grausten_roof")) info.Mat = MatRoofSlate;
-                else if (pname.Contains("wood_roof")) info.Mat = MatRoofThatch;
-            }
+            bool roof;
+            byte rm = RoofMat(prefab.name, out roof);
+            info.Roof = roof;
+            if (rm != MatNone) info.Mat = rm;
             Vector3 bestN = Vector3.up, sumH = Vector3.zero;
             float bestH = 0f;
 
@@ -338,6 +333,20 @@ namespace LivingMap
                 else info.RoofN = bestN;
             }
             return info;
+        }
+
+        // A roof piece and its kind by the prefab's family (to the game a roof is just wood or
+        // darkwood); MatNone for a roof of no known family, or not a roof. Both scans use it.
+        private static byte RoofMat(string prefabName, out bool roof)
+        {
+            string n = (prefabName ?? "").ToLowerInvariant();
+            roof = n.Contains("roof") && !n.Contains("wall_roof");
+            if (!roof) return MatNone;
+            if (n.Contains("darkwood_roof")) return MatRoofDarkwood;
+            if (n.Contains("turf_roof")) return MatRoofTurf;
+            if (n.Contains("grausten_roof")) return MatRoofSlate;
+            if (n.Contains("wood_roof")) return MatRoofThatch;
+            return MatNone;
         }
 
         private static bool LocalBox(Collider col, out Vector3 center, out Vector3 extents)

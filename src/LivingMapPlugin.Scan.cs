@@ -71,6 +71,9 @@ namespace LivingMap
                     int m = (int)wnt.m_materialType;
                     mat = (m >= 0 && m < GameMatCount) ? (byte)m : MatNone;
                 }
+                bool isRoof;
+                byte rm = RoofMat(Utils.GetPrefabName(piece.gameObject), out isRoof);
+                if (rm != MatNone) mat = rm;
 
                 PieceRec rec = new PieceRec();
                 rec.X0 = b.min.x; rec.X1 = b.max.x;

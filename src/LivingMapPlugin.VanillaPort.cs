@@ -833,6 +833,14 @@ namespace LivingMap
             float lodLava40 = A.Lava.Lod(40f, mpp, world), lodLava80 = A.Lava.Lod(80f, mpp, world), lodLava60 = A.Lava.Lod(60f, mpp, world);
             float lodMount = A.Mountain.Lod(70f, mpp, world), lodForest = A.Forest.Lod(150f, mpp, world);
             float lodMist15 = A.Cloud.Lod(15f, mpp, world), lodMist20 = A.Cloud.Lod(20f, mpp, world), lodCloud = A.Cloud.Lod(7f, mpp, world);
+            // With the coordinate snapped to cells the GPU sees no change of it inside a cell, so
+            // it samples the patterns at their full resolution (mip 0): crisp little tree stamps
+            // and lit specks. The port does the same, or the forest turns to soft blobs.
+            if (p.Cells > 0f)
+            {
+                lodBg5 = lodBg40 = lodFogL = lodWater = lodLava40 = lodLava80 = lodLava60 = 0f;
+                lodMount = lodForest = lodMist15 = lodMist20 = lodCloud = 0f;
+            }
             float tx = p.TimeX, ty = p.TimeY;
             float s5x = tx * 20f, s5y = tx * 19.08246f, s5z = tx * 16.86f, s5w = tx * 18.882462f;
             float rotA = ty * 0.0005f, rotB = ty * -0.00087f;
