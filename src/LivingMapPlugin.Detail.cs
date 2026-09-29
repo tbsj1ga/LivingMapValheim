@@ -162,6 +162,9 @@ namespace LivingMap
         private readonly List<DTile> _dScratch = new List<DTile>();
         private FieldInfo _fiMistColor, _fiObjectsBySector;
         private int _dRendered; private double _dMsTotal;
+        // cost, for 'livingmap status': tiles drawn in the background (worst too) and the
+        // snapshots taken on the main thread, since the world was loaded
+        private double _dMsMax; private int _dSnaps; private double _dSnapMsTotal, _dSnapMsMax;
 
         private readonly Dictionary<long, HeightZone> _dHeights = new Dictionary<long, HeightZone>();
         private readonly Dictionary<long, int> _dZoneRev = new Dictionary<long, int>();   // terrain record parses per zone
@@ -419,9 +422,14 @@ namespace LivingMap
             if (!_cfgDetail.Value) return "detail layer off";
             if (_dShownLevel < 0) return "detail layer not shown yet (zoom the big map in past DetailStartSpanMeters)";
             float lv = _dShownLevel < DLevels.Length ? DLevels[_dShownLevel] : 0f;
-            return string.Format("detail layer {0}, last shown {6:0} s ago: level {1} of {2} ({3:0.##} m per map pixel), {4:0.##} m per screen pixel, so a map pixel is {5:0.#} screen pixels",
+            int threads = _dWorkers != null ? _dWorkers.Length : 0;
+            return string.Format("detail layer {0}, last shown {6:0} s ago: level {1} of {2} ({3:0.##} m per map pixel), {4:0.##} m per screen pixel, so a map pixel is {5:0.#} screen pixels. "
+                + "Cost so far: {7} tiles drawn on {8} background threads, {9:0} ms a tile on average (worst {10:0}); {11} snapshots on the main thread, {12:0.0} ms on average (worst {13:0.0}); {14} tiles cached (~{15:0} MB)",
                 PortWanted ? "vanilla style" : "legacy", _dShownLevel + 1, DLevels.Length, lv, _dShownNeed, _dShownNeed > 0f ? lv / _dShownNeed : 0f,
-                Time.realtimeSinceStartup - _dShownAt);
+                Time.realtimeSinceStartup - _dShownAt,
+                _dRendered, threads, _dRendered > 0 ? _dMsTotal / _dRendered : 0.0, _dMsMax,
+                _dSnaps, _dSnaps > 0 ? _dSnapMsTotal / _dSnaps : 0.0, _dSnapMsMax,
+                _dTiles.Count, _dTiles.Count * (DTileSize * DTileSize * 8) / (1024.0 * 1024.0));
         }
 
         private void UpdateLevels(float world)
@@ -588,7 +596,10 @@ namespace LivingMap
         private void Enqueue(DTile tile, float priority, bool relight)
         {
             _dEnqueuedThisFrame++;
+            long s0 = Stopwatch.GetTimestamp();
             DJob j = BuildJob(tile, priority, relight);
+            double sms = (Stopwatch.GetTimestamp() - s0) * 1000.0 / Stopwatch.Frequency;
+            _dSnaps++; _dSnapMsTotal += sms; if (sms > _dSnapMsMax) _dSnapMsMax = sms;
             tile.Queued = true;
             lock (_dLock) { _dPending.Add(j); Monitor.Pulse(_dLock); }
         }
@@ -845,7 +856,7 @@ namespace LivingMap
                 }
                 t.Img.texture = t.Tex;
                 t.Ready = true; t.Sig = j.Sig; t.RenderedAt = Time.realtimeSinceStartup;
-                _dRendered++; _dMsTotal += j.Ms;
+                _dRendered++; _dMsTotal += j.Ms; if (j.Ms > _dMsMax) _dMsMax = j.Ms;
                 if (_cfgDebug.Value && _dRendered % 20 == 0)
                     Logger.LogInfo("Detail: " + _dRendered + " tiles drawn, " + (_dMsTotal / _dRendered).ToString("0") + " ms per tile on average (last " + j.Ms.ToString("0") +
                                    " ms at " + j.Mpp + " m/px, " + j.Trees.Count + " trees/rocks, " + j.Boxes.Count + " boxes); cached " + _dTiles.Count);
