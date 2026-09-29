@@ -42,19 +42,32 @@ namespace LivingMap
         {
             _cfgDetail = Config.Bind(SecDetail, "DetailEnabled", true,
                 Ui("When you zoom the big map in, draw it in detail: buildings with their roofs, paths, fields and the forest as they are, in the vanilla map's style. The minimap is not changed.", UiDetail, "Close-up detail", 100, false));
-            _cfgDetailStartSpan = Config.Bind(SecDetail, "DetailStartSpanMeters", 6000f,
-                Ui("How far out the detail begins, as the width of the map on screen in metres. Larger: the detail starts earlier and grows more gradually as you zoom in; smaller: it starts later, closer in.",
+            _cfgDetailStartSpan = Config.Bind(SecDetail, "DetailStartSpanMeters", WeakCpu ? 3000f : 6000f,
+                Ui("How far out the detail begins, as the width of the map on screen in metres. Larger: the detail starts earlier and grows more gradually as you zoom in; smaller: it starts later, closer in, and costs less. Default 6000 (3000 on a processor with 4 threads or fewer).",
                     new AcceptableValueRange<float>(1000f, 12000f), UiDetail, "Detail starts at map width (m)", 95, false));
             _cfgDetailFinest = Config.Bind(SecDetail, "DetailFinestMetersPerPixel", 1f,
                 Ui("The finest detail level allowed, in metres per pixel. Coarser means fewer tiles to draw.",
                     new AcceptableValueList<float>(1f, 2f, 4f), UiAdvanced, "Detail: finest level (m)", 20, true));
             _cfgDetailObjects = Config.Bind(SecDetail, "DetailObjects", true,
                 Ui("Close up, read buildings (turned, with roofs and heights) straight from the objects near you. Off: the stored outlines only.", UiAdvanced, "Detail: read objects", 19, true));
+            _cfgDetailWorkers = Config.Bind(SecDetail, "DetailWorkerThreads", 0,
+                Ui("Background threads that draw the detail. 0 = automatic: 1 on a processor with 4 threads or fewer, else 2. Takes effect on the next world load.",
+                    new AcceptableValueRange<int>(0, 4), UiAdvanced, "Detail: threads", 15, true));
             BindPortConfig();
             MigrateDetailConfig();
-            _cfgDetailWorkers = Config.Bind(SecDetail, "DetailWorkerThreads", 2,
-                Ui("Background threads that draw the detail. Takes effect on the next world load.",
-                    new AcceptableValueRange<int>(1, 4), UiAdvanced, "Detail: threads", 15, true));
+        }
+
+        // 4 cores or fewer: one drawing thread and the detail starting closer in by default, so
+        // the game keeps its cores (about 0.35 s a tile there against 0.18 s on an i5-12400F)
+        private static bool WeakCpu { get { return SystemInfo.processorCount <= 4; } }
+
+        private int DetailThreads
+        {
+            get
+            {
+                int v = _cfgDetailWorkers != null ? _cfgDetailWorkers.Value : 0;
+                return v <= 0 ? (WeakCpu ? 1 : 2) : Mathf.Clamp(v, 1, 4);
+            }
         }
 
         // Once per config file: defaults that changed move to the new ones; anything the user
@@ -62,10 +75,13 @@ namespace LivingMap
         private void MigrateDetailConfig()
         {
             ConfigEntry<int> ver = Config.Bind(SecDetail, "DetailConfigVersion", 1, Hidden("Internal: which defaults this section has been updated to. Do not edit."));
-            if (ver.Value >= 3) return;
+            if (ver.Value >= 4) return;
             // 3: the detail starts further out (its levels are spread over the zoom)
-            if (Mathf.Approximately(_cfgDetailStartSpan.Value, 3000f)) _cfgDetailStartSpan.Value = 6000f;
-            ver.Value = 3;
+            if (ver.Value < 3 && !WeakCpu && Mathf.Approximately(_cfgDetailStartSpan.Value, 3000f)) _cfgDetailStartSpan.Value = 6000f;
+            // 4: threads and the start follow the processor unless chosen
+            if (_cfgDetailWorkers.Value == 2) _cfgDetailWorkers.Value = 0;
+            if (WeakCpu && Mathf.Approximately(_cfgDetailStartSpan.Value, 6000f)) _cfgDetailStartSpan.Value = 3000f;
+            ver.Value = 4;
         }
 
         // The game's map shader draws the map darker and less saturated than its colours; the
@@ -965,7 +981,7 @@ namespace LivingMap
             WorldGenerator wg = WorldGenerator.instance;
             if (wg == null) return;
             _dStop = false;
-            int n = Mathf.Clamp(_cfgDetailWorkers.Value, 1, 4);
+            int n = DetailThreads;
             _dWorkers = new Thread[n];
             for (int i = 0; i < n; i++)
             {
