@@ -122,7 +122,7 @@ namespace LivingMap
         private const int DUploadsPerFrame = 2;
         private const int DEnqueuesPerFrame = 4;
         private const float DRedrawMinAge = 5f;
-        private const float DObjectsMaxMpp = 3.2f;      // from the vanilla style's 3 m level (roof slopes)
+        private const float DObjectsMaxMpp = 2.9f;      // from the 2.75 m level: 3.1 m keeps the stored footprints, like the old picture
         // metres per tile pixel of each level; the vanilla style uses the vanilla map's pixel
         // (the world / 7000) and its halves, so a tile pixel is exactly one map pixel
         private static float[] DLevels = { 4f, 2f, 1f };
