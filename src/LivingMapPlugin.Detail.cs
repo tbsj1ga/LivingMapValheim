@@ -47,8 +47,8 @@ namespace LivingMap
         {
             _cfgDetail = Config.Bind(SecDetail, "DetailEnabled", true,
                 "When the big map is zoomed in, draw a detailed picture over it: shaded relief, water by depth, forest, rocks, paths and buildings, down to 1 m per pixel. Zoomed out and on the minimap nothing changes.");
-            _cfgDetailStartSpan = Config.Bind(SecDetail, "DetailStartSpanMeters", 3000f,
-                new ConfigDescription("The detailed picture fades in once the map window shows at most this many metres across (fully visible at 80% of it).",
+            _cfgDetailStartSpan = Config.Bind(SecDetail, "DetailStartSpanMeters", 6000f,
+                new ConfigDescription("The detailed picture starts once the map window shows at most this many metres across. Vanilla style: its levels are spread from here to the closest zoom, so a larger value starts the detail earlier and makes each step smaller. Legacy: it fades in down to 80% of this.",
                     new AcceptableValueRange<float>(500f, 8000f)));
             _cfgDetailFinest = Config.Bind(SecDetail, "DetailFinestMetersPerPixel", 1f,
                 new ConfigDescription("The finest level drawn: 1, 2 or 4 metres per pixel. Coarser = fewer tiles to draw.",
@@ -86,12 +86,17 @@ namespace LivingMap
         private void MigrateDetailConfig()
         {
             ConfigEntry<int> ver = Config.Bind(SecDetail, "DetailConfigVersion", 1, "Internal: which defaults this section has been updated to. Do not edit.");
-            if (ver.Value >= 2) return;
-            MoveDefault(_cfgDetailWaterShallow, new Color(0.36f, 0.50f, 0.56f, 1f));
-            MoveDefault(_cfgDetailWaterDeep, new Color(0.14f, 0.22f, 0.30f, 1f));
-            MoveDefault(_cfgDetailTreeColor, new Color(0.20f, 0.30f, 0.14f, 1f));
-            MoveDefault(_cfgDetailRockColor, new Color(0.52f, 0.52f, 0.50f, 1f));
-            ver.Value = 2;
+            if (ver.Value >= 3) return;
+            if (ver.Value < 2)
+            {
+                MoveDefault(_cfgDetailWaterShallow, new Color(0.36f, 0.50f, 0.56f, 1f));
+                MoveDefault(_cfgDetailWaterDeep, new Color(0.14f, 0.22f, 0.30f, 1f));
+                MoveDefault(_cfgDetailTreeColor, new Color(0.20f, 0.30f, 0.14f, 1f));
+                MoveDefault(_cfgDetailRockColor, new Color(0.52f, 0.52f, 0.50f, 1f));
+            }
+            // 3: the detail starts further out (its levels are spread over the zoom)
+            if (Mathf.Approximately(_cfgDetailStartSpan.Value, 3000f)) _cfgDetailStartSpan.Value = 6000f;
+            ver.Value = 3;
         }
 
         // The game's map shader draws the map darker and less saturated than its colours; the
@@ -727,6 +732,7 @@ namespace LivingMap
                     }
             }
             j.Boxes.Sort((a, b) => a.Top.CompareTo(b.Top));
+            j.Pieces.Sort((a, b) => a.Y.CompareTo(b.Y));      // stored footprints lowest first too: roofs over walls
             j.MatColors = new Color32[_cfgMatColor.Length];
             for (int i = 0; i < _cfgMatColor.Length; i++) j.MatColors[i] = Tone(_cfgMatColor[i].Value);
             j.MatUnknown = Tone(_cfgMatUnknownColor.Value);
