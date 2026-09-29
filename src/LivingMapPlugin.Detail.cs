@@ -431,14 +431,22 @@ namespace LivingMap
         // Levels follow the style; a change drops the tiles (their keys are per level).
         private void UpdateLevels(float world)
         {
-            float first = PortWanted ? world / 7000f : 4f;
-            int count = PortWanted ? 5 : 3;
-            if (Mathf.Abs(DLevels[0] - first) < 0.0001f && DLevels.Length == count) return;
-            // the vanilla style steps by 1/sqrt(2) (3.5, 2.5, 1.75, 1.25, 0.9 m): each change of
-            // pixel size is half the area, not a quarter; the legacy picture keeps 4 / 2 / 1 m
-            float step = PortWanted ? 0.70710678f : 0.5f;
-            DLevels = new float[count];
-            for (int i = 0; i < count; i++) DLevels[i] = first * Mathf.Pow(step, i);
+            float[] want;
+            if (PortWanted)
+            {
+                // the vanilla map's pixel (world / 7000, about 3.5 m) in steps of 1/sqrt(2):
+                // each change of pixel size is half the area, not a quarter. The first level is
+                // a little finer (3 m), so buildings and paths already show some texture there.
+                float c = world / 7000f;
+                want = new float[5];
+                for (int i = 0; i < want.Length; i++) want[i] = c * Mathf.Pow(0.70710678f, i);
+                want[0] = Mathf.Min(want[0], 3f);
+            }
+            else want = new[] { 4f, 2f, 1f };
+            bool same = want.Length == DLevels.Length;
+            for (int i = 0; same && i < want.Length; i++) same = Mathf.Abs(want[i] - DLevels[i]) < 0.0001f;
+            if (same) return;
+            DLevels = want;
             foreach (DTile t in _dTiles.Values) DestroyTile(t);
             _dTiles.Clear();
         }
