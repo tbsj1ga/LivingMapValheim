@@ -417,7 +417,8 @@ namespace LivingMap
         private void UpdateClouds(Rect uv)
         {
             if (_dClouds == null) return;
-            bool on = PortWanted && _port != null && _port.CloudTex != null && _cfgDetailClouds.Value && _portMat != null;
+            // the clouds are drawn into the tiles now (a layer cannot show them brighter than white)
+            bool on = false;
             if (_dClouds.enabled != on) _dClouds.enabled = on;
             if (!on) return;
             if (_dClouds.texture != _port.CloudTex) _dClouds.texture = _port.CloudTex;

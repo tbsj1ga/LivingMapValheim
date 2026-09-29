@@ -42,7 +42,7 @@ namespace LivingMap
             _cfgDetailStyled = Config.Bind(SecDetail, "DetailStyledPieces", true,
                 "Vanilla style: buildings and paths drawn with pixel textures (planks, masonry, cobbles, furrows), shaded edges, lighter high roofs and shadows. Off = flat colours.");
             _cfgDetailClouds = Config.Bind(SecDetail, "DetailClouds", true,
-                "Vanilla style: the vanilla map's drifting clouds over the detailed picture (under the fog of war, as in the game). Off = no clouds there.");
+                "Vanilla style: the vanilla map's clouds in the detailed picture, drawn into it exactly as the game draws them (they can be brighter than white, which a separate layer cannot show); they follow the drift in steps of about 20 m. Off = no clouds there.");
         }
 
         private bool PortWanted { get { return _cfgDetailStyle != null && _cfgDetailStyle.Value == "Vanilla"; } }
@@ -324,15 +324,20 @@ namespace LivingMap
             float cell = _cfgDetailPixel != null ? _cfgDetailPixel.Value : 0f;
             p.CellPerPixel = cell <= 0.01f;                 // automatic: one map pixel per tile pixel
             p.Cells = p.CellPerPixel ? p.World / (size / DTileSize) : p.World / cell;
-            p.Clouds = _cfgDetailClouds == null || _cfgDetailClouds.Value;
+            // Clouds = "not drawn into the tile": only when switched off; drawn, they are part
+            // of the tile at the current drift
+            p.Clouds = _cfgDetailClouds != null && !_cfgDetailClouds.Value;
             p.Mat = new Color32[_cfgMatColor.Length];
             for (int i = 0; i < _cfgMatColor.Length; i++) p.Mat[i] = _cfgMatColor[i].Value;
             p.MatUnknown = _cfgMatUnknownColor.Value; p.Outline = _cfgOutlineColor.Value; p.DrawOutline = _cfgOutline.Value;
             p.Paved = _cfgPavedColor.Value; p.Dirt = _cfgDirtColor.Value; p.Cultivated = _cfgCultivatedColor.Value; p.Cleared = _cfgClearedColor.Value;
             p.Styled = _cfgDetailStyled == null || _cfgDetailStyled.Value;
-            // one fixed moment for every tile: the water, fog edge, mist and clouds move with
-            // time in the shader, and tiles drawn at different moments would not meet
-            p.CloudX = 0f; p.CloudZ = 0f;
+            // one fixed moment for every tile: the water, fog edge and mist move with time in
+            // the shader, and tiles drawn at different moments would not meet. The clouds are
+            // taken where they are now; when they drift on, the tiles are drawn again together
+            // (see PortLightSig)
+            Vector4 co = Shader.GetGlobalVector("_CloudOffset");
+            p.CloudX = co.x; p.CloudZ = co.z;
             p.TimeX = 0f; p.TimeY = 0f;
 
             // the vanilla textures around the tile: the normal reaches _normalWidth back, the
@@ -1067,6 +1072,12 @@ namespace LivingMap
             q = q * 31 + Q(a.r, 20f); q = q * 31 + Q(a.g, 20f); q = q * 31 + Q(a.b, 20f);
             q = q * 31 + Q(f.r, 20f); q = q * 31 + Q(f.g, 20f); q = q * 31 + Q(f.b, 20f);
             q = q * 31 + Q(d.x, 14f); q = q * 31 + Q(d.y, 14f); q = q * 31 + Q(d.z, 14f);
+            if (_cfgDetailClouds == null || _cfgDetailClouds.Value)
+            {
+                // the clouds' drift: a step of 0.006 in the cloud coordinate is about 20 m
+                Vector4 co = Shader.GetGlobalVector("_CloudOffset");
+                q = q * 31 + (long)Mathf.Floor(co.x / 0.006f); q = q * 31 + (long)Mathf.Floor(co.z / 0.006f);
+            }
             if (_portMat != null) q = q * 31 + Q(_portMat.GetFloat("_SharedFade"), 16f);
             return q;
         }
