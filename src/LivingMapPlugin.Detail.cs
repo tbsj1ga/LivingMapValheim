@@ -86,7 +86,7 @@ namespace LivingMap
         private const int DCacheLimit = 96;
         private const int DVisibleLimit = 64;
         private const int DUploadsPerFrame = 2;
-        private const int DEnqueuesPerFrame = 4;
+        private const int DEnqueuesPerFrame = 2;      // snapshots on the main thread, ~3.5 ms each on an i5-12400F
         private const float DRedrawMinAge = 5f;
         private const float DObjectsMaxMpp = 2.9f;      // from the 2.75 m level: 3.1 m keeps the stored footprints, like the old picture
         // metres per tile pixel of each level; the vanilla style uses the vanilla map's pixel

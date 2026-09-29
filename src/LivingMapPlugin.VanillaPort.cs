@@ -35,7 +35,7 @@ namespace LivingMap
         private void BindPortConfig()
         {
             _cfgDetailCloudStyle = Config.Bind(SecDetail, "DetailClouds", CloudsSmooth,
-                Ui("Clouds on the map. Smooth: drifting smoothly over the close-up detail, a little dimmer than the game's. Exact: with the game's own brightness, moving in small steps. Off: no clouds on the map at all, zoomed out too.",
+                Ui("Clouds on the map. Smooth: drifting smoothly over the close-up detail, a little dimmer than the game's. Exact: with the game's own brightness, moving in small steps. Off: no clouds in the close-up detail (the zoomed-out map keeps them: the game draws the Mistlands mist from the same texture).",
                     new AcceptableValueList<string>(CloudsSmooth, CloudsExact, CloudsOff), UiDetail, "Clouds", 90, false));
             _cfgDetailStyled = Config.Bind(SecDetail, "DetailStyledPieces", true,
                 Ui("Close up, draw buildings and paths with textures - planks, masonry, straw, cobbles, furrows - with shaded edges, lit roof slopes and shadows. Off: flat colours.", UiDetail, "Building textures", 85, false));
@@ -50,15 +50,16 @@ namespace LivingMap
         private bool PortWanted { get { return _cfgDetailStyle != null && _cfgDetailStyle.Value == "Vanilla"; } }
         private string CloudStyle { get { return _cfgDetailCloudStyle != null ? _cfgDetailCloudStyle.Value : CloudsSmooth; } }
 
-        // DetailClouds = Off takes the clouds off the vanilla map and the minimap as well: their
-        // material gets a clear cloud texture, and the game's own one back when switched on.
+        // The vanilla map keeps its clouds whatever DetailClouds says: its shader draws the
+        // Mistlands mist from the same texture, and without it the mist turns black. An earlier
+        // build cleared the texture for Off; this puts the game's own one back.
         private Texture _origCloudTex, _clearCloudTex;
         private Material _cloudMatLarge, _cloudMatSmall;
 
         private void UpdateVanillaClouds()
         {
             if (_mm == null) return;
-            bool off = CloudStyle == CloudsOff;
+            bool off = false;
             SetCloudTex(_mm.m_mapImageLarge != null ? _mm.m_mapImageLarge.material : null, off, ref _cloudMatLarge);
             SetCloudTex(_mm.m_mapImageSmall != null ? _mm.m_mapImageSmall.material : null, off, ref _cloudMatSmall);
         }
