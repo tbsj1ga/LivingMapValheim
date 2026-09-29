@@ -50,6 +50,35 @@ namespace LivingMap
         private bool PortWanted { get { return _cfgDetailStyle != null && _cfgDetailStyle.Value == "Vanilla"; } }
         private string CloudStyle { get { return _cfgDetailCloudStyle != null ? _cfgDetailCloudStyle.Value : CloudsSmooth; } }
 
+        // DetailClouds = Off takes the clouds off the vanilla map and the minimap as well: their
+        // material gets a clear cloud texture, and the game's own one back when switched on.
+        private Texture _origCloudTex, _clearCloudTex;
+        private Material _cloudMatLarge, _cloudMatSmall;
+
+        private void UpdateVanillaClouds()
+        {
+            if (_mm == null) return;
+            bool off = CloudStyle == CloudsOff;
+            SetCloudTex(_mm.m_mapImageLarge != null ? _mm.m_mapImageLarge.material : null, off, ref _cloudMatLarge);
+            SetCloudTex(_mm.m_mapImageSmall != null ? _mm.m_mapImageSmall.material : null, off, ref _cloudMatSmall);
+        }
+
+        private void SetCloudTex(Material m, bool off, ref Material applied)
+        {
+            if (m == null || !m.HasProperty("_CloudTex")) return;
+            Texture cur = m.GetTexture("_CloudTex");
+            if (_clearCloudTex == null)
+            {
+                Texture2D t = new Texture2D(1, 1, TextureFormat.RGBA32, false, true);
+                t.SetPixel(0, 0, new Color(0f, 0f, 0f, 0f)); t.Apply(false, true);
+                t.name = "LivingMap no clouds";
+                _clearCloudTex = t;
+            }
+            if (cur != _clearCloudTex && cur != null) _origCloudTex = cur;
+            if (off) { if (cur != _clearCloudTex) m.SetTexture("_CloudTex", _clearCloudTex); applied = m; }
+            else if (cur == _clearCloudTex && _origCloudTex != null) { m.SetTexture("_CloudTex", _origCloudTex); applied = null; }
+        }
+
         // ------------------------------------------------------------------
         // pattern textures, read once per map
         // ------------------------------------------------------------------
@@ -234,7 +263,9 @@ namespace LivingMap
                 p.Water = ReadPattern(m.GetTexture("_WaterTex"));
                 p.Lava = ReadPattern(m.GetTexture("_lavaTex"));
                 p.Mountain = ReadPattern(m.GetTexture("_MountainTex"));
-                p.Cloud = ReadPattern(m.GetTexture("_CloudTex"));
+                Texture clouds = m.GetTexture("_CloudTex");
+                if (clouds == _clearCloudTex && _origCloudTex != null) clouds = _origCloudTex;
+                p.Cloud = ReadPattern(clouds);
                 p.Forest = ReadPattern(m.GetTexture("_ForestTex"));
                 if (p.Background == null || p.FogLayer == null || p.Water == null || p.Lava == null || p.Mountain == null || p.Cloud == null || p.Forest == null)
                     throw new Exception("a pattern texture of the map material is missing");

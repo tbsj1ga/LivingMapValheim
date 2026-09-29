@@ -267,6 +267,9 @@ namespace LivingMap
                         }
                     }
 
+                    // lowest first, so roofs end up over the walls and floors under them (a map
+                    // pixel holds many pieces, and the last one drawn is what it shows)
+                    _fillScratch.Clear();
                     foreach (KeyValuePair<int, List<PieceRec>> kv in _pieces)
                     {
                         List<PieceRec> bucket = kv.Value;
@@ -274,10 +277,17 @@ namespace LivingMap
                         {
                             PieceRec rec = bucket[i];
                             if (!IsWorldExplored(explored, exploredOthers, rec.CX, rec.CZ)) { _fogPieces.Add(rec); continue; }
-                            EmitQuad(rec.X0, rec.Z0, rec.X1, rec.Z1, MatColor(rec.Mat), k, half, h, flip, minPiece);
-                            quads++;
+                            _fillScratch.Add(rec);
                         }
                     }
+                    _fillScratch.Sort(ByTop);
+                    for (int i = 0; i < _fillScratch.Count; i++)
+                    {
+                        PieceRec rec = _fillScratch[i];
+                        EmitQuad(rec.X0, rec.Z0, rec.X1, rec.Z1, MatColor(rec.Mat), k, half, h, flip, minPiece);
+                        quads++;
+                    }
+                    _fillScratch.Clear();
                 }
 
                 if (_cfgDebugMarker.Value && Player.m_localPlayer != null)
@@ -423,9 +433,12 @@ namespace LivingMap
                 }
             }
 
+            // everything under the new pieces is drawn again, lowest first, so a new wall does
+            // not cover the roof above it
             _fillScratch.Clear();
-            if (_cfgOutline.Value) PiecesIntersecting(rx0, rz0, rx1, rz1, false, _fillScratch);
-            else _fillScratch.AddRange(group);
+            PiecesIntersecting(rx0, rz0, rx1, rz1, false, _fillScratch);
+            for (int i = 0; i < group.Count; i++) if (!_fillScratch.Contains(group[i])) _fillScratch.Add(group[i]);
+            _fillScratch.Sort(ByTop);
             for (int i = 0; i < _fillScratch.Count; i++)
             {
                 PieceRec rec = _fillScratch[i];
@@ -435,6 +448,8 @@ namespace LivingMap
             }
             return quads;
         }
+
+        private static readonly Comparison<PieceRec> ByTop = delegate(PieceRec a, PieceRec b) { return a.Y.CompareTo(b.Y); };
 
         // The rectangle a piece actually occupies on the texture: its footprint, grown by the
         // halo and widened to the minimum drawn size, exactly as EmitQuad will draw it.

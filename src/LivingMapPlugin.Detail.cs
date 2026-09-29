@@ -207,6 +207,7 @@ namespace LivingMap
         private void LateUpdate()
         {
             if (_disabledByErrors) return;
+            try { if (_ready) UpdateVanillaClouds(); } catch (Exception e) { Logger.LogError("[clouds] " + e); }
             if (_probeImg != null)
             {
                 try { ProbeTick(); }
