@@ -1,5 +1,7 @@
 using System;
+using System.Reflection;
 using BepInEx.Configuration;
+using TMPro;
 using UnityEngine;
 
 namespace LivingMap
@@ -13,6 +15,13 @@ namespace LivingMap
         private const string NoticeVersion = "0.16.0";
         private ConfigEntry<string> _cfgNoticeSeen;
         private bool _noticeDone;
+        // the popup's text is shared by every popup of the game: made 2 pt larger while ours is
+        // shown, put back when it is answered
+        private const float NoticeFontIncrease = 2f;
+        private TMP_Text _noticeBody;
+        private float _noticeFont, _noticeFontMax;
+        private static readonly FieldInfo s_fiPopupInstance = typeof(UnifiedPopup).GetField("instance", BindingFlags.Static | BindingFlags.NonPublic | BindingFlags.Public);
+        private static readonly FieldInfo s_fiPopupBody = typeof(UnifiedPopup).GetField("bodyText", BindingFlags.Instance | BindingFlags.NonPublic | BindingFlags.Public);
 
         private void BindNoticeConfig()
         {
@@ -45,6 +54,7 @@ namespace LivingMap
                     delegate { NoticeAnswered(true); },
                     delegate { NoticeAnswered(false); },
                     false));
+                EnlargeNoticeText();
             }
             catch (Exception e)
             {
@@ -60,7 +70,30 @@ namespace LivingMap
                 _cfgNoticeSeen.Value = NoticeVersion;
                 Config.Save();
             }
-            finally { UnifiedPopup.Pop(); }
+            finally
+            {
+                RestoreNoticeText();
+                UnifiedPopup.Pop();
+            }
+        }
+
+        private void EnlargeNoticeText()
+        {
+            object inst = s_fiPopupInstance != null ? s_fiPopupInstance.GetValue(null) : null;
+            TMP_Text body = inst != null && s_fiPopupBody != null ? s_fiPopupBody.GetValue(inst) as TMP_Text : null;
+            if (body == null) return;
+            _noticeBody = body;
+            _noticeFont = body.fontSize; _noticeFontMax = body.fontSizeMax;
+            body.fontSize = _noticeFont + NoticeFontIncrease;
+            if (body.enableAutoSizing) body.fontSizeMax = _noticeFontMax + NoticeFontIncrease;
+        }
+
+        private void RestoreNoticeText()
+        {
+            if (_noticeBody == null) return;
+            _noticeBody.fontSize = _noticeFont;
+            _noticeBody.fontSizeMax = _noticeFontMax;
+            _noticeBody = null;
         }
     }
 }
