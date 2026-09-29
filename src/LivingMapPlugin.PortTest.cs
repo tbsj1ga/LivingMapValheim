@@ -129,8 +129,70 @@ namespace LivingMap
                 }
             }
             finally { UnityEngine.Object.Destroy(mat); }
+            try { PortTestLevels(dir, log); }
+            catch (Exception e) { log.AppendLine("levels test failed: " + e); }
             Logger.LogInfo(log.ToString());
             return "livingmap port: port_*_gpu/cpu/diff.png written to " + dir + "; details in the BepInEx log";
+        }
+
+        // The map as it is shown (its material, Living Map's textures, the game's own zoom) against
+        // the first level (the same textures through the port) and the second (Living Map's data
+        // painted by the port), over the second level's tile at the map centre: mean colour of
+        // each and their differences, and the three pictures.
+        private void PortTestLevels(string dir, StringBuilder log)
+        {
+            Rect uvr = _mm.m_mapImageLarge.uvRect;
+            float world = _texSize * _pixelSize;
+            float cx = (uvr.center.x - 0.5f) * world, cz = (uvr.center.y - 0.5f) * world;
+            int lv = 1;
+            float mpp = DLevels[lv], size = DTileSize * mpp;
+            DTile t1 = new DTile { Level = lv, TX = Mathf.FloorToInt(cx / size), TZ = Mathf.FloorToInt(cz / size) };
+            DJob j1 = BuildJob(t1, 0f, false);
+            if (j1.Port == null) { log.AppendLine("levels: no port job"); return; }
+            j1.Port.Clouds = true;                                     // clouds are their own layer on screen
+            byte[] second = Composite(RenderPortTile(j1, WorldGenerator.instance), j1.Pixels2);
+            // the same window through the first level's inputs
+            DJob j0 = BuildJob(t1, 0f, false);
+            j0.Port = SnapshotPort(j0.X0, j0.Z0, size, true);
+            j0.Port.Clouds = true;
+            byte[] first = Composite(RenderPortTile(j0, null), j0.Pixels2);
+            // the real shader: the map material as it is, over the same window, clouds excluded
+            Material mat = new Material(_portMat);
+            float[] gpu;
+            try
+            {
+                float w = size / world, u0 = j1.X0 / world + 0.5f, v0 = j1.Z0 / world + 0.5f;
+                mat.SetTextureScale("_MainTex", new Vector2(w, w));
+                mat.SetTextureOffset("_MainTex", new Vector2(u0, v0));
+                float zoom = _portMat.GetFloat("_zoom");
+                mat.SetFloat("_zoom", zoom); mat.SetFloat("_pixelSize", 200f / zoom);
+                mat.SetVector("_mapCenter", _portMat.GetVector("_mapCenter"));
+
+                Texture2D none = new Texture2D(1, 1, TextureFormat.Alpha8, false);
+                none.SetPixel(0, 0, new Color(0f, 0f, 0f, 0f)); none.Apply();
+                mat.SetTexture("_CloudTex", none);
+                gpu = GpuRender(mat, DTileSize);
+                UnityEngine.Object.Destroy(none);
+            }
+            finally { UnityEngine.Object.Destroy(mat); }
+            string stamp = DateTime.Now.ToString("HHmmss");
+            SavePng(gpu, DTileSize, Path.Combine(dir, "levels_" + stamp + "_shader.png"));
+            File.WriteAllBytes(Path.Combine(dir, "levels_" + stamp + "_first.png"), EncodePng(first, DTileSize));
+            File.WriteAllBytes(Path.Combine(dir, "levels_" + stamp + "_second.png"), EncodePng(second, DTileSize));
+            int n = DTileSize * DTileSize;
+            double[] mg = new double[3], m0 = new double[3], m1 = new double[3];
+            double d0 = 0, d1 = 0;
+            for (int i = 0; i < n; i++)
+                for (int c = 0; c < 3; c++)
+                {
+                    float g = gpu[i * 4 + c] * 255f;
+                    mg[c] += g; m0[c] += first[i * 4 + c]; m1[c] += second[i * 4 + c];
+                    d0 += Math.Abs(g - first[i * 4 + c]); d1 += Math.Abs(g - second[i * 4 + c]);
+                }
+            log.AppendLine("levels at x " + j1.X0 + ", z " + j1.Z0 + " (" + mpp + " m/px): mean rgb shader (" + (mg[0] / n).ToString("F1") + ", " + (mg[1] / n).ToString("F1") + ", " + (mg[2] / n).ToString("F1")
+                           + "), first (" + (m0[0] / n).ToString("F1") + ", " + (m0[1] / n).ToString("F1") + ", " + (m0[2] / n).ToString("F1")
+                           + "), second (" + (m1[0] / n).ToString("F1") + ", " + (m1[1] / n).ToString("F1") + ", " + (m1[2] / n).ToString("F1") + ")");
+            log.AppendLine("  shader vs first: " + (d0 / (n * 3)).ToString("F2") + ", shader vs second: " + (d1 / (n * 3)).ToString("F2"));
         }
 
         // the fog layer over the base, as the UI blends them (in linear light)

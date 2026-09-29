@@ -436,12 +436,10 @@ namespace LivingMap
             {
                 // first the vanilla map's pixel (world / 7000, about 3.5 m) drawn from the very
                 // textures the map shows - the old picture exactly, so switching to the layer is
-                // invisible; then 3 m and on in steps of 2^(-1/4) down to about 1.25 m, so the
-                // detail grows in small steps
+                // invisible; then 3.1, 2.75, 2.45, 2.2 and 2 m. Finer than ~2 m would be denser
+                // than the map's own paper texture (about 2.4 m a texel) and look out of place.
                 float c = world / 7000f;
-                want = new float[7];
-                want[0] = c;
-                for (int i = 1; i < want.Length; i++) want[i] = 3f * Mathf.Pow(0.84089642f, i - 1);
+                want = new[] { c, 3.1f, 2.75f, 2.45f, 2.2f, 2f };
             }
             else want = new[] { 4f, 2f, 1f };
             bool same = want.Length == DLevels.Length;
@@ -595,6 +593,14 @@ namespace LivingMap
         private void Enqueue(DTile tile, float priority, bool relight)
         {
             _dEnqueuedThisFrame++;
+            DJob j = BuildJob(tile, priority, relight);
+            tile.Queued = true;
+            lock (_dLock) { _dPending.Add(j); Monitor.Pulse(_dLock); }
+        }
+
+        // the snapshot of everything a tile shows (main thread)
+        private DJob BuildJob(DTile tile, float priority, bool relight)
+        {
             Minimap mm = _mm;
             float x0, z0, size; int fx0, fz0, w;
             TileArea(tile, out x0, out z0, out size, out fx0, out fz0, out w);
@@ -731,8 +737,7 @@ namespace LivingMap
             j.Paved = Tone(_cfgPavedColor.Value); j.Dirt = Tone(_cfgDirtColor.Value);
             j.Cultivated = Tone(_cfgCultivatedColor.Value); j.Cleared = Tone(_cfgClearedColor.Value);
 
-            tile.Queued = true;
-            lock (_dLock) { _dPending.Add(j); Monitor.Pulse(_dLock); }
+            return j;
         }
 
         private void SnapshotObject(DJob j, ZDO zdo, float x0, float z0, float size, bool onlyPlayer, bool buildings)

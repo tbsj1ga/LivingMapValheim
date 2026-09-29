@@ -663,10 +663,10 @@ namespace LivingMap
             float mpp = j.Mpp;
             bool fine = true;
             // strength grows level by level instead of appearing at once: the textures (planks,
-            // masonry, straw...) from a sixth at 3 m to full at 1.5 m; the shapes (edges,
-            // shadows, roof slopes, high roofs) from a quarter at 3 m to full at 1.8 m
-            float amp = Mathf.Clamp01((3.3f - mpp) / 1.8f);
-            float shape = Mathf.Clamp01((3.4f - mpp) / 1.6f);
+            // masonry, straw...) from a sixth at 3.1 m to full at 2.2 m; the shapes (edges,
+            // shadows, roof slopes, high roofs) from a third at 3.1 m to full at 2.45 m
+            float amp = Mathf.Clamp01((3.3f - mpp) / 1.1f);
+            float shape = Mathf.Clamp01((3.4f - mpp) / 1.0f);
             Vector3 L = j.Port.LightDir;
             float flatLit = 0.72f + 0.55f * Mathf.Max(0f, L.y);
             int gx0 = Mathf.RoundToInt(j.X0 / mpp), gz0 = Mathf.RoundToInt(j.Z0 / mpp);
