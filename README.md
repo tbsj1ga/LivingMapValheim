@@ -5,6 +5,11 @@ it — buildings, hoe-worked ground, clear-cuts and planted groves — and chang
 along with it. No Harmony patches, nothing sent over the network, no effect on
 players without the mod.
 
+> **New in 0.16.0 — the detailed map (experimental).** Zoom the big map in and it is drawn in
+> detail, in the vanilla map's own style: buildings with their roofs, paths, fields and
+> cleared forest. See [The detailed map](#the-detailed-map-0160-experimental) and the
+> [changelog](CHANGELOG.md).
+
 It is not a fork of [AzuMapDetails](https://thunderstore.io/c/valheim/p/Azumatt/AzuMapDetails/)
 nor derived from it — an independent implementation with a different mechanism.
 
@@ -32,24 +37,49 @@ the documentation, the Thunderstore package skeleton and the built
 (`*.bin`), the BepInEx config, intermediate `bin/` and `obj/`, zip packages
 and a stray DLL copy in the root — all listed in `.gitignore`.
 
-## Detail layer when zoomed in
+## The detailed map (0.16.0, experimental)
 
-When the big map shows about 3 km across or less, a detailed picture fades in over it:
-4, 2 and finally 1 m per pixel. It is drawn by Living Map itself, not a screenshot:
+When you zoom the big map in, it is drawn in detail — in the vanilla map's own style. The
+tiles are drawn by a port of the game's map shader (`Custom/mapshader`, read from its DX11
+bytecode), fed with Living Map's own data instead of the vanilla 12 m textures:
 
-- **Relief** shaded from the world generator's heights, including the ground players
-  levelled or raised (read from the terrain records); **water** coloured by depth.
-- **Trees and rocks** where they stand, and **buildings** as rotated boxes shaded by
-  height (roofs lighter than walls), read from the object database at 2 and 1 m per pixel.
-  Where the database has no objects (a client far from where it has been this session),
-  the vanilla forest pattern and the stored footprints are drawn instead.
-- **Paths**, the forest corrections and the fog of war as on the rest of the map.
+- **the colour** with Living Map's paths, paving, fields and buildings painted in at the
+  tile's resolution — buildings from the object database where their zone is loaded
+  (rotated, with roof slopes and heights), from the stored footprints elsewhere, drawn
+  lowest first so roofs end up on top;
+- **heights** from the world generator plus the players' terrain edits;
+- **the forest mask** with Living Map's cleared / planted corrections, sampled smoothly;
+- the vanilla fog of war, mist and lava masks.
 
-Tiles of 256×256 are drawn on background threads and uploaded two per frame; up to 96 are
-kept (about 24 MB of video memory). Only what is on screen is drawn, and a tile is drawn
-again only when what it covers changes. The minimap and the zoomed-out map are not
-touched. Settings: section `08 Detail`. With it, `MapTextureScale` 2 is enough (the
-default since 0.16.0; an existing config keeps its value).
+Everything the shader does is kept: the paper, the forest stamps, the water lines, the
+mountains, the coast line, the snapping to "map pixels", the light from `_SunDir` with the
+environment's sun and ambient colours, the fog of war. Measured against the real shader
+(`livingmap port`): about 2 of 255 apart.
+
+**Levels.** The first level is the vanilla map pixel (world / 7000, about 3.5 m) drawn from
+the very textures the map shows — the old picture exactly, so the switch is invisible. Then
+3.1, 2.75, 2.45, 2.2 and 2 m a pixel, spread evenly over the zoom from `DetailStartSpanMeters`
+(6000 m of map width; 3000 m on a processor with 4 threads or fewer) to the game's closest
+zoom. Finer than ~2 m would be denser than the map's own paper texture. Building and path
+textures, edges, shadows and lit roof slopes grow in over the levels.
+
+**Clouds** (`DetailClouds`): `Smooth` — their own layer drifting over the tiles, a little
+dimmer than the game's (a layer cannot go brighter than white, the shader's clouds can);
+`Exact` — drawn into the tiles with the game's brightness, the tiles redrawn every ~20 m of
+drift; `Off` — none in the detail (the zoomed-out map keeps its clouds: the Mistlands mist
+comes from the same texture).
+
+**Cost.** Tiles of 256×256 on background threads (`DetailWorkerThreads`, 0 = automatic: 1 on
+4 threads or fewer, else 2), at most two snapshots a frame on the main thread (~3.5 ms each on
+an i5-12400F), about 0.2 s a tile there, up to 96 tiles cached (~48 MB) and ~60 MB for the
+pattern textures. Only while the big map is open and zoomed in; until a tile is ready the
+normal map shows there. When the light changes (sun, ambient, fog colour, sun direction),
+the visible tiles are drawn again and swapped in together. `livingmap status` shows the
+level on screen and these costs.
+
+A one-time note the first time the map is opened with 0.16.0 lets a player keep it or turn
+it off (`01 General / LastSeenNotice` remembers it). The earlier flat picture is still there
+as `DetailStyle = Legacy`.
 
 ## Compatibility
 
@@ -75,7 +105,18 @@ GitHub Issues: https://github.com/tbsj1ga/LivingMapValheim/issues — please att
 
 ## Screenshots
 
-![The big map: vanilla on the left, LivingMap on the right - the base, its paved circle, paths and the cleared forest around it](https://raw.githubusercontent.com/tbsj1ga/LivingMapValheim/main/docs/media/map-compare.png)
+![Zooming in on a base: the map turns into the detailed picture step by step](https://raw.githubusercontent.com/tbsj1ga/LivingMapValheim/main/docs/media/detail-zoom.webp)
+
+![Close up: vanilla on the left, LivingMap on the right](https://raw.githubusercontent.com/tbsj1ga/LivingMapValheim/main/docs/media/detail-compare.png)
+
+![A base up close: roofs, walls, paving, paths and fields](https://raw.githubusercontent.com/tbsj1ga/LivingMapValheim/main/docs/media/detail-base.png)
+
+| | |
+|---|---|
+| ![Roofs by kind, their slopes lit by the sun](https://raw.githubusercontent.com/tbsj1ga/LivingMapValheim/main/docs/media/detail-roofs.png) | ![A clearing cut into the forest](https://raw.githubusercontent.com/tbsj1ga/LivingMapValheim/main/docs/media/detail-forest.png) |
+| Roofs by kind, their slopes lit by the sun | A clearing cut into the forest |
+
+![The big map: vanilla on the left, LivingMap on the right](https://raw.githubusercontent.com/tbsj1ga/LivingMapValheim/main/docs/media/map-compare.png)
 
 ![The minimap: vanilla on the left, LivingMap on the right](https://raw.githubusercontent.com/tbsj1ga/LivingMapValheim/main/docs/media/minimap-compare.png)
 
@@ -124,10 +165,12 @@ on a version mismatch it is simply ignored and collected afresh.
 
 ## Settings
 
-`BepInEx\config\j1ga.livingmap.cfg`, seven sections. Everything a player is
-likely to touch is in the first five; `Advanced` and `Debug` hold budgets, caps
-and the switches for diagnosing drawing problems. Settings that changed section
-in 0.15.0 are carried over from the old file on the first start.
+`BepInEx\config\j1ga.livingmap.cfg`, eight sections. In game, ConfigurationManager (F1)
+shows them grouped for players: **1. Map layers** (`Enabled` and the `02 Layers` switches),
+**2. Close-up detail** (`DetailEnabled`, `DetailStartSpanMeters` as a slider, `DetailClouds`,
+`DetailStyledPieces`), **3. Colours**; everything else is marked *advanced* (**4. Advanced**,
+**5. Debug**) and hidden until "Show advanced settings" is ticked. The keys and sections in
+the file are what the tables below list.
 
 **01 General**
 
@@ -169,8 +212,9 @@ in 0.15.0 are carried over from the old file on the first start.
 | `BuildingOutline`, `OutlineWidthMeters` | A dark halo around buildings, so a house separates from the levelled ground under it, and how far it extends. |
 | `TerrainGridSize` | Metres per cell of the path layer. The terrain records hold 1 m; 2 is plenty up to `MapTextureScale` 4, at 8 the difference shows. Halving it means four times the cells in memory and in the file. Changing it drops the stored path cells (the file records the step they were collected at); the host has them back within one pass. |
 
-**05 Colors** — one per material (`Material_Wood` … `Material_Timberwood`,
-`Material_Unknown`), per kind of ground (`Terrain_DirtPath`, `Terrain_Paved`,
+**05 Colors** — one per material (`Material_Wood` … `Material_Timberwood`, the roof kinds
+`Material_Roof_Thatch`, `Material_Roof_Darkwood`, `Material_Roof_Turf`, `Material_Roof_Slate`,
+and `Material_Unknown`), per kind of ground (`Terrain_DirtPath`, `Terrain_Paved`,
 `Terrain_Cultivated`, `Terrain_Cleared`) and `Building_Outline` for the halo.
 
 **06 Advanced**
@@ -190,6 +234,20 @@ in 0.15.0 are carried over from the old file on the first start.
 | `IncrementalRedraw` | Off = rebuild the whole texture on every change, as before 0.11.0. Only for pinning down a drawing glitch. |
 | `LinearColorFix` | Colour conversion for linear rendering, applied only when the game renders in linear colour space (it does). Off only to check whether the colours are the problem. |
 | `MapLayerFlipY` | Emergency vertical flip of the layer, should the graphics API render it mirrored. |
+
+**08 Detail** — the detailed map
+
+| Setting | Meaning |
+|---|---|
+| `DetailEnabled` | The detailed map on or off. |
+| `DetailStartSpanMeters` | How far out the detail starts, as the map's width on screen in metres (1000–12000). Default 6000, 3000 on a processor with 4 threads or fewer. Larger starts earlier and makes each step smaller. |
+| `DetailClouds` | `Smooth` / `Exact` / `Off`, see above. |
+| `DetailStyledPieces` | Textures, shaded edges, lit roof slopes and shadows for buildings and paths. Off = flat colours. |
+| `DetailStyle` | `Vanilla` (the ported map shader) or `Legacy` (the earlier flat picture). Advanced. |
+| `DetailPixelMeters` | 0 = automatic levels; a number = that pixel size at every level. Advanced. |
+| `DetailFinestMetersPerPixel` | The finest level allowed. Advanced. |
+| `DetailObjects` | Read buildings close up from the object database (rotated, with roofs). Advanced. |
+| `DetailWorkerThreads` | Background drawing threads, 0 = automatic. Advanced, next world load. |
 
 The scanners' pacing (a scan after 8 m of walking, at most once a second,
 every 10 s when standing still), the redraw interval (0.5 s) and the save

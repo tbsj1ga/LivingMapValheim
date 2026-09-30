@@ -2,7 +2,7 @@
   "name": "LivingMap",
   "version_number": "0.0.0",
   "website_url": "https://github.com/tbsj1ga/LivingMapValheim",
-  "description": "Your bases, roads, fields and cleared forest appear on the map and minimap as you build. The vanilla map shows the world as generated - LivingMap shows it as you've changed it. Client-side, no server needed.",
+  "description": "Your bases, roads, fields and cleared forest on the map and minimap as you build - and, new in 0.16.0, a detailed map when you zoom in, in the vanilla style. Client-side, no server needed.",
   "dependencies": [
     "denikson-BepInExPack_Valheim-5.4.2350"
   ]

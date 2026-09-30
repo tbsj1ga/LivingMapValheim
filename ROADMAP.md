@@ -4,9 +4,8 @@ A Valheim mod: shows buildings (by material) and hoe-worked ground (paths,
 paving, cultivator) on the map. No Harmony patches, client-side only, nothing
 synchronised over the network.
 
-Current version: **0.15.0** (branch `feature/config-cleanup`, not yet run in the
-game); the last one started in the game is 0.14.0 (tag `v0.14.0`). Game: Valheim
-1.0.14, BepInEx 5.4.23.5.
+Current version: **0.16.0** — the detailed map (experimental), tested in game on
+Valheim 1.0.16, BepInEx 5.4.23.5.
 
 ---
 

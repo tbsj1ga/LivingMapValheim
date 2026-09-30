@@ -2,35 +2,61 @@
 
 The version is set in one place — `LivingMapPlugin.Version` in `src/LivingMapPlugin.cs`.
 
-## 0.16.0 — Detail layer when zoomed in (prototype, branch `feature/detail-zoom`)
+## 0.16.0 — The detailed map (experimental)
 
-- When the big map shows at most `DetailStartSpanMeters` (3000 m) across, a detailed picture
-  fades in over it: 4 / 2 / 1 m per pixel, relief shaded from the world generator's heights,
-  water coloured by depth, the vanilla forest rule with Living Map's cleared/planted
-  corrections, and the paths and buildings the mod collects. Zoomed out and on the minimap
-  nothing changes.
-- Tiles of 256×256 are drawn on background threads (`DetailWorkerThreads`, 2) from a snapshot
-  taken on the main thread, uploaded two per frame, cached up to 96 (about 24 MB of video
-  memory). Only explored ground is drawn; tiles are redrawn when more is explored or the
-  mod's data changes (at most once per 15 s per tile).
-- The relief includes the ground players levelled or raised: the height edits are read from
-  the same terrain records as the paths.
-- At 2 and 1 m per pixel trees and rocks are drawn where they stand, and buildings as rotated
-  boxes shaded by height (roofs lighter than walls), read from the object database zone by
-  zone. Zones the database does not hold fall back to the forest pattern and the stored
-  footprints. `DetailObjects` switches this off.
-- A tile is drawn again only when what it covers changes: explored ground, buildings, height
-  edits and paths of its zones, forest corrections, the objects in its zones.
-- `MapTextureScale` defaults to 2 (was 4): close up the detail layer draws finer, so the big
-  texture is no longer needed — about 200 MB less video memory. An existing config keeps its
-  value.
-- Vanilla look: land, trees, rocks, paths and buildings are toned the way the game's map
-  shader tones the map (darker, less saturated; `DetailVanillaTone`, `DetailToneTint`,
-  `DetailToneDesaturate`), water uses the vanilla map's slate colours, rocks under water are
-  not drawn, and ground known only from a cartography table is half transparent so the
-  vanilla haze shows through (`DetailSharedOpacity`).
-- New section `08 Detail`. Any failure switches off only this layer for the session.
-- Not tested in game yet.
+**For players**
+
+- **The big map is drawn in detail when you zoom in**, in the vanilla map's own style: the
+  same paper, forest, water, clouds and time-of-day light, with buildings, roofs, paths,
+  fields and cleared forest in far more detail. The detail grows step by step as you zoom
+  (3.5 → 3.1 → 2.75 → 2.45 → 2.2 → 2 m a pixel); the first step is the old picture exactly,
+  so the switch is seamless. The minimap and the zoomed-out map are unchanged.
+- **Buildings** keep their real shape and direction, with textures (planks, masonry, metal,
+  marble), shaded edges and shadows; higher roofs are lighter.
+- **Roofs by kind**: thatch, darkwood, turf and slate get their own colours and textures,
+  zoomed out too, and their slopes catch the sun.
+- **Paths, paving and fields** have their own textures and soft edges.
+- **Buildings are drawn lowest first**, so roofs show over the walls and floors under them
+  (before, a wall or floor could end up on top on the zoomed-out map).
+- **A one-time note** the first time you open the map: keep the detailed map on (Yes) or turn
+  it off (No).
+- **Settings reorganised** for ConfigurationManager (F1): *1. Map layers*, *2. Close-up
+  detail* (with a slider for how far out the detail starts), *3. Colours*; the technical
+  ones are marked advanced and hidden by default. The keys in the config file are unchanged,
+  so your values are kept.
+- **Performance**: the detail is drawn only while the big map is open and zoomed in, on
+  background threads (about 0.2 s a tile on an i5-12400F); until a part is ready the normal
+  map shows there. On a processor with 4 threads or fewer it uses one thread and starts
+  closer in.
+- **Experimental**: please report anything that looks wrong, with a screenshot and
+  `livingmap status`.
+
+**Technical**
+
+- The detail layer is a port of the game's map shader (`Custom/mapshader`, from its DX11
+  bytecode) run on the tiles, fed with Living Map's data: the world generator's heights with
+  the players' terrain edits, the colour with paths and buildings painted in, the forest mask
+  with Living Map's cleared / planted corrections. Measured against the real shader with
+  `livingmap port`: about 2 of 255 apart. The light direction is `_SunDir`; material and
+  environment colours reach the shader unconverted.
+- Tiles of 256×256, drawn on `DetailWorkerThreads` background threads (0 = automatic),
+  at most two snapshots a frame on the main thread, up to 96 cached (~48 MB). When the light
+  changes the visible tiles are drawn again and swapped in together.
+- Clouds: `DetailClouds` = `Smooth` (their own drifting layer, a little dimmer), `Exact`
+  (drawn into the tiles with the game's brightness, moving in steps) or `Off` (none in the
+  detail; the zoomed-out map keeps its clouds, which carry the Mistlands mist).
+- Buildings close up come from the object database (rotated, with roof slopes and heights);
+  where the objects are not loaded, from the stored footprints. Roof kinds are recognised by
+  the prefab family (`wood_roof`, `darkwood_roof`, `turf_roof`, `piece_grausten_roof`), the
+  slope from the prefab's sloped collider.
+- `MapTextureScale` defaults to 2 (was 4): close up the detail layer draws buildings itself,
+  so the big texture is no longer needed — about 200 MB less video memory. An existing config
+  keeps its value.
+- `livingmap status` also reports the detail level shown and its cost (tile and snapshot
+  times, cache).
+- The earlier flat detail picture is still there as `DetailStyle = Legacy` (advanced); its
+  tuning is no longer settings.
+
 ## 0.15.3
 
 - Package page rewritten for players: what the mod shows, what it does not do (the terrain

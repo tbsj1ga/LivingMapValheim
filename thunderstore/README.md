@@ -6,27 +6,63 @@ changed it.**
 Your bases, roads, fields and the forest you've cut down appear on the map and the minimap,
 right where they are, and update as you keep building.
 
-![The big map: vanilla on the left, LivingMap on the right - the base, its paved circle, paths and the cleared forest around it](https://raw.githubusercontent.com/tbsj1ga/LivingMapValheim/main/docs/media/map-compare.png)
+> ## 🆕 New in 0.16.0: the detailed map (experimental)
+>
+> Zoom the big map in and it is now **drawn in detail, in the vanilla map's own style**:
+> buildings with their roofs, paths, fields and cleared forest. The closer you zoom, the
+> finer it gets.
+>
+> It's **experimental** — if something looks wrong, please
+> [report it](https://github.com/tbsj1ga/LivingMapValheim/issues). The first time you open
+> the map, a short note asks whether to keep it on. You can turn it off any time in
+> `BepInEx/config/j1ga.livingmap.cfg`, section `[08 Detail]`: `DetailEnabled = false`.
 
-![The minimap: vanilla on the left, LivingMap on the right](https://raw.githubusercontent.com/tbsj1ga/LivingMapValheim/main/docs/media/minimap-compare.png)
+![Zooming in on a base: the map turns into the detailed picture step by step](https://raw.githubusercontent.com/tbsj1ga/LivingMapValheim/main/docs/media/detail-zoom.webp)
+
+![Close up: vanilla on the left, LivingMap on the right](https://raw.githubusercontent.com/tbsj1ga/LivingMapValheim/main/docs/media/detail-compare.png)
 
 ## What you'll see
 
-- **Your buildings**, coloured by material: wood, stone, iron, marble…
+- **Your buildings**, coloured by material — wood, stone, iron, marble… — and **roofs by
+  their kind**: thatch, darkwood, turf, slate.
 - **Roads and fields**: hoe paths, paving and farmland.
 - **Cleared forest**: where you've chopped the trees down, the map stops showing forest.
   Plant a grove and it appears.
-- **Zoom in for detail**: below about 3 km across, a detailed picture fades in — shaded
-  relief with the ground players levelled, water by depth, trees and rocks where they
-  stand, buildings as rotated boxes, down to 1 m per pixel.
 - Everything respects the fog of war and sits under your pins and markers, on the big map
   and the minimap.
 
+![The big map: vanilla on the left, LivingMap on the right](https://raw.githubusercontent.com/tbsj1ga/LivingMapValheim/main/docs/media/map-compare.png)
+
+![The minimap: vanilla on the left, LivingMap on the right](https://raw.githubusercontent.com/tbsj1ga/LivingMapValheim/main/docs/media/minimap-compare.png)
+
+## The detailed map, close up
+
+- It looks like the vanilla map — the same paper, forest, water and light — just with
+  more detail. Switching to it as you zoom in is seamless.
+- **Buildings** keep their real shape and direction, with textures (planks, masonry,
+  straw…), shaded edges and shadows. **Roof slopes** catch the sun, so you can see the
+  shape of a roof.
+- **Paths, paving and fields** get their own textures, soft at the edges.
+- The **light follows the time of day** like the rest of the map, and the clouds drift over
+  it.
+- The **minimap and the zoomed-out map are not changed** by it.
+
+![A base up close: roofs, walls, paving, paths and fields](https://raw.githubusercontent.com/tbsj1ga/LivingMapValheim/main/docs/media/detail-base.png)
+
+| | |
+|---|---|
+| ![Roofs by kind, their slopes lit by the sun](https://raw.githubusercontent.com/tbsj1ga/LivingMapValheim/main/docs/media/detail-roofs.png) | ![A clearing cut into the forest](https://raw.githubusercontent.com/tbsj1ga/LivingMapValheim/main/docs/media/detail-forest.png) |
+| Roofs by kind, their slopes lit by the sun | A clearing cut into the forest |
+
+**Performance.** It only works while the big map is open and zoomed in; closed, it costs
+nothing. Until a part of the map is ready you see the normal map there, so a slower
+computer shows the detail a little later rather than lagging. On a processor with 4
+threads or fewer it uses one background thread and starts closer in.
+
 ## What it doesn't do
 
-- It doesn't change how the world looks from afar: zoomed out, coastlines, mountains and
-  biome colours stay exactly as in vanilla.
 - It doesn't reveal unexplored areas: if you haven't explored it, you won't see it.
+- Zoomed out, coastlines, mountains and biome colours stay exactly as in vanilla.
 
 ## Multiplayer
 
@@ -36,29 +72,29 @@ right where they are, and update as you keep building.
 - On a dedicated server you see what's around the places you've visited; the map remembers
   them between sessions.
 
-## Settings you might want
+## Settings
 
-Everything works out of the box. If you want to tweak it (in
-`BepInEx/config/j1ga.livingmap.cfg`, or in game with ConfigurationManager, F1):
+Everything works out of the box. With [ConfigurationManager](https://thunderstore.io/c/valheim/p/shudnal/ConfigurationManager/)
+(F1 in game) the settings are grouped:
 
-- **Each layer** — buildings, roads, cleared and planted forest — can be turned off.
-- **Colours** of every material and road type.
-- **`MapTextureScale`** — how crisp **buildings and roads** look (not the terrain):
-  1 / 2 / 4 / 8. Higher values use more video memory (2 ≈ 70 MB, 4 ≈ 270 MB); with the detail layer 2 is plenty.
-  Takes effect when you re-enter the world.
-- **Detail layer** (section `08 Detail`): on/off, from how far in it appears, the finest level,
-  relief strength, trees and buildings from the world.
+- **1. Map layers** — turn buildings, paths and fields, cleared and planted forest on or off.
+- **2. Close-up detail** — the detailed map on or off, **how far out it starts** (a slider),
+  clouds (smooth / exact / off), building textures.
+- **3. Colours** — every material, roof kind and kind of ground.
+
+The technical settings are marked *advanced* and hidden unless you tick "Show advanced
+settings". Without ConfigurationManager, everything is in `BepInEx/config/j1ga.livingmap.cfg`.
 
 ## Compatibility
 
 Tested with **Valheim 1.0.16**, **BepInEx 5.4.23.5** (BepInExPack_Valheim 5.4.2351). Mods
-that replace or resize the map texture may clash with it — set `MapTextureScale` to 1 to
-rule that out.
+that replace or resize the map texture may clash with it.
 
 ## Bugs and feedback
 
 GitHub Issues: https://github.com/tbsj1ga/LivingMapValheim/issues — please attach
-`BepInEx/LogOutput.log`.
+`BepInEx/LogOutput.log`, and for the detailed map a screenshot and the output of the console
+command `livingmap status` (F5).
 
 ## More mods by j1gA
 
