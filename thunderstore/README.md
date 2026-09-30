@@ -49,10 +49,7 @@ right where they are, and update as you keep building.
 
 ![A base up close: roofs, walls, paving, paths and fields](https://raw.githubusercontent.com/tbsj1ga/LivingMapValheim/main/docs/media/detail-base.png)
 
-| | |
-|---|---|
-| ![Roofs by kind, their slopes lit by the sun](https://raw.githubusercontent.com/tbsj1ga/LivingMapValheim/main/docs/media/detail-roofs.png) | ![A clearing cut into the forest](https://raw.githubusercontent.com/tbsj1ga/LivingMapValheim/main/docs/media/detail-forest.png) |
-| Roofs by kind, their slopes lit by the sun | A clearing cut into the forest |
+![A clearing cut into the forest](https://raw.githubusercontent.com/tbsj1ga/LivingMapValheim/main/docs/media/detail-forest.png)
 
 **Performance.** It only works while the big map is open and zoomed in; closed, it costs
 nothing. Until a part of the map is ready you see the normal map there, so a slower

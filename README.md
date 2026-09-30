@@ -111,10 +111,7 @@ GitHub Issues: https://github.com/tbsj1ga/LivingMapValheim/issues — please att
 
 ![A base up close: roofs, walls, paving, paths and fields](https://raw.githubusercontent.com/tbsj1ga/LivingMapValheim/main/docs/media/detail-base.png)
 
-| | |
-|---|---|
-| ![Roofs by kind, their slopes lit by the sun](https://raw.githubusercontent.com/tbsj1ga/LivingMapValheim/main/docs/media/detail-roofs.png) | ![A clearing cut into the forest](https://raw.githubusercontent.com/tbsj1ga/LivingMapValheim/main/docs/media/detail-forest.png) |
-| Roofs by kind, their slopes lit by the sun | A clearing cut into the forest |
+![A clearing cut into the forest](https://raw.githubusercontent.com/tbsj1ga/LivingMapValheim/main/docs/media/detail-forest.png)
 
 ![The big map: vanilla on the left, LivingMap on the right](https://raw.githubusercontent.com/tbsj1ga/LivingMapValheim/main/docs/media/map-compare.png)
 

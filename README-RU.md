@@ -108,10 +108,7 @@ GitHub Issues: https://github.com/tbsj1ga/LivingMapValheim/issues — прило
 
 ![База вблизи: крыши, стены, мощение, дороги и поля](https://raw.githubusercontent.com/tbsj1ga/LivingMapValheim/main/docs/media/detail-base.png)
 
-| | |
-|---|---|
-| ![Крыши по видам, скаты освещены солнцем](https://raw.githubusercontent.com/tbsj1ga/LivingMapValheim/main/docs/media/detail-roofs.png) | ![Вырубка в лесу](https://raw.githubusercontent.com/tbsj1ga/LivingMapValheim/main/docs/media/detail-forest.png) |
-| Крыши по видам, скаты освещены солнцем | Вырубка в лесу |
+![Вырубка в лесу](https://raw.githubusercontent.com/tbsj1ga/LivingMapValheim/main/docs/media/detail-forest.png)
 
 ![Большая карта: слева ванильная, справа с LivingMap](https://raw.githubusercontent.com/tbsj1ga/LivingMapValheim/main/docs/media/map-compare.png)
 

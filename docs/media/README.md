@@ -4,7 +4,6 @@
 - `detail-zoom.webp` - animation: zooming in on a base, the map turning into the detailed picture
 - `detail-compare.png` - close up, vanilla vs LivingMap
 - `detail-base.png` - a base up close
-- `detail-roofs.png` - roofs by kind, lit slopes
 - `detail-forest.png` - a clearing cut into the forest
 - `map-compare.png` - the big map zoomed out, vanilla vs LivingMap
 - `minimap-compare.png` - the minimap, vanilla vs LivingMap
