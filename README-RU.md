@@ -361,6 +361,7 @@ mcs -target:library -out:LivingMap.dll -sdk:4.5 -langversion:latest \
 | [![WeaponArts](https://raw.githubusercontent.com/tbsj1ga/WeaponArtsValheim/main/docs/media/icon-128.png)](https://thunderstore.io/c/valheim/p/j1gA/WeaponArts/) | **[WeaponArts](https://thunderstore.io/c/valheim/p/j1gA/WeaponArts/)** — Одна клавиша — своя активная способность у каждого оружия: стаггер, таунт, хилы, берсерк, криты. |
 | [![ExtendedBosses](https://raw.githubusercontent.com/tbsj1ga/ExtendedBossesValheim/main/docs/media/icon-128.png)](https://thunderstore.io/c/valheim/p/j1gA/ExtendedBosses/) | **[ExtendedBosses](https://thunderstore.io/c/valheim/p/j1gA/ExtendedBosses/)** — Боссы как рейды: фазы, адды, гнёзда, щиты, метки — из ванильных частей. |
 | [![HostOwner](https://raw.githubusercontent.com/tbsj1ga/HostOwnerValheim/main/docs/media/icon-128.png)](https://thunderstore.io/c/valheim/p/j1gA/HostOwner/) | **[HostOwner](https://thunderstore.io/c/valheim/p/j1gA/HostOwner/)** — Хост забирает владение станциями и боссами рядом, чтобы его моды работали для всех. |
+| [![HudLayout](https://raw.githubusercontent.com/tbsj1ga/HudLayoutValheim/main/docs/media/icon-128.png)](https://thunderstore.io/c/valheim/p/j1gA/HudLayout/) | **[HudLayout](https://thunderstore.io/c/valheim/p/j1gA/HudLayout/)** — Перемещайте, масштабируйте и меняйте вид HUD мышью: полосы, еда, панель предметов, миникарта, даже HUD других модов. |
 
 ## AI assistance
 
