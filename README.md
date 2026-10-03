@@ -2,9 +2,13 @@
 
 Client-side Valheim mod: the map shows the world the way people have shaped
 it — buildings, hoe-worked ground, clear-cuts and planted groves — and changes
-along with it. No Harmony patches, nothing sent over the network, no effect on
-players without the mod.
+along with it. No Harmony patches, no effect on players without the mod. The only
+network traffic is the host handing its map to players who have the mod (0.17.0).
 
+> **New in 0.17.0 — the host's map for its players.** Players on your server who have Living
+> Map get your buildings, paths and forest wherever their own map is explored. See
+> [The host's map](#the-hosts-map-0170).
+>
 > **New in 0.16.0 — the detailed map (experimental).** Zoom the big map in and it is drawn in
 > detail, in the vanilla map's own style: buildings with their roofs, paths, fields and
 > cleared forest. See [The detailed map](#the-detailed-map-0160-experimental) and the
@@ -81,6 +85,31 @@ A one-time note the first time the map is opened with 0.16.0 lets a player keep 
 it off (`01 General / LastSeenNotice` remembers it). The earlier flat picture is still there
 as `DetailStyle = Legacy`.
 
+## The host's map (0.17.0)
+
+The host has the whole world's object database, so its map is complete and current; a player
+on its server only learns what the server sends around where they walk, and remembers it.
+With `ShareWithPlayers` on (default) the host gives its layers - buildings, paths, cleared
+and planted forest - to every player on its server who has Living Map, and each of them
+draws them **only on ground their own map has explored** (their explored area, including
+what a cartography table shared). Nothing unexplored is revealed; where they have been, the
+map shows what is there now, even if they have not been back.
+
+- The world is cut into 128 m tiles. The host keeps each tile's layers serialised in a fixed
+  order with a hash, and sends the list of (tile, hash) when a player says hello on joining
+  and whenever its layers changed (checked every 60 s).
+- The player fetches the tiles it lacks or has with another hash, 128 at a time; the host
+  answers with up to ~200 KB of tiles, compressed, so a network message never gets near its
+  512 KB limit. A tile missing from the list is empty on the host now.
+- The player keeps the tiles in memory and writes into its own layers only the parts on
+  explored ground; the rest is applied as the map gets explored (every 20 s). Its own
+  collection keeps running too.
+- Buildings are taken only if both use the same `OnlyPlayerBuilt`, paths only on the same
+  `TerrainGridSize`, forest only on the same map texture; otherwise that layer is skipped
+  with a note in the log.
+- `UseHostMap = false` on a player turns it off for them. Players without the mod get
+  nothing. A dedicated server does not share: Living Map has no map to read there.
+
 ## Compatibility
 
 Tested with **Valheim 1.0.16** (network version 40), **BepInEx 5.4.23.5** (BepInExPack_Valheim 5.4.2351).
@@ -89,10 +118,10 @@ Tested with **Valheim 1.0.16** (network version 40), **BepInEx 5.4.23.5** (BepIn
 
 | Who | What |
 |---|---|
-| Player with the mod | sees buildings, paths and forest changes on their own map |
-| Host / single player | the same, for the whole world at once |
-| Dedicated server | not needed |
-| Players without the mod | unaffected — nothing is sent over the network |
+| Player with the mod | sees buildings, paths and forest changes on their own map; on a server hosted by a player with Living Map, also the host's map on explored ground |
+| Host / single player | the same, for the whole world at once; shares it with its players who have the mod |
+| Dedicated server | not needed (and does not share) |
+| Players without the mod | unaffected — nothing is sent to them |
 
 ## Known conflicts
 
@@ -255,7 +284,7 @@ interval (60 s) are constants in the source since 0.15.0.
 The game console (F5):
 
 ```
-livingmap status                                  what the map remembers, sources, texture size, pass timing
+livingmap status                                  what the map remembers, sources, texture size, pass timing, map sharing
 livingmap reset                                   forget everything within 100 m and collect again
 livingmap reset 300                               the same within 300 m
 livingmap reset forest                            forest only, 100 m

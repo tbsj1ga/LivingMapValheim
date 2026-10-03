@@ -2,6 +2,24 @@
 
 The version is set in one place — `LivingMapPlugin.Version` in `src/LivingMapPlugin.cs`.
 
+## 0.17.0 — The host's map for its players
+
+- **When you host, the players on your server get your map** - if they have Living Map
+  too. The host knows the whole world; a player only learns what is around where they walk.
+  Now each of them draws the host's buildings, paths and cleared and planted forest **on
+  ground their own map has explored**: nothing new is revealed, but where they have been the
+  map is current - a base rebuilt while they were away shows as it is now.
+- How: the world is cut into 128 m tiles; the host sends the list of tiles with a hash of
+  each when a player joins and whenever something changed (checked once a minute), the
+  player fetches only the tiles it lacks or has with another hash, compressed, a capped batch
+  at a time. The parts on unexplored ground wait in memory and are applied as the map gets
+  explored (every 20 s).
+- Settings, new group *4. Multiplayer* (`[09 Multiplayer]`): `ShareWithPlayers` (host,
+  on) and `UseHostMap` (player, on). Players without the mod are not touched; a dedicated
+  server does not share (it has no map of its own).
+- `livingmap status` shows the sharing state: players served and tiles sent on the host,
+  tiles received on a player.
+
 ## 0.16.0 — The detailed map (experimental)
 
 **For players**

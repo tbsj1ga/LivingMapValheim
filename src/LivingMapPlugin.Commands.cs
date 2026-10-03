@@ -85,7 +85,7 @@ namespace LivingMap
                 UseZdoScan ? (_zdoAuthoritative ? "ZDO (host, whole world)" : "ZDO (client)") : "physics",
                 UseZdoPaths ? "terrain records" : "loaded heightmaps",
                 _rt != null ? _rt.width : 0, _rt != null ? _pixelSize / _rtScale : 0f,
-                _zdoPassFrames, _zdoPassMs) + "; " + DetailStatus();
+                _zdoPassFrames, _zdoPassMs) + "; " + DetailStatus() + "; " + ShareStatus();
         }
 
         // Forgets the chosen layers inside the radius (or everywhere) and restarts collection.
@@ -151,7 +151,7 @@ namespace LivingMap
             ResetZdoPass();
             _nextZdoPass = 0f;
             _rtDirty = true;
-            _storeChanged = true;
+            MarkStoreChanged();
 
             string where = world ? "the whole world" : string.Format("{0:0} m around you", radius);
             string text = string.Format("Living Map: forgot {0} pieces, {1} path cells, {2} forest pixels in {3}; collecting again", pieces, cells, forest, where);

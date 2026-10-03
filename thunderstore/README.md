@@ -6,7 +6,13 @@ changed it.**
 Your bases, roads, fields and the forest you've cut down appear on the map and the minimap,
 right where they are, and update as you keep building.
 
-> ## 🆕 New in 0.16.0: the detailed map (experimental)
+> ## 🆕 New in 0.17.0: the host's map for its players
+>
+> When you host, **players on your server who have Living Map get your map** - buildings,
+> paths, cleared forest - but **only where their own map is explored**. Nothing new is
+> revealed; a base you rebuilt while they were away just shows as it is now.
+>
+> ## New in 0.16.0: the detailed map (experimental)
 >
 > Zoom the big map in and it is now **drawn in detail, in the vanilla map's own style**:
 > buildings with their roofs, paths, fields and cleared forest. The closer you zoom, the
@@ -63,9 +69,11 @@ threads or fewer it uses one background thread and starts closer in.
 
 ## Multiplayer
 
-- Only you need it: nothing is sent to other players, and friends without the mod aren't
-  affected. The server doesn't need it.
+- Friends without the mod aren't affected, and a dedicated server doesn't need it.
 - As the host or in single player you see every building in the world at once.
+- **On a server hosted by a player with Living Map**, you get the host's map on every bit of
+  ground you've explored (turn off with `UseHostMap`; the host can stop sharing with
+  `ShareWithPlayers`, section `[09 Multiplayer]`).
 - On a dedicated server you see what's around the places you've visited; the map remembers
   them between sessions.
 

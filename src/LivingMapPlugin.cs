@@ -15,7 +15,7 @@ namespace LivingMap
     {
         public const string Guid = "j1ga.livingmap";
         public const string Name = "Living Map";
-        public const string Version = "0.16.0";
+        public const string Version = "0.17.0";
 
         private const byte MatNone = 255;
         private const byte TerrainNone = 0;
@@ -207,6 +207,9 @@ namespace LivingMap
                     }
                 }
             }
+
+            try { ShareTick(now); }
+            catch (Exception e) { HandleError("share", e); }
 
             if (_cfgPersist.Value && _storeChanged && now >= _nextSaveTime)
             {

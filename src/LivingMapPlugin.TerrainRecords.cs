@@ -72,7 +72,7 @@ namespace LivingMap
                 _tcCursor = -1;
                 _tcZdos.Clear();
                 _tcPasses++;
-                if (_tcAdded + _tcRemoved + _tcChanged > 0) _storeChanged = true;
+                if (_tcAdded + _tcRemoved + _tcChanged > 0) MarkStoreChanged();
                 if (_tcPasses == 1 || (_cfgDebug.Value && _tcParsed > 0))
                     Logger.LogInfo(string.Format(
                         "Terrain records: {0} zones read, {1} unchanged, cells +{2} -{3} ~{4}, {5} stored, {6:0.0} ms CPU",

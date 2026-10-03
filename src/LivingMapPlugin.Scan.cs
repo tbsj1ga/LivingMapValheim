@@ -31,7 +31,7 @@ namespace LivingMap
             bool changed = false;
             if (_cfgShowBuildings.Value && !UseZdoScan && ScanBuildings(center)) { changed = true; _rtDirty = true; }
             if (_cfgShowPaths.Value && !_terrainDisabled && !UseZdoPaths) changed |= ScanTerrain(center);
-            if (changed) _storeChanged = true;
+            if (changed) MarkStoreChanged();
         }
 
         private bool ScanBuildings(Vector3 center)

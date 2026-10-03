@@ -115,7 +115,7 @@ namespace LivingMap
                         if (Mathf.Abs(fileGrid - grid) > 0.001f)
                         {
                             _terrain.Clear();
-                            _storeChanged = true;
+                            MarkStoreChanged();
                             Logger.LogInfo("Stored path cells dropped (the file was collected with TerrainGridSize " + fileGrid + ", now " + grid + "); they are collected again.");
                         }
                     }

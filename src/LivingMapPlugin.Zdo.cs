@@ -493,7 +493,7 @@ namespace LivingMap
             _zdoHavePrevOrigin = true;
             _zdoPasses++;
 
-            if (changed) _storeChanged = true;
+            if (changed) MarkStoreChanged();
 
             if (_zdoPasses == 1 || (_cfgDebug.Value && changed))
                 Logger.LogInfo(string.Format(
@@ -515,7 +515,7 @@ namespace LivingMap
             _fogPieces.Clear();
             _piecesOnlyPlayerBuilt = _cfgOnlyPlayerBuilt.Value;
             _rtDirty = true;
-            _storeChanged = true;
+            MarkStoreChanged();
             Logger.LogInfo("Stored build pieces dropped (" + why + "); they are collected again from the object database.");
         }
 

@@ -156,6 +156,11 @@ Valheim 1.0.16, BepInEx 5.4.23.5.
 
 ---
 
+- [x] 0.17.0: the host's map for its players with Living Map, limited to each player's
+      explored ground: 128 m tiles with FNV-1a hashes, `LivingMap_Hello / Index / Get /
+      Tiles` routed RPCs, capped compressed answers, a player-side mirror applied as the map
+      gets explored. Host from the client only; a dedicated server does not share.
+
 ## Known limitations (not bugs)
 
 - **The precision ceiling is 1.5 m per pixel.** The map covers 24.6 km; at the

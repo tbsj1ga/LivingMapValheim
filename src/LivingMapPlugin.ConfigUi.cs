@@ -11,8 +11,9 @@ namespace LivingMap
         private const string UiLayers = "1. Map layers";
         private const string UiDetail = "2. Close-up detail";
         private const string UiColours = "3. Colours";
-        private const string UiAdvanced = "4. Advanced";
-        private const string UiDebug = "5. Debug";
+        private const string UiShare = "4. Multiplayer";
+        private const string UiAdvanced = "5. Advanced";
+        private const string UiDebug = "6. Debug";
 
         private static ConfigDescription Ui(string description, string category, string name, int order, bool advanced)
         {

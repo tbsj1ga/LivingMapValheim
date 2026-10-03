@@ -280,7 +280,7 @@ namespace LivingMap
                 _forestCursor = -1;
                 if (_forestChanged)
                 {
-                    _storeChanged = true;
+                    MarkStoreChanged();
                     _maskDirty = true;
                     if (_cfgDebug.Value)
                         Logger.LogInfo(string.Format("Cleared forest: {0} pixels (+{1}, -{2}) over {3} zones, {4:0.0} ms CPU{5}",
