@@ -281,7 +281,8 @@ GitHub Issues: https://github.com/tbsj1ga/LivingMapValheim/issues — прило
 Консоль игры (F5):
 
 ```
-livingmap status                                  что карта помнит, источники, размер текстуры, время прохода
+livingmap status                                  что карта помнит, источники, размер текстуры, время прохода,
+                                                  раздачу карты и хранимые куски по материалам (включая виды крыш)
 livingmap reset                                   забыть всё в 100 м вокруг и собрать заново
 livingmap reset 300                               то же в 300 м
 livingmap reset forest                            только лес, 100 м

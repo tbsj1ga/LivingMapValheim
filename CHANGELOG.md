@@ -20,6 +20,22 @@ The version is set in one place — `LivingMapPlugin.Version` in `src/LivingMapP
 - `livingmap status` shows the sharing state: players served and tiles sent on the host,
   tiles received on a player.
 
+**Fixes**
+
+- **Buildings could be missing from the detailed map** although the map knew about them.
+  The prefab cache is dropped on teardown (leaving a world, the map texture being
+  re-created), but the detail layer's own table of prefab kinds was not: it then said
+  "this is a building" while the cache had nothing, and the snapshot dropped every object
+  of that prefab without a word. The tile was cached that way and stayed until something
+  else in the area changed. Both tables are now dropped together, and every reader of the
+  cache builds what it is missing instead of skipping the object.
+- **A tile could keep showing an old picture** after something changed just outside it. A
+  tile draws the objects of its own zones plus a 20 m ring around them, but the number
+  that decides whether to redraw only counted the zones inside the tile. Both now use the
+  same range.
+- `livingmap status` lists the stored pieces by material, roof kinds included - enough to
+  tell "the scan never saw it" from "it was collected but not drawn".
+
 ## 0.16.0 — The detailed map (experimental)
 
 **For players**

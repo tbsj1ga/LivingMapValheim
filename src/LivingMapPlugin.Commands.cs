@@ -3,6 +3,7 @@ using System.Collections;
 using System.Collections.Generic;
 using System.IO;
 using System.Reflection;
+using System.Text;
 using BepInEx;
 using BepInEx.Configuration;
 using UnityEngine;
@@ -85,7 +86,40 @@ namespace LivingMap
                 UseZdoScan ? (_zdoAuthoritative ? "ZDO (host, whole world)" : "ZDO (client)") : "physics",
                 UseZdoPaths ? "terrain records" : "loaded heightmaps",
                 _rt != null ? _rt.width : 0, _rt != null ? _pixelSize / _rtScale : 0f,
-                _zdoPassFrames, _zdoPassMs) + "; " + DetailStatus() + "; " + ShareStatus();
+                _zdoPassFrames, _zdoPassMs) + "; " + DetailStatus() + "; " + ShareStatus()
+                + "\n" + MaterialText();
+        }
+
+        // What the stored pieces are made of. A player reporting that something is missing from
+        // the map can read off at once whether it was collected at all: a roof of its kind with
+        // a count of zero means the scan never saw it, any other count means the drawing is at
+        // fault. Roof kinds come from the prefab name, the rest from the game's own material.
+        private string MaterialText()
+        {
+            int[] counts = new int[MatNames.Length];
+            int unknown = 0;
+            foreach (KeyValuePair<int, List<PieceRec>> kv in _pieces)
+            {
+                List<PieceRec> bucket = kv.Value;
+                for (int i = 0; i < bucket.Count; i++)
+                {
+                    byte m = bucket[i].Mat;
+                    if (m < counts.Length) counts[m]++;
+                    else unknown++;
+                }
+            }
+
+            StringBuilder sb = new StringBuilder("pieces by material: ");
+            int shown = 0;
+            for (int i = 0; i < counts.Length; i++)
+            {
+                if (counts[i] == 0) continue;
+                if (shown++ > 0) sb.Append(", ");
+                sb.Append(MatNames[i]).Append(' ').Append(counts[i]);
+            }
+            if (unknown > 0) sb.Append(shown++ > 0 ? ", " : "").Append("unknown ").Append(unknown);
+            if (shown == 0) sb.Append("none stored yet");
+            return sb.ToString();
         }
 
         // Forgets the chosen layers inside the radius (or everywhere) and restarts collection.

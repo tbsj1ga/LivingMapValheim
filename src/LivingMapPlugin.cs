@@ -316,7 +316,7 @@ namespace LivingMap
 
             _pieces.Clear(); _terrain.Clear(); _pieceCount = 0;
             _circleScratch.Clear(); _scanBuckets.Clear(); _terrainScratch.Clear();
-            ResetZdoPass(); _prefabCache.Clear();
+            ResetZdoPass(); _prefabCache.Clear(); _dKind.Clear();   // the kinds are read from the cache: they go together
         }
 
         private void ApplyTextureToMap(Texture tex, bool rememberOriginals)

@@ -166,12 +166,7 @@ namespace LivingMap
             int hash = zdo.GetPrefab();
             if (hash == 0) return;
 
-            PrefabInfo info;
-            if (!_prefabCache.TryGetValue(hash, out info))
-            {
-                info = BuildPrefabInfo(hash);
-                _prefabCache[hash] = info;
-            }
+            PrefabInfo info = PrefabFor(hash);
             if (info.IsTerrain)
             {
                 if (UseZdoPaths && _cfgShowPaths.Value) _tcZdos.Add(zdo);
@@ -242,6 +237,22 @@ namespace LivingMap
                 _zdoBuckets[idx] = bucket;
             }
             bucket.Add(rec);
+        }
+
+        // The one way to the prefab cache. Teardown drops it (LivingMapPlugin.cs), so a reader
+        // that only looked a prefab up would silently skip every object of that prefab until a
+        // ZDO pass had put it back - and the detail layer would cache a tile with those pieces
+        // missing. Building it on a miss costs one walk over the prefab's colliders, once.
+        private PrefabInfo PrefabFor(int hash)
+        {
+            PrefabInfo info;
+            if (_prefabCache.TryGetValue(hash, out info)) return info;
+            info = new PrefabInfo();
+            info.Mat = MatNone;
+            if (ZNetScene.instance == null) return info;   // no prefabs yet: ask again later, remember nothing
+            info = BuildPrefabInfo(hash);
+            _prefabCache[hash] = info;
+            return info;
         }
 
         private PrefabInfo BuildPrefabInfo(int hash)

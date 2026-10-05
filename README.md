@@ -284,7 +284,8 @@ interval (60 s) are constants in the source since 0.15.0.
 The game console (F5):
 
 ```
-livingmap status                                  what the map remembers, sources, texture size, pass timing, map sharing
+livingmap status                                  what the map remembers, sources, texture size, pass timing, map sharing,
+                                                  and the stored pieces by material (roof kinds included)
 livingmap reset                                   forget everything within 100 m and collect again
 livingmap reset 300                               the same within 300 m
 livingmap reset forest                            forest only, 100 m

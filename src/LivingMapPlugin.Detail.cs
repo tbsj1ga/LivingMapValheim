@@ -573,8 +573,8 @@ namespace LivingMap
                     if (buildings && _pieces.TryGetValue(idx, out bucket)) sig += bucket.Count * 131L;
                 }
             float zs = ZoneSystem.instance != null ? ZoneSystem.instance.m_zoneSize : 64f;
-            int zx0 = Mathf.FloorToInt(x0 / zs + 0.5f), zx1 = Mathf.FloorToInt((x0 + size) / zs + 0.5f);
-            int zz0 = Mathf.FloorToInt(z0 / zs + 0.5f), zz1 = Mathf.FloorToInt((z0 + size) / zs + 0.5f);
+            int zx0, zz0, zx1, zz1;
+            TileZones(x0, z0, size, zs, out zx0, out zz0, out zx1, out zz1);
             List<ZDO>[] sectors = DLevels[t.Level] <= DObjectsMaxMpp && _cfgDetailObjects.Value ? Sectors() : null;
             for (int zz = zz0; zz <= zz1; zz++)
                 for (int zx = zx0; zx <= zx1; zx++)
@@ -586,6 +586,15 @@ namespace LivingMap
                 }
             sig += (_cfgShowBuildings.Value ? 1 : 0) * 3 + (_cfgShowPaths.Value ? 1 : 0) * 5 + (_cfgShowCleared.Value ? 1 : 0) * 11;
             return sig;
+        }
+
+        // The zones a tile reads: its own plus a ring, because objects within 20 m of the edge
+        // are drawn as well. The snapshot and the staleness signature must agree on this, or a
+        // change just outside a tile would leave it showing yesterday's picture.
+        private static void TileZones(float x0, float z0, float size, float zs, out int zx0, out int zz0, out int zx1, out int zz1)
+        {
+            zx0 = Mathf.FloorToInt(x0 / zs + 0.5f) - 1; zx1 = Mathf.FloorToInt((x0 + size) / zs + 0.5f) + 1;
+            zz0 = Mathf.FloorToInt(z0 / zs + 0.5f) - 1; zz1 = Mathf.FloorToInt((z0 + size) / zs + 0.5f) + 1;
         }
 
         private List<ZDO>[] Sectors()
@@ -683,8 +692,8 @@ namespace LivingMap
             j.Trees = new List<DTree>();
             j.Boxes = new List<DBox>();
             float zs = j.ZoneSize;
-            int zx0 = Mathf.FloorToInt(x0 / zs + 0.5f) - 1, zx1 = Mathf.FloorToInt((x0 + size) / zs + 0.5f) + 1;
-            int zz0 = Mathf.FloorToInt(z0 / zs + 0.5f) - 1, zz1 = Mathf.FloorToInt((z0 + size) / zs + 0.5f) + 1;
+            int zx0, zz0, zx1, zz1;
+            TileZones(x0, z0, size, zs, out zx0, out zz0, out zx1, out zz1);
             List<ZDO>[] sectors = mpp <= DObjectsMaxMpp && _cfgDetailObjects.Value ? Sectors() : null;
             bool onlyPlayer = _cfgOnlyPlayerBuilt.Value, buildings = _cfgShowBuildings.Value;
             for (int zz = zz0; zz <= zz1; zz++)
@@ -788,8 +797,7 @@ namespace LivingMap
             }
             if (!buildings) return;
             if (onlyPlayer && zdo.GetLong(ZDOVars.s_creator, 0L) == 0L) return;
-            PrefabInfo info;
-            if (!_prefabCache.TryGetValue(hash, out info)) return;
+            PrefabInfo info = PrefabFor(hash);
             float hx = (info.Max.x - info.Min.x) * 0.5f, hzz = (info.Max.z - info.Min.z) * 0.5f;
             if (hx * 2f > MaxFootprint || hzz * 2f > MaxFootprint || hx <= 0f || hzz <= 0f) return;
             Quaternion q = zdo.GetRotation();
@@ -813,13 +821,9 @@ namespace LivingMap
         {
             byte k;
             if (_dKind.TryGetValue(hash, out k)) return k;
+            if (ZNetScene.instance == null) return 0;      // the kind is read off the prefab: not yet
             k = 0;
-            PrefabInfo info;
-            if (!_prefabCache.TryGetValue(hash, out info))
-            {
-                info = BuildPrefabInfo(hash);
-                _prefabCache[hash] = info;
-            }
+            PrefabInfo info = PrefabFor(hash);
             if (info.IsPiece) k = 3;
             else if (info.IsTree) k = 1;
             else if (!info.IsTerrain && ZNetScene.instance != null)
