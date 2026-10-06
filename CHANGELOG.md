@@ -45,9 +45,7 @@ The version is set in one place — `LivingMapPlugin.Version` in `src/LivingMapP
   the worst hitch the mod had, and worst exactly where tiles are most numerous, zoomed out -
   and the pixels it brought back already had the rock pattern over the mountains with the
   buildings gone from under it. Drawn from the world and Living Map's own data instead,
-  the level costs nothing on the main thread and keeps what is built up high. The widest
-  two levels also get the dark halo around buildings that the styling pass only fades in
-  from 3 m a pixel, so they look like the map under them rather than bare rectangles.
+  the level costs nothing on the main thread and keeps what is built up high.
   `DetailFirstLevelFromMapTexture` puts the old way back.
 - **The queue is kept short.** The main thread could take two snapshots a frame while the
   threads drew far fewer tiles in the same time, so it was paying three milliseconds each

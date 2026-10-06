@@ -603,10 +603,12 @@ namespace LivingMap
                     Color32 c = kind == TerrainPaved ? p.Paved : kind == TerrainDirt ? p.Dirt : kind == TerrainCultivated ? p.Cultivated : p.Cleared;
                     PaintRect(d, n, j, cx0, cz0, cx0 + grid, cz0 + grid, c, kind);
                 }
-                // Flat outlines where the styling pass draws none: it fades its own darker edge
-                // in from 3 m a pixel, so the widest levels would show bare rectangles where the
-                // map under them has the halo the GPU layer draws at every zoom.
-                bool outline = p.DrawOutline && (mpp >= 3f || (!p.Styled && mpp < 1.2f));
+                // Flat outlines only when not styled (styled buildings get a darker edge of their
+                // own). Not at the widest levels either: the width here is one pixel of the level,
+                // which at 3 m a pixel is a three-metre halo around a two-metre piece - tried
+                // once, and every building became a black blob. A halo that reads like the map's
+                // would have to be the configured width in metres, not in pixels.
+                bool outline = p.DrawOutline && !p.Styled && mpp < 1.2f;
                 float w = mpp;
                 if (outline)
                 {
