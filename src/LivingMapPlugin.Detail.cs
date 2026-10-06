@@ -32,6 +32,7 @@ namespace LivingMap
         private ConfigEntry<float> _cfgDetailFinest;
         private ConfigEntry<bool> _cfgDetailObjects;
         private ConfigEntry<int> _cfgDetailWorkers;
+        private ConfigEntry<int> _cfgDetailCache;
         // the Legacy picture's tuning (no longer settings)
         private const float LegacyRelief = 1f, LegacyForestShade = 0.35f, LegacyToneDesaturate = 0.5f, LegacySharedOpacity = 0.5f;
         private static readonly Color LegacyWaterShallow = new Color(0.27f, 0.28f, 0.33f, 1f), LegacyWaterDeep = new Color(0.22f, 0.24f, 0.30f, 1f);
@@ -50,9 +51,12 @@ namespace LivingMap
                     new AcceptableValueList<float>(1f, 2f, 4f), UiAdvanced, "Detail: finest level (m)", 20, true));
             _cfgDetailObjects = Config.Bind(SecDetail, "DetailObjects", true,
                 Ui("Close up, read buildings (turned, with roofs and heights) straight from the objects near you. Off: the stored outlines only.", UiAdvanced, "Detail: read objects", 19, true));
+            _cfgDetailCache = Config.Bind(SecDetail, "DetailTileCache", 96,
+                Ui("How many drawn tiles are kept. Panning the map throws the oldest away, and coming back draws them again from nothing - a bigger cache keeps them instead. Each tile is about half a megabyte of memory, and as much again on the card.",
+                    new AcceptableValueRange<int>(32, 512), UiAdvanced, "Detail: tiles kept", 14, true));
             _cfgDetailWorkers = Config.Bind(SecDetail, "DetailWorkerThreads", 0,
                 Ui("Background threads that draw the detail. 0 = automatic: the processor's threads less two, at most four. They run only while the big map is open, below the game's own priority, and whatever is left to draw is dropped when the map closes. Takes effect on the next world load.",
-                    new AcceptableValueRange<int>(0, 4), UiAdvanced, "Detail: threads", 15, true));
+                    new AcceptableValueRange<int>(0, 8), UiAdvanced, "Detail: threads", 15, true));
             BindPortConfig();
             MigrateDetailConfig();
         }
@@ -71,7 +75,7 @@ namespace LivingMap
             get
             {
                 int v = _cfgDetailWorkers != null ? _cfgDetailWorkers.Value : 0;
-                return v <= 0 ? Mathf.Clamp(SystemInfo.processorCount - 2, 1, 4) : Mathf.Clamp(v, 1, 4);
+                return v <= 0 ? Mathf.Clamp(SystemInfo.processorCount - 2, 1, 4) : Mathf.Clamp(v, 1, 8);
             }
         }
 
@@ -104,7 +108,7 @@ namespace LivingMap
         // model
         // ------------------------------------------------------------------
         private const int DTileSize = 256;
-        private const int DCacheLimit = 96;
+        private int DetailCacheLimit { get { return _cfgDetailCache != null ? Mathf.Clamp(_cfgDetailCache.Value, 32, 512) : 96; } }
         private const int DVisibleLimit = 64;
         private const int DUploadsPerFrame = 2;
         private const int DEnqueuesPerFrame = 2;      // snapshots on the main thread, ~3.5 ms each on an i5-12400F
@@ -972,11 +976,12 @@ namespace LivingMap
 
         private void Evict(float now)
         {
-            if (_dTiles.Count <= DCacheLimit) return;
+            int limit = DetailCacheLimit;
+            if (_dTiles.Count <= limit) return;
             _dScratch.Clear();
             foreach (DTile t in _dTiles.Values) if (!t.Queued && (t.Img == null || !t.Img.enabled)) _dScratch.Add(t);
             _dScratch.Sort((a, b) => a.LastUsed.CompareTo(b.LastUsed));
-            int drop = _dTiles.Count - DCacheLimit;
+            int drop = _dTiles.Count - limit;
             for (int i = 0; i < _dScratch.Count && drop > 0; i++, drop--)
             {
                 DTile t = _dScratch[i];

@@ -32,6 +32,11 @@ The version is set in one place — `LivingMapPlugin.Version` in `src/LivingMapP
   of video memory) whatever `MapTextureScale` is, and it is drawn again only when something
   up there has changed, not every time the map layer updates.
 
+- **How many drawn tiles are kept is now a setting** (`DetailTileCache`, default 96 as
+  before). Panning the map used to throw the oldest away and draw them again from nothing
+  on the way back - a thousand tiles drawn for a hundred different ones. Each tile is about
+  half a megabyte of memory and as much again on the card. `DetailWorkerThreads` can now be
+  set as high as 8 by hand; the automatic choice is unchanged.
 - **The detail is drawn faster, and only while it is wanted.** The threads that draw it run
   only while the big map is open, which is when the player is looking at the map rather than
   at the game, so the automatic choice is now the processor's threads less two, at most four

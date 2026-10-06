@@ -84,7 +84,8 @@ comes from the same texture).
 **Cost.** Tiles of 256×256 on background threads (`DetailWorkerThreads`, 0 = automatic: the
 processor's threads less two, at most four — they run only while the map is open, below the
 game's priority, and what is left to draw is dropped when it closes), at most two snapshots a
-frame on the main thread (~3.5 ms each on an i5-12400F), about 0.2 s a tile there, up to 96 tiles cached (~48 MB) and ~60 MB for the
+frame on the main thread (~3.5 ms each on an i5-12400F), about 0.2 s a tile there, tiles kept to `DetailTileCache` (96 by default, ~48 MB in memory
+and as much on the card) and ~60 MB for the
 pattern textures. Only while the big map is open and zoomed in; until a tile is ready the
 normal map shows there. When the light changes (sun, ambient, fog colour, sun direction),
 the visible tiles are drawn again and swapped in together. `livingmap status` shows the
