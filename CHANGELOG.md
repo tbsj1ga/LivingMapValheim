@@ -32,6 +32,13 @@ The version is set in one place — `LivingMapPlugin.Version` in `src/LivingMapP
   of video memory) whatever `MapTextureScale` is, and it is drawn again only when something
   up there has changed, not every time the map layer updates.
 
+- **The detail is drawn faster, and only while it is wanted.** The threads that draw it run
+  only while the big map is open, which is when the player is looking at the map rather than
+  at the game, so the automatic choice is now the processor's threads less two, at most four
+  (it was one on a processor with four threads or fewer, two otherwise). To keep that honest,
+  whatever is still queued when the map closes is dropped instead of being worked through
+  during play; a tile a thread had already started is finished and kept.
+
 **Fixes**
 
 - **Buildings in the mountains were not on the detailed map.** Above 70 m the game's map

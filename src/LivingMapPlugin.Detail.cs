@@ -51,7 +51,7 @@ namespace LivingMap
             _cfgDetailObjects = Config.Bind(SecDetail, "DetailObjects", true,
                 Ui("Close up, read buildings (turned, with roofs and heights) straight from the objects near you. Off: the stored outlines only.", UiAdvanced, "Detail: read objects", 19, true));
             _cfgDetailWorkers = Config.Bind(SecDetail, "DetailWorkerThreads", 0,
-                Ui("Background threads that draw the detail. 0 = automatic: 1 on a processor with 4 threads or fewer, else 2. Takes effect on the next world load.",
+                Ui("Background threads that draw the detail. 0 = automatic: the processor's threads less two, at most four. They run only while the big map is open, below the game's own priority, and whatever is left to draw is dropped when the map closes. Takes effect on the next world load.",
                     new AcceptableValueRange<int>(0, 4), UiAdvanced, "Detail: threads", 15, true));
             BindPortConfig();
             MigrateDetailConfig();
@@ -61,12 +61,17 @@ namespace LivingMap
         // the game keeps its cores (about 0.35 s a tile there against 0.18 s on an i5-12400F)
         private static bool WeakCpu { get { return SystemInfo.processorCount <= 4; } }
 
+        // Tiles are drawn only while the big map is open and zoomed in - and then the player is
+        // looking at the map, not at the game. The threads run below normal priority, they sleep
+        // on an empty queue, and what is queued is dropped the moment the map closes, so the work
+        // cannot spill into play. That is why the automatic choice is generous: everything but
+        // the game's own two busy threads, up to four.
         private int DetailThreads
         {
             get
             {
                 int v = _cfgDetailWorkers != null ? _cfgDetailWorkers.Value : 0;
-                return v <= 0 ? (WeakCpu ? 1 : 2) : Mathf.Clamp(v, 1, 4);
+                return v <= 0 ? Mathf.Clamp(SystemInfo.processorCount - 2, 1, 4) : Mathf.Clamp(v, 1, 4);
             }
         }
 
@@ -253,6 +258,7 @@ namespace LivingMap
             if (!show)
             {
                 if (_dRoot != null && _dRoot.gameObject.activeSelf) _dRoot.gameObject.SetActive(false);
+                DropPendingTiles();
                 if (!_ready && (_dTiles.Count > 0 || _dWorkers != null)) DetailTeardown();
                 return;
             }
@@ -268,6 +274,7 @@ namespace LivingMap
             if (alpha <= 0f)
             {
                 if (_dRoot != null && _dRoot.gameObject.activeSelf) _dRoot.gameObject.SetActive(false);
+                DropPendingTiles();
                 return;
             }
 
@@ -981,6 +988,22 @@ namespace LivingMap
         // ------------------------------------------------------------------
         // workers
         // ------------------------------------------------------------------
+        // What is queued is only worth drawing while it can be seen. Dropping it when the map
+        // closes keeps the threads from working through a backlog in the middle of play; a tile
+        // taken by a worker already is let finish and kept, since it costs nothing to keep.
+        private void DropPendingTiles()
+        {
+            List<DJob> dropped = null;
+            lock (_dLock)
+            {
+                if (_dPending.Count == 0) return;
+                dropped = new List<DJob>(_dPending);
+                _dPending.Clear();
+            }
+            for (int i = 0; i < dropped.Count; i++)
+                if (dropped[i].Tile != null) dropped[i].Tile.Queued = false;
+        }
+
         private void EnsureWorkers()
         {
             if (_dWorkers != null) return;
