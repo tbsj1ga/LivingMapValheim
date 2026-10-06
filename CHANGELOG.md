@@ -39,6 +39,16 @@ The version is set in one place — `LivingMapPlugin.Version` in `src/LivingMapP
   on the way back - a thousand tiles drawn for a hundred different ones. Each tile is about
   half a megabyte of memory and as much again on the card. `DetailWorkerThreads` can now be
   set as high as 8 by hand; the automatic choice is unchanged.
+- **A little more than the screen is drawn ahead** (`DetailPrefetch`, on): a ring of tiles
+  around the view, so panning does not begin from nothing at the edge, and the view at the
+  next closer level, so a step of the zoom has something to show at once. It is queued
+  behind everything visible and never more than one tile a frame, so it takes nothing from
+  what is on screen - but it keeps more tiles, so raise `DetailTileCache` with it.
+- **The high-ground layer is lit like the map it lies on.** The shader darkens and tints
+  everything it draws by the time of day; the layer is drawn after it and kept its colours,
+  which read as a sticker at dusk. It is now multiplied by what that light comes to on flat
+  ground - free, on the card, every frame. The paper and the shading of the terrain are
+  still the detailed map's alone.
 - **The detail is drawn faster, and only while it is wanted.** The threads that draw it run
   only while the big map is open, which is when the player is looking at the map rather than
   at the game, so the automatic choice is now the processor's threads less two, at most four

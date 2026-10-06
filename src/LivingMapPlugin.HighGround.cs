@@ -41,6 +41,7 @@ namespace LivingMap
         private BitArray _highPixels;                   // map pixels whose ground is that high
         private RawImage _highSmall, _highLarge;
         private Sprite _highCircle;
+        private Color _highLight = Color.white;
         private int _highPieceCount, _highCellCount;    // what the last rebuild drew
         private long _highSig = -1;                     // and what it was: a redraw it does not need is skipped
         private readonly List<PieceRec> _highScratch = new List<PieceRec>();
@@ -361,6 +362,7 @@ namespace LivingMap
             // the height bitset is read on the first tick that wants it, not at every world load
             if (HighWanted && _highPixels == null && _ready) { BuildHighPixels(); _highDirty = true; }
             if (!HighWanted || _rtHigh == null || _mm == null) { HideHighImages(); return; }
+            _highLight = HighLight();
 
             bool wantLarge = HighMode == HighBoth && _mm.m_mapImageLarge != null &&
                              _mm.m_largeRoot != null && _mm.m_largeRoot.activeInHierarchy;
@@ -378,6 +380,36 @@ namespace LivingMap
             else if (_highLarge != null) _highLarge.enabled = false;
         }
 
+        // The shader lights everything it draws by the time of day: the same base is warm at
+        // noon and nearly black at night, while this layer, drawn after the shader, would keep
+        // its colours whatever the hour and read as a sticker. The full answer is the shader
+        // itself - the paper under the colour, the terrain's own normal - and that is the
+        // detailed map's job. What can be had here for nothing is the light: a RawImage
+        // multiplies its texture by its colour on the card, free every frame, so the layer is
+        // given what the shader's light comes to on flat ground.
+        private Color HighLight()
+        {
+            Material m = _mm != null && _mm.m_mapImageSmall != null ? _mm.m_mapImageSmall.material : null;
+            if (m == null) return Color.white;
+            try
+            {
+                if (!m.HasProperty("_lightColor") || !m.HasProperty("_ambientLightColor")) return Color.white;
+                Color lt = m.GetColor("_lightColor").linear, amb = m.GetColor("_ambientLightColor").linear;
+                Color sun = Shader.GetGlobalColor("_SunColor").linear, ambG = Shader.GetGlobalColor("_AmbientColor").linear;
+                Vector4 ld = s_portLightMode == 0 || s_portLightMode == 3 ? m.GetVector("_lightDir") : Shader.GetGlobalVector("_SunDir");
+                if (s_portLightMode == 2 || s_portLightMode == 3) ld = -ld;
+                Vector3 dir = new Vector3(ld.x, ld.y, ld.z);
+                float len = dir.magnitude;
+                float diff = len > 0.0001f ? Mathf.Max(0f, dir.y / len) : 1f;    // flat ground: the normal is up
+                Color lit = new Color(
+                    Mathf.Clamp01(diff * lt.r * sun.r + amb.r * ambG.r),
+                    Mathf.Clamp01(diff * lt.g * sun.g + amb.g * ambG.g),
+                    Mathf.Clamp01(diff * lt.b * sun.b + amb.b * ambG.b), 1f);
+                return lit.gamma;                                                // the UI multiplies in gamma space
+            }
+            catch { return Color.white; }
+        }
+
         private void ShowHigh(ref RawImage img, RawImage map, bool round)
         {
             if (img == null || img.transform.parent == null || img.transform.parent.parent != map.transform)
@@ -388,6 +420,7 @@ namespace LivingMap
             }
             img.texture = _rtHigh;
             img.uvRect = map.uvRect;       // the game moves the map by this; we follow it exactly
+            img.color = _highLight;
             img.enabled = true;
         }
 

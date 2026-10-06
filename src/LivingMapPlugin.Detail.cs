@@ -33,6 +33,7 @@ namespace LivingMap
         private ConfigEntry<bool> _cfgDetailObjects;
         private ConfigEntry<int> _cfgDetailWorkers;
         private ConfigEntry<int> _cfgDetailCache;
+        private ConfigEntry<bool> _cfgDetailPrefetch;
         // the Legacy picture's tuning (no longer settings)
         private const float LegacyRelief = 1f, LegacyForestShade = 0.35f, LegacyToneDesaturate = 0.5f, LegacySharedOpacity = 0.5f;
         private static readonly Color LegacyWaterShallow = new Color(0.27f, 0.28f, 0.33f, 1f), LegacyWaterDeep = new Color(0.22f, 0.24f, 0.30f, 1f);
@@ -51,6 +52,8 @@ namespace LivingMap
                     new AcceptableValueList<float>(1f, 2f, 4f), UiAdvanced, "Detail: finest level (m)", 20, true));
             _cfgDetailObjects = Config.Bind(SecDetail, "DetailObjects", true,
                 Ui("Close up, read buildings (turned, with roofs and heights) straight from the objects near you. Off: the stored outlines only.", UiAdvanced, "Detail: read objects", 19, true));
+            _cfgDetailPrefetch = Config.Bind(SecDetail, "DetailPrefetch", true,
+                Ui("Draw a little more than is on screen: a ring of tiles around the view, so panning does not start from nothing at the edge, and the next closer level, so a step of the zoom has something to show at once. It is queued behind everything visible and drawn one tile a frame at most, but it keeps more tiles - raise DetailTileCache with it.", UiDetail, "Draw ahead", 80, false));
             _cfgDetailCache = Config.Bind(SecDetail, "DetailTileCache", 96,
                 Ui("How many drawn tiles are kept. Panning the map throws the oldest away, and coming back draws them again from nothing - a bigger cache keeps them instead. Each tile is about half a megabyte of memory, and as much again on the card.",
                     new AcceptableValueRange<int>(32, 512), UiAdvanced, "Detail: tiles kept", 14, true));
@@ -338,6 +341,7 @@ namespace LivingMap
             // fallback one level coarser, behind
             if (level > 0) ShowLevel(level - 1, vx0, vx1, vz0, vz1, uv, world, now, false, cx, cz);
             ShowLevel(level, vx0, vx1, vz0, vz1, uv, world, now, true, cx, cz);
+            Prefetch(level, vx0, vx1, vz0, vz1, now, cx, cz);
             if (level > 0) HideCoveredFog(level);
             UpdateClouds(uv);
 
@@ -395,6 +399,54 @@ namespace LivingMap
                     if (tile.Img2 != null) Place(tile.Img2, request ? _dFogFront : _dFogBack, a0, a1);
                 }
             if (request) _dViewCovered = covered;
+        }
+
+        // Tiles drawn before they are asked for: a ring around the view, and the view at the
+        // next closer level. They go into the queue behind everything visible - the workers take
+        // the lowest priority first - and only in a frame that had no visible tile to queue, one
+        // at a time, so the main thread never spends more on them than it would anyway.
+        private const float DPrefetchPriority = 1e9f;
+
+        private void Prefetch(int level, float vx0, float vx1, float vz0, float vz1, float now, float cx, float cz)
+        {
+            if (_cfgDetailPrefetch == null || !_cfgDetailPrefetch.Value) return;
+            if (_dEnqueuedThisFrame > 0) return;
+
+            float t = DTileSize * DLevels[level];
+            int ix0 = Mathf.FloorToInt(vx0 / t), ix1 = Mathf.FloorToInt(vx1 / t);
+            int iz0 = Mathf.FloorToInt(vz0 / t), iz1 = Mathf.FloorToInt(vz1 / t);
+            for (int tz = iz0 - 1; tz <= iz1 + 1; tz++)
+                for (int tx = ix0 - 1; tx <= ix1 + 1; tx++)
+                {
+                    if (tx >= ix0 && tx <= ix1 && tz >= iz0 && tz <= iz1) continue;   // the view draws itself
+                    if (!Want(level, tx, tz, now, cx, cz, t, DPrefetchPriority)) return;
+                }
+
+            if (level + 1 >= DLevels.Length) return;
+            float t2 = DTileSize * DLevels[level + 1];
+            int fx0 = Mathf.FloorToInt(vx0 / t2), fx1 = Mathf.FloorToInt(vx1 / t2);
+            int fz0 = Mathf.FloorToInt(vz0 / t2), fz1 = Mathf.FloorToInt(vz1 / t2);
+            for (int tz = fz0; tz <= fz1; tz++)
+                for (int tx = fx0; tx <= fx1; tx++)
+                    if (!Want(level + 1, tx, tz, now, cx, cz, t2, DPrefetchPriority * 2f)) return;
+        }
+
+        // false when nothing more may be queued this frame
+        private bool Want(int level, int tx, int tz, float now, float cx, float cz, float t, float prio)
+        {
+            long key = TileKey(level, tx, tz);
+            DTile tile;
+            if (!_dTiles.TryGetValue(key, out tile))
+            {
+                tile = new DTile();
+                tile.Level = level; tile.TX = tx; tile.TZ = tz; tile.Key = key;
+                _dTiles[key] = tile;
+            }
+            tile.LastUsed = now;
+            if (tile.Ready || tile.Queued || tile.Failed) return true;
+            float dx = tx * t + t * 0.5f - cx, dz = tz * t + t * 0.5f - cz;
+            Enqueue(tile, prio + dx * dx + dz * dz);
+            return false;
         }
 
         private static void Place(RawImage img, RectTransform parent, Vector2 a0, Vector2 a1)
@@ -649,6 +701,13 @@ namespace LivingMap
             DJob j = BuildJob(tile, priority, relight);
             double sms = (Stopwatch.GetTimestamp() - s0) * 1000.0 / Stopwatch.Frequency;
             _dSnaps++; _dSnapMsTotal += sms; if (sms > _dSnapMsMax) _dSnapMsMax = sms;
+            // the main thread's one real hitch: say what the slow ones were made of
+            if (sms > 20.0 && _cfgDebug.Value)
+                Logger.LogInfo(string.Format("Slow snapshot: {0:0.0} ms at level {1} ({2:0.##} m/px), tile ({3}, {4}): {5} pieces, {6} boxes, {7} trees/rocks, {8} path cells, {9} zones",
+                    sms, tile.Level + 1, DLevels[tile.Level], tile.TX, tile.TZ,
+                    j.Pieces != null ? j.Pieces.Count : 0, j.Boxes != null ? j.Boxes.Count : 0,
+                    j.Trees != null ? j.Trees.Count : 0, j.TerrKeys != null ? j.TerrKeys.Count : 0,
+                    j.Heights != null ? j.Heights.Count : 0));
             tile.Queued = true;
             lock (_dLock) { _dPending.Add(j); Monitor.Pulse(_dLock); }
         }
