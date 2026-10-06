@@ -42,13 +42,14 @@ namespace LivingMap
         private RawImage _highSmall, _highLarge;
         private Sprite _highCircle;
         private int _highPieceCount, _highCellCount;    // what the last rebuild drew
+        private long _highSig = -1;                     // and what it was: a redraw it does not need is skipped
         private readonly List<PieceRec> _highScratch = new List<PieceRec>();
         private readonly List<long> _highCells = new List<long>();
 
         private void BindHighGroundConfig()
         {
             _cfgHighOverlay = Config.Bind(SecLayers, "HighGroundOverlay", HighBoth,
-                Ui("Buildings and paths above 70 metres, drawn over the game's rock pattern. The game's map hides whatever is under that pattern, so a base in the mountains is not on the minimap or on the zoomed-out map at all; this draws it on top of them. Close up the detailed map draws it properly anyway, so this is for the other two. Minimap: only there. Both: there and on the zoomed-out map. Costs as much video memory again as MapTextureScale, and only once something is built that high.",
+                Ui("Buildings and paths above 70 metres, drawn over the game's rock pattern. The game's map hides whatever is under that pattern, so a base in the mountains is not on the minimap or on the zoomed-out map at all; this draws it on top of them. Close up the detailed map draws it properly anyway, so this is for the other two. Minimap: only there. Both: there and on the zoomed-out map. Costs a texture of its own - 64 MB of video memory, less at MapTextureScale 1 - and only once something is built that high.",
                     new AcceptableValueList<string>(HighOff, HighMinimap, HighBoth), UiLayers, "Mountains: buildings over the rock", 85, false));
         }
 
@@ -159,7 +160,34 @@ namespace LivingMap
                         _highCells.Add(kv.Key);
                     }
                 }
-                if (_highScratch.Count == 0 && _highCells.Count == 0) { ReleaseHighLayer(); return; }
+                // The map layer updates whenever anything at all changes - the forest alone is
+                // reason enough - and drawing 15 000 shapes again costs ten milliseconds in one
+                // frame. Walking them is cheap; drawing them is not. So the walk also tells us
+                // whether this is the same picture as last time, and if it is, nothing is drawn.
+                long sig = 17;
+                for (int i = 0; i < _highScratch.Count; i++)
+                {
+                    PieceRec rec = _highScratch[i];
+                    sig = sig * 31 + rec.X0.GetHashCode();
+                    sig = sig * 31 + rec.Z0.GetHashCode();
+                    sig = sig * 31 + rec.Y.GetHashCode();
+                    sig = sig * 31 + rec.Mat;
+                }
+                for (int i = 0; i < _highCells.Count; i++) sig = sig * 31 + _highCells[i];
+                sig = sig * 31 + (_cfgOutline.Value ? 1 : 0);
+
+                if (_highScratch.Count == 0 && _highCells.Count == 0)
+                {
+                    _highSig = sig;
+                    ReleaseHighLayer();
+                    return;
+                }
+                if (sig == _highSig && _rtHigh != null && _rtHigh.IsCreated())
+                {
+                    _highScratch.Clear(); _highCells.Clear();
+                    return;
+                }
+                _highSig = sig;
 
                 if (!EnsureHighTexture()) return;
                 if (!_rtHigh.IsCreated() && !_rtHigh.Create()) return;
@@ -261,12 +289,17 @@ namespace LivingMap
 
             if (_rtHigh == null)
             {
-                // the same grid as the map layer, so a shape is exactly as sharp here as there
-                RenderTexture rt = new RenderTexture(_rt.width, _rt.height, 0, RenderTextureFormat.ARGB32);
+                // The map layer's grid, but no finer than 4096 across the world (6 m a pixel).
+                // At MapTextureScale 8 that layer alone is a gigabyte of video memory, and this
+                // one is flat colour over a rock pattern: another copy of it would be paid for
+                // sharpness nobody can see. At the default scale the two are the same size.
+                int size = Mathf.Min(_rt.width, Mathf.Max(_texSize, 4096));
+                RenderTexture rt = new RenderTexture(size, size, 0, RenderTextureFormat.ARGB32);
                 rt.name = "LivingMap_HighGround";
                 rt.useMipMap = false;
                 rt.autoGenerateMips = false;
                 rt.filterMode = _rt.filterMode;
+                rt.anisoLevel = 0;
                 rt.wrapMode = _rt.wrapMode;
                 bool created = false;
                 try { created = rt.Create(); }
@@ -291,6 +324,7 @@ namespace LivingMap
                 _rtHigh = null;
             }
             _highPieceCount = 0; _highCellCount = 0;
+            _highSig = -1;
             HideHighImages();
         }
 

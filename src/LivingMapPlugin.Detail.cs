@@ -43,8 +43,8 @@ namespace LivingMap
             _cfgDetail = Config.Bind(SecDetail, "DetailEnabled", true,
                 Ui("When you zoom the big map in, draw it in detail: buildings with their roofs, paths, fields and the forest as they are, in the vanilla map's style. The minimap is not changed.", UiDetail, "Close-up detail", 100, false));
             _cfgDetailStartSpan = Config.Bind(SecDetail, "DetailStartSpanMeters", WeakCpu ? 3000f : 6000f,
-                Ui("How far out the detail begins, as the width of the map on screen in metres. Larger: the detail starts earlier and grows more gradually as you zoom in; smaller: it starts later, closer in, and costs less. Default 6000 (3000 on a processor with 4 threads or fewer). Past about 12000 the whole map is drawn by the layer, which is many more tiles than the cache holds - the picture keeps up only on a fast machine.",
-                    new AcceptableValueRange<float>(1000f, 25000f), UiDetail, "Detail starts at map width (m)", 95, false));
+                Ui("How far out the detail begins, as the width of the map on screen in metres. Larger: the detail starts earlier and grows more gradually as you zoom in; smaller: it starts later, closer in, and costs less. Default 6000 (3000 on a processor with 4 threads or fewer). Much above the default the view wants more tiles than the cache holds and the picture stops filling in, so there is little to gain.",
+                    new AcceptableValueRange<float>(1000f, 12000f), UiDetail, "Detail starts at map width (m)", 95, false));
             _cfgDetailFinest = Config.Bind(SecDetail, "DetailFinestMetersPerPixel", 1f,
                 Ui("The finest detail level allowed, in metres per pixel. Coarser means fewer tiles to draw.",
                     new AcceptableValueList<float>(1f, 2f, 4f), UiAdvanced, "Detail: finest level (m)", 20, true));

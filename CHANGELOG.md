@@ -28,10 +28,9 @@ The version is set in one place — `LivingMapPlugin.Version` in `src/LivingMapP
   stands at or above 70 m goes in, so nothing lower is drawn twice, and the texture exists
   only once something is built that high: a world without a mountain base costs nothing.
   `Off` / `Minimap` / `Both` (default). It is a flat colour over the rock, not the shader's
-  own shading - zoom in for the proper picture.
-- `DetailStartSpanMeters` now goes up to 25000, so the detailed map can be made to cover
-  the whole zoomed-out map. Past about 12000 that is far more tiles than the cache holds;
-  the default stays 6000.
+  own shading - zoom in for the proper picture. Its texture is 4096 across the world (64 MB
+  of video memory) whatever `MapTextureScale` is, and it is drawn again only when something
+  up there has changed, not every time the map layer updates.
 
 **Fixes**
 
