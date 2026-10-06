@@ -48,8 +48,8 @@ namespace LivingMap
 
         private void BindHighGroundConfig()
         {
-            _cfgHighOverlay = Config.Bind(SecLayers, "HighGroundOverlay", HighBoth,
-                Ui("Buildings and paths above 70 metres, drawn over the game's rock pattern. The game's map hides whatever is under that pattern, so a base in the mountains is not on the minimap or on the zoomed-out map at all; this draws it on top of them. Close up the detailed map draws it properly anyway, so this is for the other two. Minimap: only there. Both: there and on the zoomed-out map. Costs a texture of its own - 64 MB of video memory, less at MapTextureScale 1 - and only once something is built that high.",
+            _cfgHighOverlay = Config.Bind(SecLayers, "HighGroundOverlay", HighMinimap,
+                Ui("Buildings and paths above 70 metres, drawn over the game's rock pattern. The game's map hides whatever is under that pattern, so a base in the mountains is not on the minimap or on the zoomed-out map at all; this draws it on top of them. Close up the detailed map draws it properly anyway, so this is for the other two. Minimap (default): only there, where it reads as part of the map. Both: on the zoomed-out map as well, where a flat colour next to the shader's own shading is more noticeable. Costs a texture of its own - 64 MB of video memory, less at MapTextureScale 1 - and only once something is built that high.",
                     new AcceptableValueList<string>(HighOff, HighMinimap, HighBoth), UiLayers, "Mountains: buildings over the rock", 85, false));
         }
 
@@ -364,8 +364,11 @@ namespace LivingMap
 
             bool wantLarge = HighMode == HighBoth && _mm.m_mapImageLarge != null &&
                              _mm.m_largeRoot != null && _mm.m_largeRoot.activeInHierarchy;
-            // close up the detailed map draws the same shapes properly, under the vanilla style
-            if (wantLarge && _dRoot != null && _dRoot.gameObject.activeSelf) wantLarge = false;
+            // Close up the detailed map draws the same shapes properly, so this one steps aside -
+            // but only once that map has really drawn the view. It appears at the zoom threshold
+            // and takes a second or two to fill in, and stepping aside at the threshold left a
+            // gap where neither showed the mountain.
+            if (wantLarge && _dRoot != null && _dRoot.gameObject.activeSelf && _dViewCovered) wantLarge = false;
             bool wantSmall = _mm.m_mapImageSmall != null && _mm.m_smallRoot != null && _mm.m_smallRoot.activeInHierarchy;
 
             if (wantSmall) ShowHigh(ref _highSmall, _mm.m_mapImageSmall, true);

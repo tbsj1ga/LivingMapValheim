@@ -264,6 +264,7 @@ namespace LivingMap
             if (!show)
             {
                 if (_dRoot != null && _dRoot.gameObject.activeSelf) _dRoot.gameObject.SetActive(false);
+                _dViewCovered = false;
                 DropPendingTiles();
                 if (!_ready && (_dTiles.Count > 0 || _dWorkers != null)) DetailTeardown();
                 return;
@@ -280,6 +281,7 @@ namespace LivingMap
             if (alpha <= 0f)
             {
                 if (_dRoot != null && _dRoot.gameObject.activeSelf) _dRoot.gameObject.SetActive(false);
+                _dViewCovered = false;
                 DropPendingTiles();
                 return;
             }
@@ -360,6 +362,7 @@ namespace LivingMap
 
         private void ShowLevel(int level, float vx0, float vx1, float vz0, float vz1, Rect uv, float world, float now, bool request, float cx, float cz)
         {
+            bool covered = true;               // of the level being shown: is every tile of the view drawn yet
             float mpp = DLevels[level];
             float t = DTileSize * mpp;
             int tx0 = Mathf.FloorToInt(vx0 / t), tx1 = Mathf.FloorToInt(vx1 / t);
@@ -382,7 +385,7 @@ namespace LivingMap
                         float dx = wx + t * 0.5f - cx, dz = wz + t * 0.5f - cz;
                         Enqueue(tile, dx * dx + dz * dz);
                     }
-                    if (!tile.Ready || tile.Img == null) continue;
+                    if (!tile.Ready || tile.Img == null) { covered = false; continue; }
                     // a vanilla-style pixel is centred on its grid point, like the map's own pixels
                     float sx = wx, sz = wz;
                     if (tile.Img2 != null) { sx -= mpp * 0.5f; sz -= mpp * 0.5f; }
@@ -391,6 +394,7 @@ namespace LivingMap
                     Place(tile.Img, request ? _dFront : _dBack, a0, a1);
                     if (tile.Img2 != null) Place(tile.Img2, request ? _dFogFront : _dFogBack, a0, a1);
                 }
+            if (request) _dViewCovered = covered;
         }
 
         private static void Place(RawImage img, RectTransform parent, Vector2 a0, Vector2 a1)
@@ -446,6 +450,7 @@ namespace LivingMap
         // Levels follow the style; a change drops the tiles (their keys are per level).
         // for 'livingmap status': what the detail layer showed last
         private int _dShownLevel = -1;
+        private bool _dViewCovered;             // every tile of the shown level is drawn and placed
         private float _dShownNeed, _dShownAt = -100f;
 
         private string DetailStatus()

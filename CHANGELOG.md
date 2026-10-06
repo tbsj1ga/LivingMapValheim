@@ -27,10 +27,12 @@ The version is set in one place — `LivingMapPlugin.Version` in `src/LivingMapP
   a second time, into a texture of its own, and lays it over both map images. Only what
   stands at or above 70 m goes in, so nothing lower is drawn twice, and the texture exists
   only once something is built that high: a world without a mountain base costs nothing.
-  `Off` / `Minimap` / `Both` (default). It is a flat colour over the rock, not the shader's
+  `Off` / `Minimap` (default) / `Both`. It is a flat colour over the rock, not the shader's
   own shading - zoom in for the proper picture. Its texture is 4096 across the world (64 MB
   of video memory) whatever `MapTextureScale` is, and it is drawn again only when something
-  up there has changed, not every time the map layer updates.
+  up there has changed, not every time the map layer updates. On the zoomed-out map
+  (`Both`) it hands over to the detailed map only once that has really drawn the view, not
+  at the zoom where it begins - there was a moment where neither showed the mountain.
 
 - **How many drawn tiles are kept is now a setting** (`DetailTileCache`, default 96 as
   before). Panning the map used to throw the oldest away and draw them again from nothing
