@@ -52,8 +52,8 @@ namespace LivingMap
                     new AcceptableValueList<float>(1f, 2f, 4f), UiAdvanced, "Detail: finest level (m)", 20, true));
             _cfgDetailObjects = Config.Bind(SecDetail, "DetailObjects", true,
                 Ui("Close up, read buildings (turned, with roofs and heights) straight from the objects near you. Off: the stored outlines only.", UiAdvanced, "Detail: read objects", 19, true));
-            _cfgDetailPrefetch = Config.Bind(SecDetail, "DetailPrefetch", true,
-                Ui("Draw a little more than is on screen: a ring of tiles around the view, so panning does not start from nothing at the edge, and the next closer level, so a step of the zoom has something to show at once. It is queued behind everything visible and drawn one tile a frame at most, but it keeps more tiles - raise DetailTileCache with it.", UiDetail, "Draw ahead", 80, false));
+            _cfgDetailPrefetch = Config.Bind(SecDetail, "DetailPrefetch", false,
+                Ui("Draw a little more than is on screen: a ring of tiles around the view, so panning does not start from nothing at the edge, and the next closer level, so a step of the zoom has something to show at once. Off by default: it fills the cache with tiles that are not on screen, and unless DetailTileCache is raised well past its default that costs more in tiles drawn again than it saves.", UiDetail, "Draw ahead", 80, false));
             _cfgDetailCache = Config.Bind(SecDetail, "DetailTileCache", 96,
                 Ui("How many drawn tiles are kept. Panning the map throws the oldest away, and coming back draws them again from nothing - a bigger cache keeps them instead. Each tile is about half a megabyte of memory, and as much again on the card.",
                     new AcceptableValueRange<int>(32, 512), UiAdvanced, "Detail: tiles kept", 14, true));
@@ -384,7 +384,7 @@ namespace LivingMap
                     }
                     tile.LastUsed = now;
                     float wx = tx * t, wz = tz * t;
-                    if (request && !tile.Ready && !tile.Queued && !tile.Failed && _dEnqueuedThisFrame < DEnqueuesPerFrame)
+                    if (request && !tile.Ready && !tile.Queued && !tile.Failed && CanEnqueue())
                     {
                         float dx = wx + t * 0.5f - cx, dz = wz + t * 0.5f - cz;
                         Enqueue(tile, dx * dx + dz * dz);
@@ -406,11 +406,15 @@ namespace LivingMap
         // the lowest priority first - and only in a frame that had no visible tile to queue, one
         // at a time, so the main thread never spends more on them than it would anyway.
         private const float DPrefetchPriority = 1e9f;
+        private const float DPrefetchAge = 30f;        // how much less recently used a drawn-ahead tile counts as
 
         private void Prefetch(int level, float vx0, float vx1, float vz0, float vz1, float now, float cx, float cz)
         {
             if (_cfgDetailPrefetch == null || !_cfgDetailPrefetch.Value) return;
-            if (_dEnqueuedThisFrame > 0) return;
+            if (_dEnqueuedThisFrame > 0 || !CanEnqueue()) return;
+            // the first level is the map's own picture read back from the card, which costs the
+            // main thread tens of milliseconds a tile: never draw those ahead
+            if (level == 0) return;
 
             float t = DTileSize * DLevels[level];
             int ix0 = Mathf.FloorToInt(vx0 / t), ix1 = Mathf.FloorToInt(vx1 / t);
@@ -442,7 +446,8 @@ namespace LivingMap
                 tile.Level = level; tile.TX = tx; tile.TZ = tz; tile.Key = key;
                 _dTiles[key] = tile;
             }
-            tile.LastUsed = now;
+            // old on purpose: when the cache is full these go before anything that was shown
+            tile.LastUsed = now - DPrefetchAge;
             if (tile.Ready || tile.Queued || tile.Failed) return true;
             float dx = tx * t + t * 0.5f - cx, dz = tz * t + t * 0.5f - cz;
             Enqueue(tile, prio + dx * dx + dz * dz);
@@ -687,6 +692,20 @@ namespace LivingMap
         // ------------------------------------------------------------------
         // jobs: snapshot on the main thread
         // ------------------------------------------------------------------
+        // The main thread can take two snapshots a frame, the workers draw far fewer tiles than
+        // that in the same time, so queueing at the full rate only buys a queue: by the time a
+        // job is taken the view has moved and it is drawn for nothing, or the map closes and it
+        // is dropped. Keeping the queue to about one job per worker in hand keeps it fresh - the
+        // nearest tile is then really the next one drawn - and gives the main thread back the
+        // milliseconds it was spending on jobs nobody would see.
+        private bool CanEnqueue()
+        {
+            if (_dEnqueuedThisFrame >= DEnqueuesPerFrame) return false;
+            int pending;
+            lock (_dLock) pending = _dPending.Count;
+            return pending < Mathf.Max(2, DetailThreads * 2);
+        }
+
         private void Enqueue(DTile tile, float priority)
         {
             Enqueue(tile, priority, false);
@@ -1014,7 +1033,7 @@ namespace LivingMap
                 if (!t.Ready || t.Img == null || !t.Img.enabled || t.LightSig == _dLight) continue;
                 if (t.Pending != null && t.PendingLight == _dLight) { pending++; continue; }
                 complete = false;
-                if (!t.Queued && _dEnqueuedThisFrame < DEnqueuesPerFrame) Enqueue(t, 1f, true);
+                if (!t.Queued && CanEnqueue()) Enqueue(t, 1f, true);
             }
             if (!complete || pending == 0) return;
             foreach (DTile t in _dTiles.Values)
@@ -1035,7 +1054,7 @@ namespace LivingMap
             _dScratch.Clear();
             foreach (DTile t in _dTiles.Values) if (t.Ready && !t.Queued && t.Img != null && t.Img.enabled) _dScratch.Add(t);
             if (_dScratch.Count == 0) return;
-            for (int n = 0; n < 2 && _dEnqueuedThisFrame < DEnqueuesPerFrame; n++)
+            for (int n = 0; n < 2 && CanEnqueue(); n++)
             {
                 _dRecheckCursor = (_dRecheckCursor + 1) % _dScratch.Count;
                 DTile t = _dScratch[_dRecheckCursor];

@@ -39,11 +39,19 @@ The version is set in one place — `LivingMapPlugin.Version` in `src/LivingMapP
   on the way back - a thousand tiles drawn for a hundred different ones. Each tile is about
   half a megabyte of memory and as much again on the card. `DetailWorkerThreads` can now be
   set as high as 8 by hand; the automatic choice is unchanged.
-- **A little more than the screen is drawn ahead** (`DetailPrefetch`, on): a ring of tiles
+- **The queue is kept short.** The main thread could take two snapshots a frame while the
+  threads drew far fewer tiles in the same time, so it was paying three milliseconds each
+  for jobs that the view had moved past by the time they were taken, or that were dropped
+  when the map closed - 2689 snapshots for 1362 tiles drawn in one session. It now stops at
+  about one job per thread in hand, which also makes the priorities mean something: the
+  nearest tile is really the next one drawn.
+- **A little more than the screen is drawn ahead** (`DetailPrefetch`, off by default): a ring of tiles
   around the view, so panning does not begin from nothing at the edge, and the view at the
   next closer level, so a step of the zoom has something to show at once. It is queued
   behind everything visible and never more than one tile a frame, so it takes nothing from
-  what is on screen - but it keeps more tiles, so raise `DetailTileCache` with it.
+  what is on screen, and never at the first level, whose tiles cost the main thread a read
+  back from the card. Measured on a world with the cache at 256 it still drew half the
+  tiles a second time, so it is off unless the cache is raised well past its default.
 - **The high-ground layer is lit like the map it lies on.** The shader darkens and tints
   everything it draws by the time of day; the layer is drawn after it and kept its colours,
   which read as a sticker at dusk. It is now multiplied by what that light comes to on flat

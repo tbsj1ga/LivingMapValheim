@@ -367,10 +367,12 @@ namespace LivingMap
             bool wantLarge = HighMode == HighBoth && _mm.m_mapImageLarge != null &&
                              _mm.m_largeRoot != null && _mm.m_largeRoot.activeInHierarchy;
             // Close up the detailed map draws the same shapes properly, so this one steps aside -
-            // but only once that map has really drawn the view. It appears at the zoom threshold
-            // and takes a second or two to fill in, and stepping aside at the threshold left a
-            // gap where neither showed the mountain.
-            if (wantLarge && _dRoot != null && _dRoot.gameObject.activeSelf && _dViewCovered) wantLarge = false;
+            // but only once that map has really drawn the view, and not at its first level. That
+            // level is the map's own picture read back from the card, the old one exactly: the
+            // rock pattern is already in those pixels and our buildings already gone from under
+            // it, and the port cannot tell which pixels were ours. Stepping aside there left the
+            // mountain shown by nobody.
+            if (wantLarge && _dRoot != null && _dRoot.gameObject.activeSelf && _dViewCovered && _dShownLevel > 0) wantLarge = false;
             bool wantSmall = _mm.m_mapImageSmall != null && _mm.m_smallRoot != null && _mm.m_smallRoot.activeInHierarchy;
 
             if (wantSmall) ShowHigh(ref _highSmall, _mm.m_mapImageSmall, true);
