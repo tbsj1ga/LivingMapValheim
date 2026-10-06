@@ -29,6 +29,7 @@ namespace LivingMap
         private ConfigEntry<string> _cfgDetailCloudStyle;
         private const string CloudsSmooth = "Smooth", CloudsExact = "Exact", CloudsOff = "Off";
         private ConfigEntry<bool> _cfgDetailStyled;
+        private ConfigEntry<bool> _cfgPortClassicFirst;
         // coast line width: 0 from _zoom, 1 from _pixelSize (the shader multiplies one of them by 50)
         internal static int s_portCoastFrom = 0;
 
@@ -37,6 +38,9 @@ namespace LivingMap
             _cfgDetailCloudStyle = Config.Bind(SecDetail, "DetailClouds", CloudsSmooth,
                 Ui("Clouds on the map. Smooth: drifting smoothly over the close-up detail, a little dimmer than the game's. Exact: with the game's own brightness, moving in small steps. Off: no clouds in the close-up detail (the zoomed-out map keeps them: the game draws the Mistlands mist from the same texture).",
                     new AcceptableValueList<string>(CloudsSmooth, CloudsExact, CloudsOff), UiDetail, "Clouds", 90, false));
+            _cfgPortClassicFirst = Config.Bind(SecDetail, "DetailFirstLevelFromMapTexture", false,
+                Ui("How the first and widest level of the detail is made. Off (default): drawn like every other level, from the world and Living Map's own data. On: the map's own picture read back from the graphics card, which matches what the map shows to the pixel - but each tile stops the game for tens of milliseconds while the card answers, and buildings on high ground are already gone from those pixels, erased by the rock pattern.",
+                    UiAdvanced, "Detail: first level from the map texture", 16, true));
             _cfgDetailStyled = Config.Bind(SecDetail, "DetailStyledPieces", true,
                 Ui("Close up, draw buildings and paths with textures - planks, masonry, straw, cobbles, furrows - with shaded edges, lit roof slopes and shadows. Off: flat colours.", UiDetail, "Building textures", 85, false));
             _cfgDetailStyle = Config.Bind(SecDetail, "DetailStyle", "Vanilla",
@@ -48,6 +52,7 @@ namespace LivingMap
         }
 
         private bool PortWanted { get { return _cfgDetailStyle != null && _cfgDetailStyle.Value == "Vanilla"; } }
+        private bool PortClassicFirst { get { return _cfgPortClassicFirst != null && _cfgPortClassicFirst.Value; } }
         private string CloudStyle { get { return _cfgDetailCloudStyle != null ? _cfgDetailCloudStyle.Value : CloudsSmooth; } }
 
         // The vanilla map keeps its clouds whatever DetailClouds says: its shader draws the
@@ -598,8 +603,10 @@ namespace LivingMap
                     Color32 c = kind == TerrainPaved ? p.Paved : kind == TerrainDirt ? p.Dirt : kind == TerrainCultivated ? p.Cultivated : p.Cleared;
                     PaintRect(d, n, j, cx0, cz0, cx0 + grid, cz0 + grid, c, kind);
                 }
-                // flat outlines only when not styled (styled buildings get a darker edge of their own)
-                bool outline = p.DrawOutline && !p.Styled && mpp < 1.2f;
+                // Flat outlines where the styling pass draws none: it fades its own darker edge
+                // in from 3 m a pixel, so the widest levels would show bare rectangles where the
+                // map under them has the halo the GPU layer draws at every zoom.
+                bool outline = p.DrawOutline && (mpp >= 3f || (!p.Styled && mpp < 1.2f));
                 float w = mpp;
                 if (outline)
                 {

@@ -39,6 +39,16 @@ The version is set in one place — `LivingMapPlugin.Version` in `src/LivingMapP
   on the way back - a thousand tiles drawn for a hundred different ones. Each tile is about
   half a megabyte of memory and as much again on the card. `DetailWorkerThreads` can now be
   set as high as 8 by hand; the automatic choice is unchanged.
+- **The widest level of the detail is drawn like the rest** instead of being read back off
+  the graphics card. That read was what made the first level match the map it replaces to
+  the pixel, but it stopped the game for 20 to 225 ms per tile while the card answered -
+  the worst hitch the mod had, and worst exactly where tiles are most numerous, zoomed out -
+  and the pixels it brought back already had the rock pattern over the mountains with the
+  buildings gone from under it. Drawn from the world and Living Map's own data instead,
+  the level costs nothing on the main thread and keeps what is built up high. The widest
+  two levels also get the dark halo around buildings that the styling pass only fades in
+  from 3 m a pixel, so they look like the map under them rather than bare rectangles.
+  `DetailFirstLevelFromMapTexture` puts the old way back.
 - **The queue is kept short.** The main thread could take two snapshots a frame while the
   threads drew far fewer tiles in the same time, so it was paying three milliseconds each
   for jobs that the view had moved past by the time they were taken, or that were dropped

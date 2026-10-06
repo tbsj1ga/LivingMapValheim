@@ -663,6 +663,7 @@ namespace LivingMap
                     if (list != null) sig += list.Count * 65537L;
                 }
             sig += (_cfgShowBuildings.Value ? 1 : 0) * 3 + (_cfgShowPaths.Value ? 1 : 0) * 5 + (_cfgShowCleared.Value ? 1 : 0) * 11;
+            sig += PortClassicFirst ? 13 : 0;      // switching it redraws rather than leaving a mix on screen
             return sig;
         }
 
@@ -742,7 +743,7 @@ namespace LivingMap
             DJob j = new DJob();
             j.Tile = tile; j.X0 = x0; j.Z0 = z0; j.Mpp = mpp; j.Priority = priority;
             j.Sig = RegionSig(tile);
-            if (PortWanted) j.Port = SnapshotPort(x0, z0, DTileSize * mpp, tile.Level == 0);
+            if (PortWanted) j.Port = SnapshotPort(x0, z0, DTileSize * mpp, tile.Level == 0 && PortClassicFirst);
             if (_dLight == 0 && j.Port != null) _dLight = PortLightSig();
             j.LightSig = _dLight; j.Relight = relight;
             j.WaterLevel = ZoneSystem.instance != null ? ZoneSystem.instance.m_waterLevel : 30f;
