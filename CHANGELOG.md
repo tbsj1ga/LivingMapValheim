@@ -20,6 +20,19 @@ The version is set in one place — `LivingMapPlugin.Version` in `src/LivingMapP
 - `livingmap status` shows the sharing state: players served and tiles sent on the host,
   tiles received on a player.
 
+- **Buildings in the mountains, on the minimap and the zoomed-out map** (`HighGroundOverlay`,
+  new, in *1. Map layers*). The game's own map shader hides everything under its rock
+  pattern above 70 m, and that is the shader that draws the minimap and the map until the
+  detail starts - so a mountain base is simply not there. Living Map now draws those shapes
+  a second time, into a texture of its own, and lays it over both map images. Only what
+  stands at or above 70 m goes in, so nothing lower is drawn twice, and the texture exists
+  only once something is built that high: a world without a mountain base costs nothing.
+  `Off` / `Minimap` / `Both` (default). It is a flat colour over the rock, not the shader's
+  own shading - zoom in for the proper picture.
+- `DetailStartSpanMeters` now goes up to 25000, so the detailed map can be made to cover
+  the whole zoomed-out map. Past about 12000 that is far more tiles than the cache holds;
+  the default stays 6000.
+
 **Fixes**
 
 - **Buildings in the mountains were not on the detailed map.** Above 70 m the game's map

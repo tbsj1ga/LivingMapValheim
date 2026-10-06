@@ -180,6 +180,7 @@ namespace LivingMap
             {
                 _nextRefogTime = now + RefogInterval;
                 ReleaseFromFog();
+                _highDirty = true;
             }
 
             if (_rt != null)
@@ -205,11 +206,14 @@ namespace LivingMap
                         _maskDirty = false;
                         RebuildMask();
                     }
+                    _highDirty = true;      // the same shapes, drawn again for high ground
                 }
             }
 
             try { ShareTick(now); }
             catch (Exception e) { HandleError("share", e); }
+
+            if (_highDirty && HighWanted) RebuildHighLayer();
 
             if (_cfgPersist.Value && _storeChanged && now >= _nextSaveTime)
             {
@@ -307,6 +311,7 @@ namespace LivingMap
             }
 
             ReleaseGpuLayer();
+            try { HighTeardown(); } catch (Exception e) { Logger.LogWarning("High-ground layer teardown: " + e.Message); }
             try { DetailTeardown(); } catch (Exception e) { Logger.LogWarning("Detail layer teardown: " + e.Message); }
 
             _mm = null; _vanillaTex = null; _origSmallTex = null; _origLargeTex = null;

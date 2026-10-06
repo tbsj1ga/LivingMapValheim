@@ -212,6 +212,7 @@ namespace LivingMap
                 Ui("Flip the layer vertically, for a graphics API that draws it upside down.", UiDebug, "Flip layer", 16, true));
 
             // --- 08 Detail
+            BindHighGroundConfig();
             BindDetailConfig();
             BindNoticeConfig();
             BindShareConfig();

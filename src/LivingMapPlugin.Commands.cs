@@ -86,7 +86,7 @@ namespace LivingMap
                 UseZdoScan ? (_zdoAuthoritative ? "ZDO (host, whole world)" : "ZDO (client)") : "physics",
                 UseZdoPaths ? "terrain records" : "loaded heightmaps",
                 _rt != null ? _rt.width : 0, _rt != null ? _pixelSize / _rtScale : 0f,
-                _zdoPassFrames, _zdoPassMs) + "; " + DetailStatus() + "; " + ShareStatus()
+                _zdoPassFrames, _zdoPassMs) + "; " + DetailStatus() + "; " + ShareStatus() + "; " + HighStatus()
                 + "\n" + MaterialText();
         }
 
