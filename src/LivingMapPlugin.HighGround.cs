@@ -290,16 +290,20 @@ namespace LivingMap
 
             if (_rtHigh == null)
             {
-                // The map layer's grid, but no finer than 4096 across the world (6 m a pixel).
-                // At MapTextureScale 8 that layer alone is a gigabyte of video memory, and this
-                // one is flat colour over a rock pattern: another copy of it would be paid for
-                // sharpness nobody can see. At the default scale the two are the same size.
-                int size = Mathf.Min(_rt.width, Mathf.Max(_texSize, 4096));
+                // The map layer's own grid, so a building here is exactly the size and shape it
+                // is there, capped at 8192 (a gigabyte at MapTextureScale 8 is not worth it for
+                // a layer of flat colour). Coarser was tried at 4096 and is wrong: this texture
+                // is magnified, not minified - the minimap shows about a metre a screen pixel,
+                // and the big map while the detailed one is still drawing - so every halving
+                // shows up directly as a blurrier building.
+                int size = Mathf.Min(_rt.width, 8192);
                 RenderTexture rt = new RenderTexture(size, size, 0, RenderTextureFormat.ARGB32);
                 rt.name = "LivingMap_HighGround";
                 rt.useMipMap = false;
                 rt.autoGenerateMips = false;
-                rt.filterMode = _rt.filterMode;
+                // Point, not the map layer's smoothing: what is drawn here are shapes with
+                // edges, and under magnification smoothing turns a building into a soft patch.
+                rt.filterMode = FilterMode.Point;
                 rt.anisoLevel = 0;
                 rt.wrapMode = _rt.wrapMode;
                 bool created = false;
@@ -504,8 +508,9 @@ namespace LivingMap
             if (!HighWanted) return "mountains overlay off";
             if (_highPixels == null) return "mountains overlay: no height data";
             if (_rtHigh == null) return "mountains overlay on, nothing built above " + HighGroundFrom + " m";
-            return string.Format("mountains overlay {0}: {1} pieces, {2} path cells at {3}px",
-                HighMode.ToLowerInvariant(), _highPieceCount, _highCellCount, _rtHigh.width);
+            return string.Format("mountains overlay {0}: {1} pieces, {2} path cells at {3}px ({4:0} MB)",
+                HighMode.ToLowerInvariant(), _highPieceCount, _highCellCount, _rtHigh.width,
+                _rtHigh.width * (double)_rtHigh.height * 4 / (1024 * 1024));
         }
     }
 }
