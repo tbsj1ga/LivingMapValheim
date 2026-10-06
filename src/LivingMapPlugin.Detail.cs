@@ -175,6 +175,8 @@ namespace LivingMap
         }
 
         private readonly Dictionary<long, DTile> _dTiles = new Dictionary<long, DTile>();
+        private readonly HashSet<long> _dEverDrawn = new HashSet<long>();   // every tile drawn this session
+        private int _dRedraws;                                              // ... and how many of them a second time
         private readonly List<DJob> _dPending = new List<DJob>();
         private readonly List<DJob> _dDone = new List<DJob>();
         private readonly object _dLock = new object();
@@ -453,12 +455,13 @@ namespace LivingMap
             float lv = _dShownLevel < DLevels.Length ? DLevels[_dShownLevel] : 0f;
             int threads = _dWorkers != null ? _dWorkers.Length : 0;
             return string.Format("detail layer {0}, last shown {6:0} s ago: level {1} of {2} ({3:0.##} m per map pixel), {4:0.##} m per screen pixel, so a map pixel is {5:0.#} screen pixels. "
-                + "Cost so far: {7} tiles drawn on {8} background threads, {9:0} ms a tile on average (worst {10:0}); {11} snapshots on the main thread, {12:0.0} ms on average (worst {13:0.0}); {14} tiles cached (~{15:0} MB)",
+                + "Cost so far: {7} tiles drawn on {8} background threads ({16} of them a second time, after the cache let them go), {9:0} ms a tile on average (worst {10:0}); {11} snapshots on the main thread, {12:0.0} ms on average (worst {13:0.0}); {14} of {17} tiles cached (~{15:0} MB)",
                 PortWanted ? "vanilla style" : "legacy", _dShownLevel + 1, DLevels.Length, lv, _dShownNeed, _dShownNeed > 0f ? lv / _dShownNeed : 0f,
                 Time.realtimeSinceStartup - _dShownAt,
                 _dRendered, threads, _dRendered > 0 ? _dMsTotal / _dRendered : 0.0, _dMsMax,
                 _dSnaps, _dSnaps > 0 ? _dSnapMsTotal / _dSnaps : 0.0, _dSnapMsMax,
-                _dTiles.Count, _dTiles.Count * (DTileSize * DTileSize * 8) / (1024.0 * 1024.0));
+                _dTiles.Count, _dTiles.Count * (DTileSize * DTileSize * 8) / (1024.0 * 1024.0),
+                _dRedraws, DetailCacheLimit);
         }
 
         private void UpdateLevels(float world)
@@ -548,6 +551,7 @@ namespace LivingMap
             StopWorkers();
             DestroyDetailLayer();
             _dTiles.Clear();
+            _dEverDrawn.Clear(); _dRedraws = 0;
             lock (_dLock) { _dPending.Clear(); _dDone.Clear(); }
         }
 
@@ -634,6 +638,8 @@ namespace LivingMap
         private void Enqueue(DTile tile, float priority, bool relight)
         {
             _dEnqueuedThisFrame++;
+            // the same tile again, because the cache had let it go - a light change does not count
+            if (!_dEverDrawn.Add(tile.Key) && !relight) _dRedraws++;
             long s0 = Stopwatch.GetTimestamp();
             DJob j = BuildJob(tile, priority, relight);
             double sms = (Stopwatch.GetTimestamp() - s0) * 1000.0 / Stopwatch.Frequency;
