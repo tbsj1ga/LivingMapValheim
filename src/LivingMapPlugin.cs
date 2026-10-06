@@ -257,6 +257,10 @@ namespace LivingMap
             _zdoHavePrevOrigin = false;
             _nextZdoPass = 0f;
             InitForestLayer();
+            // the vanilla style's pattern textures: about 60 MB read off the card once per world.
+            // Done here it lands in the loading screen; left to the first tile it was a hundred
+            // milliseconds in the middle of opening the map.
+            if (PortWanted) { try { EnsurePort(); } catch (Exception e) { Logger.LogWarning("Port assets: " + e.Message); } }
 
             // The map layer lives on the graphics card and nowhere else. Without it there is
             // nothing to draw into, so the mod stays out of the way for the session.
