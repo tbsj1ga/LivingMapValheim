@@ -67,6 +67,14 @@ the very textures the map shows — the old picture exactly, so the switch is in
 zoom. Finer than ~2 m would be denser than the map's own paper texture. Building and path
 textures, edges, shadows and lit roof slopes grow in over the levels.
 
+**One deliberate difference from the shader.** Above 70 m the game draws a rock pattern
+over the map colour, and above 80 m it pulls everything dark on flat ground towards the
+grey of snow. To the game that colour is the ground and nothing else; Living Map paints
+its buildings and paths into the same texture, and the rock pattern is opaque, so from
+95 m up it replaced them completely - a mountain base was simply not on the map. The
+detail layer draws those two over the ground only, never over Living Map's own paint.
+The zoomed-out map and the minimap are the game's own shader and still cover them.
+
 **Clouds** (`DetailClouds`): `Smooth` — their own layer drifting over the tiles, a little
 dimmer than the game's (a layer cannot go brighter than white, the shader's clouds can);
 `Exact` — drawn into the tiles with the game's brightness, the tiles redrawn every ~20 m of

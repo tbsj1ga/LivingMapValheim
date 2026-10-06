@@ -22,6 +22,14 @@ The version is set in one place — `LivingMapPlugin.Version` in `src/LivingMapP
 
 **Fixes**
 
+- **Buildings in the mountains were not on the detailed map.** Above 70 m the game's map
+  draws a rock pattern over the colour of the ground, and above 80 m it pulls everything
+  dark on flat ground towards the grey of snow. Living Map paints its buildings and paths
+  into that same colour, and the rock pattern is opaque, so from 95 m up it covered them
+  completely: a mountain base was not on the map at all, and lower down it faded out. The
+  detail layer now draws the rock, the snow and the lava of the Ashlands over the ground
+  only, never over what Living Map painted. (The zoomed-out map and the minimap are drawn
+  by the game's own shader, which still covers them - zoom in to see a mountain base.)
 - **Buildings could be missing from the detailed map** although the map knew about them.
   The prefab cache is dropped on teardown (leaving a world, the map texture being
   re-created), but the detail layer's own table of prefab kinds was not: it then said

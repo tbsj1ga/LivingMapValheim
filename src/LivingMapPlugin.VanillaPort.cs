@@ -910,6 +910,7 @@ namespace LivingMap
                     float mX = Data(p, p.MaskX, u, v), mY = Data(p, p.MaskY, u, v), mZ = Data(p, p.MaskZ, u, v);
                     float hgt = Data(p, p.Height, u, v);
                     int di = -1;
+                    bool mine = false;        // Living Map painted this pixel: a building, a path, a field
                     if (det != null)
                     {
                         // the snapped point, back to world metres and to this tile's pixel
@@ -918,6 +919,7 @@ namespace LivingMap
                         int pxi = Mathf.Clamp(Mathf.RoundToInt(fx), 0, n - 1), pzi = Mathf.Clamp(Mathf.RoundToInt(fz), 0, n - 1);
                         di = pzi * n + pxi;
                         hgt = Sample(det.H, det.Gs, fx / DStep + 1f, fz / DStep + 1f);
+                        mine = det.Kind != null && det.Kind[di] != 0;
                         // forest: as the main layer draws it (vanilla mask + corrections, smooth)
                         mX = Data(p, det.MaskX, u, v);
                     }
@@ -1004,19 +1006,26 @@ namespace LivingMap
                         o2 = o2 > 0f ? Mathf.Pow(o2, 2.5f) : 0f;
                         float lcR = p.Lava1.r + (p.Lava2.r - p.Lava1.r) * o2, lcG = p.Lava1.g + (p.Lava2.g - p.Lava1.g) * o2, lcB = p.Lava1.b + (p.Lava2.b - p.Lava1.b) * o2;
                         float lm = hl * mZ;
-                        float fk = lm <= 0.5f ? 2f * lv0 * lm : 1f - 2f * (1f - lv0) * (1f - mZ * hl);
+                        float fk = mine ? 0f : (lm <= 0.5f ? 2f * lv0 * lm : 1f - 2f * (1f - lv0) * (1f - mZ * hl));
                         cR += (lcR - cR) * fk; cG += (lcG - cG) * fk; cB += (lcB - cB) * fk;
                     }
 
-                    // mountains above 70 m, snow-grey on flat high ground, then the light
+                    // Mountains above 70 m, snow-grey on flat high ground, then the light. The
+                    // game draws these over whatever the map texture holds, because to it that
+                    // texture is only the colour of the ground. Living Map paints its buildings
+                    // and paths into the same texture, so up here they were being covered: above
+                    // 95 m the rock pattern replaced them outright, and on flat ground above
+                    // 100 m everything dark was pulled to the same grey as the snow - a mountain
+                    // base faded out of the map. Our own paint keeps its colour; the ground
+                    // around it is drawn exactly as the game draws it.
                     float mtR, mtG, mtB, mtA;
                     A.Mountain.Sample(u * 70f, v * 70f, lodMount, out mtR, out mtG, out mtB, out mtA);
-                    float mk = Mathf.Clamp01((hgt - 70f) * 0.04f) * mtA;
+                    float mk = mine ? 0f : Mathf.Clamp01((hgt - 70f) * 0.04f) * mtA;
                     r = cR + (mtR - cR) * mk; g = cG + (mtG - cG) * mk; b = cB + (mtB - cB) * mk; a = cA + (mtA - cA) * mk;
                     float high = Mathf.Clamp01((hgt - 80f) * 0.05f);
                     float flat = Mathf.Clamp01((ny - 0.14f) * 6.25f);
                     float lum = Mathf.Clamp01((r + g + b) * 1.5f);
-                    float sk = Mathf.Max(high * flat - lum, 0f);
+                    float sk = mine ? 0f : Mathf.Max(high * flat - lum, 0f);
                     r += (0.5f - r) * sk; g += (0.5f - g) * sk; b += (0.5f - b) * sk;
                     r *= litR; g *= litG; b *= litB;
 
