@@ -32,7 +32,12 @@ The version is set in one place — `LivingMapPlugin.Version` in `src/LivingMapP
   (capped at 8192), with no smoothing: it is always seen magnified, on the minimap and on
   the big map while the detailed one is still drawing, and anything coarser or smoothed
   turns a building into a soft patch. It is drawn again only when something up there has
-  changed, not every time the map layer updates. On the zoomed-out map
+  changed, not every time the map layer updates. How loud it is is a setting of its own
+  (`HighGroundStrength`, 0.7): the layer lies over the map rather than in it, so at full
+  strength its colours are the plain ones and in daylight on snow that is louder than
+  anything the map draws itself; lower lets the rock show through. The colours themselves
+  are taken a fifth of the way towards their own brightness for the same reason. On the
+  zoomed-out map
   (`Both`) it hands over to the detailed map only once that has really drawn the view, not
   at the zoom where it begins - there was a moment where neither showed the mountain.
 

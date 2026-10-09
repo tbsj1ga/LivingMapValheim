@@ -33,6 +33,7 @@ namespace LivingMap
         private const float HighGroundFrom = 70f;       // where the shader's rock pattern begins
 
         private ConfigEntry<string> _cfgHighOverlay;
+        private ConfigEntry<float> _cfgHighStrength;
 
         private RenderTexture _rtHigh;
         private Material _glMatHigh;
@@ -50,11 +51,15 @@ namespace LivingMap
         private void BindHighGroundConfig()
         {
             _cfgHighOverlay = Config.Bind(SecLayers, "HighGroundOverlay", HighMinimap,
-                Ui("Buildings and paths above 70 metres, drawn over the game's rock pattern. The game's map hides whatever is under that pattern, so a base in the mountains is not on the minimap or on the zoomed-out map at all; this draws it on top of them. Close up the detailed map draws it properly anyway, so this is for the other two. Minimap (default): only there, where it reads as part of the map. Both: on the zoomed-out map as well, where a flat colour next to the shader's own shading is more noticeable. Costs a texture of its own - 64 MB of video memory, less at MapTextureScale 1 - and only once something is built that high.",
+                Ui("Buildings and paths above 70 metres, drawn over the game's rock pattern. The game's map hides whatever is under that pattern, so a base in the mountains is not on the minimap or on the zoomed-out map at all; this draws it on top of them. Close up the detailed map draws it properly anyway, so this is for the other two. Minimap (default): only there, where it reads as part of the map. Both: on the zoomed-out map as well, where a flat colour next to the shader's own shading is more noticeable. Costs a texture of its own, on the map layer's grid, and only once something is built that high - livingmap status says how much.",
                     new AcceptableValueList<string>(HighOff, HighMinimap, HighBoth), UiLayers, "Mountains: buildings over the rock", 85, false));
+            _cfgHighStrength = Config.Bind(SecLayers, "HighGroundStrength", 0.7f,
+                Ui("How strongly those buildings show. The layer is drawn over the map rather than into it, so at full strength its colours are the plain ones, which in daylight on snow is louder than anything the map draws itself. Lower lets the rock show through and settles them into the picture; 1 is the plain colour.",
+                    new AcceptableValueRange<float>(0.2f, 1f), UiLayers, "Mountains: how strongly", 84, false));
         }
 
         private string HighMode { get { return _cfgHighOverlay != null ? _cfgHighOverlay.Value : HighOff; } }
+        private float HighStrength { get { return _cfgHighStrength != null ? Mathf.Clamp(_cfgHighStrength.Value, 0.2f, 1f) : 0.7f; } }
         private bool HighWanted { get { return !_highUnavailable && HighMode != HighOff && _cfgEnabled != null && _cfgEnabled.Value; } }
 
         // ------------------------------------------------------------------
@@ -267,7 +272,11 @@ namespace LivingMap
         // rather than mixed into it.
         private static Color Solid(Color c)
         {
-            return new Color(c.r, c.g, c.b, 1f);
+            // a fifth of the way to its own brightness: the map's palette is never this saturated,
+            // and a building here is seen against snow, which shows every bit of it
+            const float mute = 0.2f;
+            float l = 0.299f * c.r + 0.587f * c.g + 0.114f * c.b;
+            return new Color(c.r + (l - c.r) * mute, c.g + (l - c.g) * mute, c.b + (l - c.b) * mute, 1f);
         }
 
         private bool EnsureHighTexture()
@@ -396,7 +405,7 @@ namespace LivingMap
         private Color HighLight()
         {
             Material m = _mm != null && _mm.m_mapImageSmall != null ? _mm.m_mapImageSmall.material : null;
-            if (m == null) return Color.white;
+            if (m == null) return new Color(1f, 1f, 1f, HighStrength);
             try
             {
                 if (!m.HasProperty("_lightColor") || !m.HasProperty("_ambientLightColor")) return Color.white;
@@ -411,9 +420,11 @@ namespace LivingMap
                     Mathf.Clamp01(diff * lt.r * sun.r + amb.r * ambG.r),
                     Mathf.Clamp01(diff * lt.g * sun.g + amb.g * ambG.g),
                     Mathf.Clamp01(diff * lt.b * sun.b + amb.b * ambG.b), 1f);
-                return lit.gamma;                                                // the UI multiplies in gamma space
+                Color g = lit.gamma;                                             // the UI multiplies in gamma space
+                g.a = HighStrength;                                              // ... and blends the layer by its alpha
+                return g;
             }
-            catch { return Color.white; }
+            catch { return new Color(1f, 1f, 1f, HighStrength); }
         }
 
         private void ShowHigh(ref RawImage img, RawImage map, bool round)
