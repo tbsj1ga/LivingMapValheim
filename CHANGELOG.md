@@ -56,6 +56,13 @@ The version is set in one place — `LivingMapPlugin.Version` in `src/LivingMapP
   buildings gone from under it. Drawn from the world and Living Map's own data instead,
   the level costs nothing on the main thread and keeps what is built up high.
   `DetailFirstLevelFromMapTexture` puts the old way back.
+- **Zooming no longer empties the map for a moment.** While a level is being drawn, what
+  shows behind it is the picture already drawn - and that was taken to be the one level
+  coarser, which is not always where it is. The zoom steps over a level now and then, and a
+  wide view is pushed coarser still, and then there was nothing behind and the game's own
+  map showed through: on a mountain that map has no buildings at all, so they disappeared
+  until the new tiles arrived. Whichever level has the most of the view already drawn is
+  used instead.
 - **The queue is kept short.** The main thread could take two snapshots a frame while the
   threads drew far fewer tiles in the same time, so it was paying three milliseconds each
   for jobs that the view had moved past by the time they were taken, or that were dropped

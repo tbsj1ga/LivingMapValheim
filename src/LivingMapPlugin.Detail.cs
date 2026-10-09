@@ -338,17 +338,49 @@ namespace LivingMap
                 if (t.Img2 != null && t.Img2.enabled) t.Img2.enabled = false;
             }
 
-            // fallback one level coarser, behind
-            if (level > 0) ShowLevel(level - 1, vx0, vx1, vz0, vz1, uv, world, now, false, cx, cz);
+            // Behind: the best picture already drawn, whichever level it is on. One level
+            // coarser was the assumption, and it fails where it matters most - the zoom steps
+            // over a level now and then (six levels spread over the wheel's range, and a wide
+            // view is pushed coarser still by DVisibleLimit), and then that one level held
+            // nothing and what showed through was the game's own map. On a mountain that map
+            // has no buildings at all, so they vanished for as long as the new tiles took.
+            int back = -1;
+            float bestHave = 0f;
+            for (int lv = level - 1; lv >= 0; lv--)
+            {
+                int want, got;
+                ReadyTiles(lv, vx0, vx1, vz0, vz1, out want, out got);
+                if (want <= 0 || got <= 0) continue;
+                float ratio = got / (float)want;
+                if (ratio > bestHave + 0.001f) { bestHave = ratio; back = lv; }
+                if (bestHave >= 0.999f) break;                  // fully drawn: nothing coarser can beat it
+            }
+            if (back >= 0) ShowLevel(back, vx0, vx1, vz0, vz1, uv, world, now, false, cx, cz);
             ShowLevel(level, vx0, vx1, vz0, vz1, uv, world, now, true, cx, cz);
             Prefetch(level, vx0, vx1, vz0, vz1, now, cx, cz);
-            if (level > 0) HideCoveredFog(level);
+            if (back >= 0) HideCoveredFog(level, back);
             UpdateClouds(uv);
 
             UploadDone();
             RecheckTiles(now);
             RelightTiles(now);
             Evict(now);
+        }
+
+        // How much of the view a level has drawn already, without touching anything
+        private void ReadyTiles(int level, float vx0, float vx1, float vz0, float vz1, out int need, out int have)
+        {
+            need = 0; have = 0;
+            float t = DTileSize * DLevels[level];
+            int tx0 = Mathf.FloorToInt(vx0 / t), tx1 = Mathf.FloorToInt(vx1 / t);
+            int tz0 = Mathf.FloorToInt(vz0 / t), tz1 = Mathf.FloorToInt(vz1 / t);
+            for (int tz = tz0; tz <= tz1; tz++)
+                for (int tx = tx0; tx <= tx1; tx++)
+                {
+                    need++;
+                    DTile tile;
+                    if (_dTiles.TryGetValue(TileKey(level, tx, tz), out tile) && tile.Ready && tile.Img != null) have++;
+                }
         }
 
         private static int TileCount(int level, float x0, float x1, float z0, float z1)
@@ -465,12 +497,12 @@ namespace LivingMap
 
         // A coarser tile stays behind the current level while it loads; its fog is hidden where
         // the finer tiles over it are all shown, or the two fog layers would add up.
-        private void HideCoveredFog(int level)
+        private void HideCoveredFog(int level, int back)
         {
-            float fine = DTileSize * DLevels[level], coarse = DTileSize * DLevels[level - 1];
+            float fine = DTileSize * DLevels[level], coarse = DTileSize * DLevels[back];
             foreach (DTile t in _dTiles.Values)
             {
-                if (t.Level != level - 1 || t.Img2 == null || !t.Img2.enabled) continue;
+                if (t.Level != back || t.Img2 == null || !t.Img2.enabled) continue;
                 float x0 = t.TX * coarse, z0 = t.TZ * coarse;
                 int fx0 = Mathf.FloorToInt(x0 / fine), fx1 = Mathf.FloorToInt((x0 + coarse - 0.01f) / fine);
                 int fz0 = Mathf.FloorToInt(z0 / fine), fz1 = Mathf.FloorToInt((z0 + coarse - 0.01f) / fine);
