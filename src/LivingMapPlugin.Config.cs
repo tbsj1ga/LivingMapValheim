@@ -134,9 +134,9 @@ namespace LivingMap
                     new AcceptableValueRange<float>(1f, 120f), UiAdvanced, "Update every (s)", 48, true));
 
             // --- 04 Rendering
-            _cfgMapScale = Config.Bind(SecRendering, "MapTextureScale", 2,
-                Ui("How sharp the map and the minimap are: 1 = 12 m a pixel, 2 = 6 m (~67 MB of video memory), 4 = 3 m (~268 MB), 8 = 1.5 m (~1 GB). This is what to raise if buildings look smeared, and the only setting that needs the world loaded again. Close up, the detailed map draws them itself and is not affected.",
-                    new AcceptableValueList<int>(1, 2, 4, 8), UiLayers, "Map sharpness", 95, false));
+            _cfgMapScale = Config.Bind(SecRendering, "MapTextureScale", 0,
+                Ui("How sharp the map and the minimap are. 0 = chosen for your graphics card: 1 under 3 GB, 2 under 7 GB, 4 above. Or set it: 1 = 12 m a pixel (16 MB of video memory), 2 = 6 m (64 MB), 4 = 3 m (256 MB), 8 = 1.5 m (1 GB). This is what to raise if buildings look smeared, and the only setting that needs the world loaded again. Close up, the detailed map draws its own picture and is not affected. livingmap status says what is in use.",
+                    new AcceptableValueList<int>(0, 1, 2, 4, 8), UiLayers, "Map sharpness", 95, false));
             _cfgPieceSize = Config.Bind(SecRendering, "MinPieceSizeMeters", 2f,
                 Ui("Smallest size a building piece is drawn at on the zoomed-out map, so thin walls stay visible.",
                     new AcceptableValueRange<float>(0.1f, 8f), UiAdvanced, "Smallest piece (m)", 44, true));

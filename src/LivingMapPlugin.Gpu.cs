@@ -34,6 +34,24 @@ namespace LivingMap
         private int _rtScale = 1;
         private int _rtRebuilds;
 
+        // The map layer is the mod's largest claim on the card - 16 MB at 1, and four times
+        // that at each step up - and the high-ground layer takes the same again when there is
+        // something to draw up there. A card is not asked how much it has free (nothing portable
+        // reports that), only how much it has at all, and the step is chosen to leave the game
+        // the lion's share of it. Setting it by hand overrides this; the card refusing the size
+        // steps it down again further below.
+        private int MapScale
+        {
+            get
+            {
+                int v = _cfgMapScale != null ? _cfgMapScale.Value : 0;
+                if (v > 0) return Mathf.Clamp(v, 1, 8);
+                int vram = SystemInfo.graphicsMemorySize;          // MB, as the driver reports it
+                if (vram <= 0) return 2;                           // unknown: the old default
+                return vram < 3072 ? 1 : vram < 7168 ? 2 : 4;
+            }
+        }
+
         // ------------------------------------------------------------------
         // GPU map layer - draws straight into the texture the map shader samples
         // ------------------------------------------------------------------
@@ -48,7 +66,7 @@ namespace LivingMap
                 return false;
             }
 
-            int scale = Mathf.Clamp(_cfgMapScale.Value, 1, 8);
+            int scale = MapScale;
             int maxSize = SystemInfo.maxTextureSize > 0 ? SystemInfo.maxTextureSize : 8192;
             while (_texSize * scale > maxSize && scale > 1) scale /= 2;
             if (_texSize * scale > maxSize) return false;

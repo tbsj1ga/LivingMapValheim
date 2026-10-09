@@ -85,7 +85,7 @@ namespace LivingMap
                 Version, _pieceCount, _pieces.Count, _terrain.Count, _clearedForest.Count, _plantedForest.Count,
                 UseZdoScan ? (_zdoAuthoritative ? "ZDO (host, whole world)" : "ZDO (client)") : "physics",
                 UseZdoPaths ? "terrain records" : "loaded heightmaps",
-                _rt != null ? _rt.width : 0, _rt != null ? _pixelSize / _rtScale : 0f,
+                (_rt != null ? _rt.width : 0) + (_cfgMapScale.Value > 0 ? "" : " auto"), _rt != null ? _pixelSize / _rtScale : 0f,
                 _zdoPassFrames, _zdoPassMs) + "; " + DetailStatus() + "; " + ShareStatus() + "; " + HighStatus()
                 + "\n" + MaterialText();
         }

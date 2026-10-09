@@ -247,7 +247,7 @@ the file are what the tables below list.
 
 | Setting | Meaning |
 |---|---|
-| `MapTextureScale` | 1 / 2 / 4 / 8 → 2048 / 4096 / 8192 / 16384 pixels, i.e. 12 / 6 / 3 / 1.5 m per pixel; 67 MB / 268 MB / 1 GB of video memory. Default 2 (4 before 0.16.0). It decides how crisp **buildings and paths** are; the terrain underneath (coastlines, biome colours, the forest pattern) is the vanilla 12 m texture stretched to this size and does not get any more detailed; close up, the detail layer (`08 Detail`) draws the terrain itself. Takes effect on the next world load. |
+| `MapTextureScale` | 0 (default) = chosen from the card's memory: 1 under 3 GB, 2 under 7 GB, 4 above. Or 1 / 2 / 4 / 8 → 2048 / 4096 / 8192 / 16384 pixels, i.e. 12 / 6 / 3 / 1.5 m per pixel; 16 / 64 / 256 / 1024 MB of video memory. It decides how crisp **buildings and paths** are; the terrain underneath (coastlines, biome colours, the forest pattern) is the vanilla 12 m texture stretched to this size and does not get any more detailed; close up, the detail layer (`08 Detail`) draws the terrain itself. Takes effect on the next world load. |
 | `MinPieceSizeMeters` | Smallest size a build piece is drawn at, in metres. Metres on purpose, so a sharper texture does not make small pieces fainter. |
 | `BuildingOutline`, `OutlineWidthMeters` | A dark halo around buildings, so a house separates from the levelled ground under it, and how far it extends. |
 | `TerrainGridSize` | Metres per cell of the path layer. The terrain records hold 1 m; 2 is plenty up to `MapTextureScale` 4, at 8 the difference shows. Halving it means four times the cells in memory and in the file. Changing it drops the stored path cells (the file records the step they were collected at); the host has them back within one pass. |
@@ -332,9 +332,24 @@ lines).
 | Save | every 60 s when something changed | a ~200 KB file, fractions of a millisecond |
 | World start | once | reading the 16 MB forest mask, loading the file, the first rebuild and the first pass; on a big world the first pass is stretched by the limit of 600 biome lookups per frame |
 
-Memory: ~6–7 MB RAM (4 MB tree counters, two 512 KB bit sets, a ~600 KB ZDO
-snapshot, buildings and caches for the rest). Video memory — see
-`MapTextureScale`, plus 16 MB for the forest mask.
+### Memory
+
+All of it is the price of the map being a texture rather than a drawing, and most of it
+is on the graphics card.
+
+| | Size | When |
+|---|---|---|
+| The map layer | 16 / 64 / 256 / 1024 MB at `MapTextureScale` 1 / 2 / 4 / 8 | always, from the world load |
+| The high-ground layer | the same again | only once something stands above 70 m |
+| The forest mask | 16 MB | with the forest layers on |
+| Drawn tiles | 0.5 MB each, `DetailTileCache` of them (96 = 48 MB), and as much in RAM | from the first time the big map is zoomed in |
+| Pattern textures | ~60 MB of RAM | from the world load, for the detailed map's style |
+| Everything the mod remembers | ~7 MB of RAM for a world of 100 000 pieces, 4 MB of tree counters, a few bit sets | always |
+
+With `MapTextureScale` left at 0 the step is chosen from what the card reports having:
+1 under 3 GB, 2 under 7 GB, 4 above. On a 4 GB card that comes to about 190 MB of video
+memory in total, which is what a mod should cost beside a game using two to three
+gigabytes of it. `livingmap status` prints what is actually in use.
 
 ## Building
 

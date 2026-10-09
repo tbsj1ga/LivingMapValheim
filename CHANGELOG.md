@@ -73,6 +73,12 @@ The version is set in one place — `LivingMapPlugin.Version` in `src/LivingMapP
   anywhere else. The styled levels reach a similar place by themselves, through the texture,
   the darker edge and the shadow; the flat ones now have the same amount taken off, fading
   out as the styling arrives.
+- **The map's sharpness chooses itself.** `MapTextureScale = 0`, the new default, picks the
+  step from what the graphics card reports having: 1 under 3 GB, 2 under 7 GB, 4 above. The
+  map layer is the mod's largest claim on the card and the high-ground layer takes the same
+  again, so on a 4 GB card the whole mod comes to about 190 MB beside a game that wants two
+  to three gigabytes. Setting it by hand still wins, `livingmap status` says what is in use,
+  and the README has the table of what costs what.
 - **`MapTextureScale` is no longer hidden.** It sat among the advanced settings, behind the
   tick that the configuration window hides them with, although it is the one setting that
   decides whether the map and the minimap look sharp or smeared - and the only one that

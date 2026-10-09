@@ -302,12 +302,13 @@ namespace LivingMap
             _ready = true;
 
             Logger.LogInfo(string.Format(
-                "Attached to map: vanilla {0}px at {1} m/px; map layer {2}; buildings via {3}; forest layers {4}; world={5}, restored pieces={6}, terrain cells={7}, forest pixels cleared={8} planted={9}",
+                "Attached to map: vanilla {0}px at {1} m/px; map layer {2}{10}; buildings via {3}; forest layers {4}; world={5}, restored pieces={6}, terrain cells={7}, forest pixels cleared={8} planted={9}",
                 _texSize, _pixelSize.ToString("0.##"),
                 _rt.width + "px on the GPU = " + (_pixelSize / _rtScale).ToString("0.##") + " m/px",
                 UseZdoScan ? "the object database (ZDO)" : "physics",
                 (_treeCount != null ? "on" : "off") + "; paths via " + (UseZdoPaths ? "terrain records (ZDO)" : "loaded heightmaps"),
-                _worldUid, _pieceCount, _terrain.Count, _clearedForest.Count, _plantedForest.Count));
+                _worldUid, _pieceCount, _terrain.Count, _clearedForest.Count, _plantedForest.Count,
+                _cfgMapScale.Value > 0 ? "" : ", chosen for a card reporting " + SystemInfo.graphicsMemorySize + " MB"));
             return true;
         }
 
