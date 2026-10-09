@@ -40,6 +40,7 @@ namespace LivingMap
         private bool _highDirty;
         private bool _highUnavailable;
         private BitArray _highPixels;                   // map pixels whose ground is that high
+        private BitArray _highMist;                     // ... and those the Mistlands mist covers
         private RawImage _highSmall, _highLarge;
         private Sprite _highCircle;
         private Color _highLight = Color.white;
@@ -53,8 +54,8 @@ namespace LivingMap
             _cfgHighOverlay = Config.Bind(SecLayers, "HighGroundOverlay", HighMinimap,
                 Ui("Buildings and paths above 70 metres, drawn over the game's rock pattern. The game's map hides whatever is under that pattern, so a base in the mountains is not on the minimap or on the zoomed-out map at all; this draws it on top of them. Close up the detailed map draws it properly anyway, so this is for the other two. Minimap (default): only there, where it reads as part of the map. Both: on the zoomed-out map as well, where a flat colour next to the shader's own shading is more noticeable. Costs a texture of its own, on the map layer's grid, and only once something is built that high - livingmap status says how much.",
                     new AcceptableValueList<string>(HighOff, HighMinimap, HighBoth), UiLayers, "Mountains: buildings over the rock", 85, false));
-            _cfgHighStrength = Config.Bind(SecLayers, "HighGroundStrength", 0.7f,
-                Ui("How strongly those buildings show. The layer is drawn over the map rather than into it, so at full strength its colours are the plain ones, which in daylight on snow is louder than anything the map draws itself. Lower lets the rock show through and settles them into the picture; 1 is the plain colour.",
+            _cfgHighStrength = Config.Bind(SecLayers, "HighGroundStrength", 0.55f,
+                Ui("How strongly those buildings show. The layer is drawn over the map rather than into it, so at full strength its colours are the plain ones, which in daylight on snow is louder than anything the map draws itself. It also lies over the clouds and the fog the map draws for itself, which nothing short of drawing into the map could change, so it is kept low: lower lets the rock show through and settles it into the picture; 1 is the plain colour.",
                     new AcceptableValueRange<float>(0.2f, 1f), UiLayers, "Mountains: how strongly", 84, false));
         }
 
@@ -83,9 +84,17 @@ namespace LivingMap
                     return;
                 }
 
+                // The mist of the Mistlands is drawn by the shader, inside the map's own picture;
+                // this layer goes over that picture and would hang its buildings in front of the
+                // mist that is there to hide them. The mask's green channel is where the shader
+                // reads it from, and it never changes, so it is read once with the heights.
+                Texture2D mask = s_fiForestTex != null ? s_fiForestTex.GetValue(_mm) as Texture2D : null;
+                if (mask != null && (mask.width != _texSize || mask.height != _texSize)) mask = null;
+
                 BitArray high = new BitArray(_texSize * _texSize);
+                BitArray mist = mask != null ? new BitArray(_texSize * _texSize) : null;
                 const int band = 64;
-                int found = 0;
+                int found = 0, misty = 0;
                 for (int z = 0; z < _texSize; z += band)
                 {
                     int h = Mathf.Min(band, _texSize - z);
@@ -93,15 +102,21 @@ namespace LivingMap
                     int baseIdx = z * _texSize;
                     for (int i = 0; i < px.Length; i++)
                         if (px[i].r >= HighGroundFrom) { high[baseIdx + i] = true; found++; }
+                    if (mist == null) continue;
+                    Color[] mk = mask.GetPixels(0, z, _texSize, h);
+                    for (int i = 0; i < mk.Length; i++)
+                        if (mk[i].g > 0.35f) { mist[baseIdx + i] = true; misty++; }
                 }
                 _highPixels = high;
+                _highMist = mist;
                 if (_cfgDebug.Value)
                     Logger.LogInfo("High ground: " + found + " map pixels at or above " + HighGroundFrom + " m (" +
-                                   (found * 100f / (_texSize * (float)_texSize)).ToString("0.0") + " % of the map).");
+                                   (found * 100f / (_texSize * (float)_texSize)).ToString("0.0") + " % of the map), " +
+                                   misty + " under the mist.");
             }
             catch (Exception e)
             {
-                _highPixels = null;
+                _highPixels = null; _highMist = null;
                 _highUnavailable = true;
                 HandleError("high ground pixels", e);
             }
@@ -109,7 +124,8 @@ namespace LivingMap
 
         private bool IsHighPixel(int idx)
         {
-            return _highPixels != null && idx >= 0 && idx < _highPixels.Length && _highPixels[idx];
+            if (_highPixels == null || idx < 0 || idx >= _highPixels.Length || !_highPixels[idx]) return false;
+            return _highMist == null || !_highMist[idx];        // under the mist the map shows nothing, and nor does this
         }
 
         private bool IsHighWorld(float wx, float wz)
@@ -354,7 +370,7 @@ namespace LivingMap
             if (_glMatHigh != null) { try { UnityEngine.Object.Destroy(_glMatHigh); } catch { } _glMatHigh = null; }
             DestroyHighImage(ref _highSmall);
             DestroyHighImage(ref _highLarge);
-            _highPixels = null;
+            _highPixels = null; _highMist = null;
             _highScratch.Clear();
         }
 

@@ -36,7 +36,12 @@ The version is set in one place — `LivingMapPlugin.Version` in `src/LivingMapP
   (`HighGroundStrength`, 0.7): the layer lies over the map rather than in it, so at full
   strength its colours are the plain ones and in daylight on snow that is louder than
   anything the map draws itself; lower lets the rock show through. The colours themselves
-  are taken a fifth of the way towards their own brightness for the same reason. On the
+  are taken a fifth of the way towards their own brightness for the same reason, and the
+  default is 0.55. Lying over the map also means lying over the clouds and the fog the map
+  draws for itself, which only drawing into the map could change - and above 95 m the map
+  keeps nothing that is drawn into it, which is why this layer exists at all. What can be
+  answered is the mist of the Mistlands: it covers the ground there, so the layer now leaves
+  the ground it covers alone. On the
   zoomed-out map
   (`Both`) it lies under the detailed map: a tile of that map is opaque, so it covers this
   layer as soon as it is drawn, and this layer shows only where there is nothing better
