@@ -218,8 +218,28 @@ namespace LivingMap
             // --- 08 Detail
             BindHighGroundConfig();
             BindDetailConfig();
+            MigrateDefaults();
             BindNoticeConfig();
             BindShareConfig();
+        }
+
+        // A default that changes is only a default: BepInEx keeps whatever the file already
+        // says, so for anyone who has played the mod before, a better default is no change at
+        // all. Where the stored value is still the old default and nothing suggests it was
+        // chosen on purpose, it is moved on once, and the step is remembered so it happens once.
+        private void MigrateDefaults()
+        {
+            ConfigEntry<int> ver = Config.Bind(SecGeneral, "ConfigVersion", 1,
+                Hidden("Internal: which defaults these sections have been updated to. Do not edit."));
+            if (ver.Value >= 2) return;
+            // 2: the map layer's size follows the graphics card unless it was set by hand. 2 was
+            // the default before, so a 2 in the file is taken as "never chosen".
+            if (_cfgMapScale.Value == 2)
+            {
+                _cfgMapScale.Value = 0;
+                Logger.LogInfo("Map sharpness now follows the graphics card (MapTextureScale = 0). Set it to 2 to keep what it was.");
+            }
+            ver.Value = 2;
         }
 
         // ------------------------------------------------------------------

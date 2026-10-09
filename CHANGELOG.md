@@ -78,7 +78,9 @@ The version is set in one place — `LivingMapPlugin.Version` in `src/LivingMapP
   map layer is the mod's largest claim on the card and the high-ground layer takes the same
   again, so on a 4 GB card the whole mod comes to about 190 MB beside a game that wants two
   to three gigabytes. Setting it by hand still wins, `livingmap status` says what is in use,
-  and the README has the table of what costs what.
+  and the README has the table of what costs what. Updating from an earlier version: a value
+  you set yourself is kept, and a `MapTextureScale` still at the old default of 2 is moved to
+  automatic once, with a line in the log.
 - **`MapTextureScale` is no longer hidden.** It sat among the advanced settings, behind the
   tick that the configuration window hides them with, although it is the one setting that
   decides whether the map and the minimap look sharp or smeared - and the only one that
