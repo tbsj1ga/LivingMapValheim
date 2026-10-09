@@ -174,8 +174,8 @@ namespace LivingMap
             for (int i = 0; i < MatNames.Length; i++)
                 _cfgMatColor[i] = Config.Bind(SecColors, "Material_" + MatNames[i], defaults[i],
                     Ui("Colour of " + names[i].ToLowerInvariant() + " on the map.", UiColours, names[i], 100 - i, false));
-            _cfgPaletteStrength = Config.Bind(SecColors, "PaletteStrength", 1f,
-                Ui("How bright the building colours are, all of them at once. The map's shader brightens what it is given by about half again, which on snow is fine and over a swamp or the Mistlands is a white spot. Lower this rather than editing every colour below. 1 = the colours as they are.",
+            _cfgPaletteStrength = Config.Bind(SecColors, "PaletteStrength", 0.85f,
+                Ui("How bright the building colours are, all of them at once. The map's shader brightens what it is given by about half again, which on snow is fine and over a swamp or the Mistlands is a white spot. Lower this rather than editing every colour below. 1 = the colours exactly as they are below; 0.85 by default, which is about where a building stops being the loudest thing on the map.",
                     new AcceptableValueRange<float>(0.5f, 1f), UiColours, "Building colours: brightness", 95, false));
             _cfgMatUnknownColor = Config.Bind(SecColors, "Material_Unknown", new Color(0.85f, 0.30f, 0.75f, 1f),
                 Ui("Colour of pieces whose material is not known.", UiColours, "Other pieces", 80, false));

@@ -68,8 +68,8 @@ The version is set in one place — `LivingMapPlugin.Version` in `src/LivingMapP
   anywhere else. The styled levels reach a similar place by themselves, through the texture,
   the darker edge and the shadow; the flat ones now have the same amount taken off, fading
   out as the styling arrives.
-- **`PaletteStrength`** (*3. Colours*, 1 = the colours as they are): how bright the building
-  colours are, all of them at once, on every layer that draws them. The shader brightens
+- **`PaletteStrength`** (*3. Colours*, 0.85): how bright the building colours are, all of
+  them at once, on every layer that draws them. 1 is the colours exactly as set below. The shader brightens
   what it is given by about half again, which on snow is fine and over a swamp or the
   Mistlands is a white spot; turning this down is easier than editing each colour. It takes
   effect as it is moved.
