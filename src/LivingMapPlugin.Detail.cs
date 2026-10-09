@@ -696,6 +696,7 @@ namespace LivingMap
                 }
             sig += (_cfgShowBuildings.Value ? 1 : 0) * 3 + (_cfgShowPaths.Value ? 1 : 0) * 5 + (_cfgShowCleared.Value ? 1 : 0) * 11;
             sig += PortClassicFirst ? 13 : 0;      // switching it redraws rather than leaving a mix on screen
+            sig += (long)(PaletteStrength * 1000f) * 37L;
             return sig;
         }
 
@@ -866,7 +867,7 @@ namespace LivingMap
             j.Boxes.Sort((a, b) => a.Top.CompareTo(b.Top));
             j.Pieces.Sort((a, b) => a.Y.CompareTo(b.Y));      // stored footprints lowest first too: roofs over walls
             j.MatColors = new Color32[_cfgMatColor.Length];
-            for (int i = 0; i < _cfgMatColor.Length; i++) j.MatColors[i] = Tone(_cfgMatColor[i].Value);
+            for (int i = 0; i < _cfgMatColor.Length; i++) j.MatColors[i] = Tone(Palette(_cfgMatColor[i].Value));
             j.MatUnknown = Tone(_cfgMatUnknownColor.Value);
             j.Outline = Tone(_cfgOutlineColor.Value);
             j.DrawOutline = _cfgOutline.Value;

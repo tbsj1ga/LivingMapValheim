@@ -46,6 +46,7 @@ namespace LivingMap
 
         // 05 Colors
         private ConfigEntry<Color>[] _cfgMatColor;
+        private ConfigEntry<float> _cfgPaletteStrength;
         private ConfigEntry<Color> _cfgMatUnknownColor;
         private ConfigEntry<Color> _cfgCultivatedColor;
         private ConfigEntry<Color> _cfgPavedColor;
@@ -173,6 +174,9 @@ namespace LivingMap
             for (int i = 0; i < MatNames.Length; i++)
                 _cfgMatColor[i] = Config.Bind(SecColors, "Material_" + MatNames[i], defaults[i],
                     Ui("Colour of " + names[i].ToLowerInvariant() + " on the map.", UiColours, names[i], 100 - i, false));
+            _cfgPaletteStrength = Config.Bind(SecColors, "PaletteStrength", 1f,
+                Ui("How bright the building colours are, all of them at once. The map's shader brightens what it is given by about half again, which on snow is fine and over a swamp or the Mistlands is a white spot. Lower this rather than editing every colour below. 1 = the colours as they are.",
+                    new AcceptableValueRange<float>(0.5f, 1f), UiColours, "Building colours: brightness", 95, false));
             _cfgMatUnknownColor = Config.Bind(SecColors, "Material_Unknown", new Color(0.85f, 0.30f, 0.75f, 1f),
                 Ui("Colour of pieces whose material is not known.", UiColours, "Other pieces", 80, false));
             _cfgCultivatedColor = Config.Bind(SecColors, "Terrain_Cultivated", new Color(0.36f, 0.26f, 0.12f, 0.85f),

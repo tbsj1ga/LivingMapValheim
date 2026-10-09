@@ -368,7 +368,7 @@ namespace LivingMap
             // of the tile at the current drift
             p.Clouds = CloudStyle != CloudsExact;
             p.Mat = new Color32[_cfgMatColor.Length];
-            for (int i = 0; i < _cfgMatColor.Length; i++) p.Mat[i] = _cfgMatColor[i].Value;
+            for (int i = 0; i < _cfgMatColor.Length; i++) p.Mat[i] = Palette(_cfgMatColor[i].Value);
             p.MatUnknown = _cfgMatUnknownColor.Value; p.Outline = _cfgOutlineColor.Value; p.DrawOutline = _cfgOutline.Value;
             p.Paved = _cfgPavedColor.Value; p.Dirt = _cfgDirtColor.Value; p.Cultivated = _cfgCultivatedColor.Value; p.Cleared = _cfgClearedColor.Value;
             p.Styled = _cfgDetailStyled == null || _cfgDetailStyled.Value;
@@ -707,6 +707,8 @@ namespace LivingMap
         // index across the world, so the pattern does not move between tiles): planks, masonry,
         // metal, marble and ice for buildings, with a darker edge, lighter high roofs and a
         // shadow; speckled dirt, cobbles, furrows and faint cleared ground for the terrain.
+        private const float DFlatDamp = 0.85f;   // buildings on the levels the styling has not reached
+
         private static void StylePaint(PortDetail d, DJob j, int n)
         {
             float mpp = j.Mpp;
@@ -824,8 +826,15 @@ namespace LivingMap
                     else m = 0.95f + 0.1f * Rand(gx, gz, 18);
                     // the edge of a building: a darker shade of its own colour
                     bool edge = (ix > 0 && orig[k - 1] < 10) || (ix < n - 1 && orig[k + 1] < 10) || (iz > 0 && orig[k - n] < 10) || (iz < n - 1 && orig[k + n] < 10);
+                    // What keeps a building from being its plain colour is the styling: the
+                    // texture, the darker edge, the lift by height. On the widest two levels none
+                    // of it has faded in yet, so the colour went up through the shader's paper
+                    // and a half untouched and flashed brighter than both the layer before it and
+                    // the picture after. The same amount comes off instead, and gets out of the
+                    // way as the styling arrives.
+                    float flat = 1f - (1f - DFlatDamp) * (1f - Mathf.Max(amp, shape));
                     float sh = top * slope * (edge ? 0.72f : 1f);
-                    Scale(c, o, (1f + (m - 1f) * amp) * (1f + (sh - 1f) * shape));
+                    Scale(c, o, flat * (1f + (m - 1f) * amp) * (1f + (sh - 1f) * shape));
                 }
         }
 

@@ -189,6 +189,11 @@ namespace LivingMap
                 if (_rtMask != null && !_rtMask.IsCreated()) _maskDirty = true;
                 if (_cfgShowBuildings.Value != _drawnBuildings || _cfgShowPaths.Value != _drawnPaths || _cfgOutline.Value != _drawnOutline)
                     _rtDirty = true;                        // a layer switch flipped: only a rebuild can honour it
+                if (!Mathf.Approximately(_paletteApplied, PaletteStrength))
+                {                                           // the palette was turned: every layer holds the old one
+                    _paletteApplied = PaletteStrength;
+                    _rtDirty = true; _highDirty = true; _highSig = -1;
+                }
                 bool adds = _addPieces.Count > 0 || _addTerrain.Count > 0;
                 if ((_rtDirty || adds || _maskDirty) && now >= _nextRtRebuild)
                 {
@@ -396,10 +401,26 @@ namespace LivingMap
             return _cfgClearedColor.Value;
         }
 
+        // Every piece colour goes through here, whichever layer is asking: the map layer on the
+        // card, the detailed map's painter, the high-ground layer. One place to take the palette
+        // down where the shader's brightening makes it shout.
+        private float PaletteStrength
+        {
+            get { return _cfgPaletteStrength != null ? Mathf.Clamp(_cfgPaletteStrength.Value, 0.5f, 1f) : 1f; }
+        }
+
+        private float _paletteApplied = 1f;      // what the drawn layers were given
+
+        private Color Palette(Color c)
+        {
+            float k = PaletteStrength;
+            return k >= 0.999f ? c : new Color(c.r * k, c.g * k, c.b * k, c.a);
+        }
+
         private Color MatColor(byte mat)
         {
-            if (mat != MatNone && mat < _cfgMatColor.Length) return _cfgMatColor[mat].Value;
-            return _cfgMatUnknownColor.Value;
+            if (mat != MatNone && mat < _cfgMatColor.Length) return Palette(_cfgMatColor[mat].Value);
+            return Palette(_cfgMatUnknownColor.Value);
         }
 
         private static bool IsExplored(BitArray explored, BitArray exploredOthers, int idx)

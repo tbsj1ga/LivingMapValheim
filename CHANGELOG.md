@@ -56,6 +56,16 @@ The version is set in one place — `LivingMapPlugin.Version` in `src/LivingMapP
   buildings gone from under it. Drawn from the world and Living Map's own data instead,
   the level costs nothing on the main thread and keeps what is built up high.
   `DetailFirstLevelFromMapTexture` puts the old way back.
+- **Buildings keep one brightness as you zoom.** On the two widest detail levels the
+  styling - the texture, the darker edge, the lift by height - has not faded in yet, so the
+  colour went up through the map shader's paper-and-a-half untouched and flashed brighter
+  there than in the layer before it or the picture after: dark, bright, dark. Those levels
+  now have the same amount taken off instead, fading out as the styling arrives.
+- **`PaletteStrength`** (*3. Colours*, 1 = the colours as they are): how bright the building
+  colours are, all of them at once, on every layer that draws them. The shader brightens
+  what it is given by about half again, which on snow is fine and over a swamp or the
+  Mistlands is a white spot; turning this down is easier than editing each colour. It takes
+  effect as it is moved.
 - **Zooming no longer empties the map for a moment.** While a level is being drawn, what
   shows behind it is the picture already drawn - and that was taken to be the one level
   coarser, which is not always where it is. The zoom steps over a level now and then, and a
