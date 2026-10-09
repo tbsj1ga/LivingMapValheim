@@ -439,6 +439,20 @@ namespace LivingMap
             img.uvRect = map.uvRect;       // the game moves the map by this; we follow it exactly
             img.color = _highLight;
             img.enabled = true;
+            KeepBehindDetail(img.transform.parent as RectTransform);
+        }
+
+        // Under the detailed map, not over it. Both hang off the same map image, and a child
+        // drawn later is drawn on top: with this layer on top, its flat buildings sat over the
+        // finished ones until the whole view was drawn and then vanished at once - the far ones
+        // being "replaced" as the map filled in. Underneath, a tile that is ready simply covers
+        // it - the tiles are opaque - so the picture is only ever uncovered where there is
+        // nothing better to show, and nothing is ever drawn twice over the same ground.
+        private void KeepBehindDetail(RectTransform wrap)
+        {
+            if (wrap == null || _dRoot == null || _dRoot.parent != wrap.parent) return;
+            int mine = wrap.GetSiblingIndex(), theirs = _dRoot.GetSiblingIndex();
+            if (mine > theirs) wrap.SetSiblingIndex(theirs);
         }
 
         private RawImage MakeHighImage(RawImage map, bool round)

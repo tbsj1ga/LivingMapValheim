@@ -38,8 +38,10 @@ The version is set in one place — `LivingMapPlugin.Version` in `src/LivingMapP
   anything the map draws itself; lower lets the rock show through. The colours themselves
   are taken a fifth of the way towards their own brightness for the same reason. On the
   zoomed-out map
-  (`Both`) it hands over to the detailed map only once that has really drawn the view, not
-  at the zoom where it begins - there was a moment where neither showed the mountain.
+  (`Both`) it lies under the detailed map: a tile of that map is opaque, so it covers this
+  layer as soon as it is drawn, and this layer shows only where there is nothing better
+  yet. Neither a moment with no mountain at all, nor flat buildings sitting over finished
+  ones until the whole view is done.
 
 - **How many drawn tiles are kept is now a setting** (`DetailTileCache`, default 96 as
   before). Panning the map used to throw the oldest away and draw them again from nothing
