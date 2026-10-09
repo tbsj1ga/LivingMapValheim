@@ -284,7 +284,7 @@ namespace LivingMap
                     for (int i = 0; i < _fillScratch.Count; i++)
                     {
                         PieceRec rec = _fillScratch[i];
-                        EmitQuad(rec.X0, rec.Z0, rec.X1, rec.Z1, MatColor(rec.Mat), k, half, h, flip, minPiece);
+                        EmitQuad(rec.X0, rec.Z0, rec.X1, rec.Z1, FlatMatColor(rec.Mat), k, half, h, flip, minPiece);
                         quads++;
                     }
                     _fillScratch.Clear();
@@ -443,7 +443,7 @@ namespace LivingMap
             {
                 PieceRec rec = _fillScratch[i];
                 if (!IsWorldExplored(explored, exploredOthers, rec.CX, rec.CZ)) continue;
-                EmitQuad(rec.X0, rec.Z0, rec.X1, rec.Z1, MatColor(rec.Mat), k, half, h, flip, minPiece);
+                EmitQuad(rec.X0, rec.Z0, rec.X1, rec.Z1, FlatMatColor(rec.Mat), k, half, h, flip, minPiece);
                 quads++;
             }
             return quads;

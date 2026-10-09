@@ -417,6 +417,19 @@ namespace LivingMap
             return k >= 0.999f ? c : new Color(c.r * k, c.g * k, c.b * k, c.a);
         }
 
+        // What a piece is worth on a layer that draws it flat - the map layer on the card, and
+        // the detail's widest levels, where the styling has not faded in. Both go on to be
+        // brightened by the map shader's paper and a half with nothing to take it back off,
+        // which is why a plain colour reads louder there than anywhere else. The styled levels
+        // reach about this by themselves, through the texture, the darker edge and the shadow.
+        internal const float FlatPieceDamp = 0.85f;
+
+        private Color FlatMatColor(byte mat)
+        {
+            Color c = MatColor(mat);
+            return new Color(c.r * FlatPieceDamp, c.g * FlatPieceDamp, c.b * FlatPieceDamp, c.a);
+        }
+
         private Color MatColor(byte mat)
         {
             if (mat != MatNone && mat < _cfgMatColor.Length) return Palette(_cfgMatColor[mat].Value);

@@ -707,8 +707,6 @@ namespace LivingMap
         // index across the world, so the pattern does not move between tiles): planks, masonry,
         // metal, marble and ice for buildings, with a darker edge, lighter high roofs and a
         // shadow; speckled dirt, cobbles, furrows and faint cleared ground for the terrain.
-        private const float DFlatDamp = 0.85f;   // buildings on the levels the styling has not reached
-
         private static void StylePaint(PortDetail d, DJob j, int n)
         {
             float mpp = j.Mpp;
@@ -832,7 +830,7 @@ namespace LivingMap
                     // and a half untouched and flashed brighter than both the layer before it and
                     // the picture after. The same amount comes off instead, and gets out of the
                     // way as the styling arrives.
-                    float flat = 1f - (1f - DFlatDamp) * (1f - Mathf.Max(amp, shape));
+                    float flat = 1f - (1f - FlatPieceDamp) * (1f - Mathf.Max(amp, shape));
                     float sh = top * slope * (edge ? 0.72f : 1f);
                     Scale(c, o, flat * (1f + (m - 1f) * amp) * (1f + (sh - 1f) * shape));
                 }
