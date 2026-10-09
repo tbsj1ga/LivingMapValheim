@@ -68,6 +68,11 @@ The version is set in one place — `LivingMapPlugin.Version` in `src/LivingMapP
   anywhere else. The styled levels reach a similar place by themselves, through the texture,
   the darker edge and the shadow; the flat ones now have the same amount taken off, fading
   out as the styling arrives.
+- **`MapTextureScale` is no longer hidden.** It sat among the advanced settings, behind the
+  tick that the configuration window hides them with, although it is the one setting that
+  decides whether the map and the minimap look sharp or smeared - and the only one that
+  needs the world loaded again. It is now the second row of *1. Map layers*, as
+  "Map sharpness".
 - **`PaletteStrength`** (*3. Colours*, 0.85): how bright the building colours are, all of
   them at once, on every layer that draws them. 1 is the colours exactly as set below. The shader brightens
   what it is given by about half again, which on snow is fine and over a swamp or the

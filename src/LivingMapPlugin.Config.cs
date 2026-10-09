@@ -135,8 +135,8 @@ namespace LivingMap
 
             // --- 04 Rendering
             _cfgMapScale = Config.Bind(SecRendering, "MapTextureScale", 2,
-                Ui("How sharp buildings and paths are on the zoomed-out map: 1 = 12 m a pixel, 2 = 6 m (~67 MB of video memory), 4 = 3 m (~268 MB), 8 = 1.5 m (~1 GB). Close up, the detail layer draws them itself. Takes effect on the next world load.",
-                    new AcceptableValueList<int>(1, 2, 4, 8), UiAdvanced, "Map layer resolution", 45, true));
+                Ui("How sharp the map and the minimap are: 1 = 12 m a pixel, 2 = 6 m (~67 MB of video memory), 4 = 3 m (~268 MB), 8 = 1.5 m (~1 GB). This is what to raise if buildings look smeared, and the only setting that needs the world loaded again. Close up, the detailed map draws them itself and is not affected.",
+                    new AcceptableValueList<int>(1, 2, 4, 8), UiLayers, "Map sharpness", 95, false));
             _cfgPieceSize = Config.Bind(SecRendering, "MinPieceSizeMeters", 2f,
                 Ui("Smallest size a building piece is drawn at on the zoomed-out map, so thin walls stay visible.",
                     new AcceptableValueRange<float>(0.1f, 8f), UiAdvanced, "Smallest piece (m)", 44, true));
