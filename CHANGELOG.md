@@ -27,7 +27,7 @@ The version is set in one place — `LivingMapPlugin.Version` in `src/LivingMapP
   a second time, into a texture of its own, and lays it over both map images. Only what
   stands at or above 70 m goes in, so nothing lower is drawn twice, and the texture exists
   only once something is built that high: a world without a mountain base costs nothing.
-  `Off` / `Minimap` (default) / `Both`. It is a flat colour over the rock, not the shader's
+  `Off` / `Minimap` / `Both` (default). It is a flat colour over the rock, not the shader's
   own shading - zoom in for the proper picture. Its texture shares the map layer's grid
   (capped at 8192), with no smoothing: it is always seen magnified, on the minimap and on
   the big map while the detailed one is still drawing, and anything coarser or smoothed
