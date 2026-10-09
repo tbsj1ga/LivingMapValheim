@@ -141,7 +141,7 @@ namespace LivingMap
                 Ui("Smallest size a building piece is drawn at on the zoomed-out map, so thin walls stay visible.",
                     new AcceptableValueRange<float>(0.1f, 8f), UiAdvanced, "Smallest piece (m)", 44, true));
             _cfgOutline = Config.Bind(SecRendering, "BuildingOutline", true,
-                Ui("A dark edge around buildings on the zoomed-out map, so a wooden house does not blend into the dirt it stands on.", UiAdvanced, "Building outline", 43, true));
+                Ui("A dark edge around buildings on the map and the minimap, so a wooden house does not blend into the dirt it stands on. Its colour is in the colours below.", UiLayers, "Building outline", 58, false));
             _cfgOutlineWidth = Config.Bind(SecRendering, "OutlineWidthMeters", 1f,
                 Ui("How wide that edge is.", new AcceptableValueRange<float>(0.1f, 4f), UiAdvanced, "Outline width (m)", 42, true));
             _cfgTerrainGrid = Config.Bind(SecRendering, "TerrainGridSize", 2f,
