@@ -71,9 +71,10 @@ threads or fewer it uses one background thread and starts closer in.
 
 - Friends without the mod aren't affected, and a dedicated server doesn't need it.
 - As the host or in single player you see every building in the world at once.
-- **On a server hosted by a player with Living Map**, you get the host's map on every bit of
-  ground you've explored (turn off with `UseHostMap`; the host can stop sharing with
-  `ShareWithPlayers`, section `[09 Multiplayer]`).
+- **On a server hosted by a player with Living Map**, the host can hand you its map on every
+  bit of ground you've already explored. New in 0.17.0 and still experimental, so it starts
+  off: the host turns on `ShareWithPlayers`, you turn on `UseHostMap` (section
+  *4. Multiplayer*).
 - On a dedicated server you see what's around the places you've visited; the map remembers
   them between sessions.
 

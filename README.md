@@ -99,7 +99,8 @@ as `DetailStyle = Legacy`.
 
 The host has the whole world's object database, so its map is complete and current; a player
 on its server only learns what the server sends around where they walk, and remembers it.
-With `ShareWithPlayers` on (default) the host gives its layers - buildings, paths, cleared
+With `ShareWithPlayers` on (off by default - the feature is new and little played with,
+and both sides have to turn theirs on) the host gives its layers - buildings, paths, cleared
 and planted forest - to every player on its server who has Living Map, and each of them
 draws them **only on ground their own map has explored** (their explored area, including
 what a cartography table shared). Nothing unexplored is revealed; where they have been, the

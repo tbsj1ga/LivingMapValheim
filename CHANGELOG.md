@@ -14,8 +14,13 @@ The version is set in one place — `LivingMapPlugin.Version` in `src/LivingMapP
   player fetches only the tiles it lacks or has with another hash, compressed, a capped batch
   at a time. The parts on unexplored ground wait in memory and are applied as the map gets
   explored (every 20 s).
-- Settings, new group *4. Multiplayer* (`[09 Multiplayer]`): `ShareWithPlayers` (host,
-  on) and `UseHostMap` (player, on). Players without the mod are not touched; a dedicated
+- **Off by default on both sides**, and marked experimental: it is new, it has had little
+  play, and it is the only part of the mod that talks to another machine. Turn on
+  `ShareWithPlayers` on the host and `UseHostMap` on the player to try it. Should it go
+  wrong, it stops by itself after a few errors and says so in the log; the rest of the mod
+  carries on.
+- Settings, new group *4. Multiplayer* (`[09 Multiplayer]`): `ShareWithPlayers` (host) and
+  `UseHostMap` (player). Players without the mod are not touched; a dedicated
   server does not share (it has no map of its own).
 - `livingmap status` shows the sharing state: players served and tiles sent on the host,
   tiles received on a player.

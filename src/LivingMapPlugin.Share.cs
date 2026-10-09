@@ -46,12 +46,29 @@ namespace LivingMap
         private ZRoutedRpc _rpcRegistered;
         private int _storeRev, _sharedRev = -1;
 
+        // Sharing is the one part that talks to other machines, and the one part that has had
+        // the least play. Its failures are kept to itself: the mod's own counter switches
+        // everything off after enough errors, which for a map layer is right and for a feature
+        // somebody opted into is not. Four in a row and the sharing stops; the map carries on.
+        private int _shareErrors;
+        private bool _shareOff;
+        private const int MaxShareErrors = 4;
+
+        private void ShareError(string where, Exception e)
+        {
+            if (_loggedErrors.Add("share|" + where + "|" + (e != null ? e.GetType().Name : "null")))
+                Logger.LogWarning("[" + where + "] " + e);
+            if (++_shareErrors < MaxShareErrors || _shareOff) return;
+            _shareOff = true;
+            Logger.LogWarning("Map sharing is off for this session after " + _shareErrors + " errors. The rest of Living Map is unaffected.");
+        }
+
         private void BindShareConfig()
         {
-            _cfgShare = Config.Bind(SecShare, "ShareWithPlayers", true,
-                Ui("When you host: give your map (buildings, paths, cleared and planted forest) to the players on your server who have Living Map. Each of them sees it only on ground their own map has explored.", UiShare, "Share my map with players", 100, false));
-            _cfgUseHostMap = Config.Bind(SecShare, "UseHostMap", true,
-                Ui("When you play on someone's server: take the host's map where your own map is explored, so a base rebuilt while you were away shows as it is now. Needs Living Map on the host.", UiShare, "Use the host's map", 90, false));
+            _cfgShare = Config.Bind(SecShare, "ShareWithPlayers", false,
+                Ui("When you host: give your map (buildings, paths, cleared and planted forest) to the players on your server who have Living Map. Each of them sees it only on ground their own map has explored. Off by default: this is new and has not been played with much yet, and both sides need it on.", UiShare, "Share my map with players", 100, false));
+            _cfgUseHostMap = Config.Bind(SecShare, "UseHostMap", false,
+                Ui("When you play on someone's server: take the host's map where your own map is explored, so a base rebuilt while you were away shows as it is now. Needs Living Map on the host with sharing on. Off by default: this is new and has not been played with much yet.", UiShare, "Use the host's map", 90, false));
         }
 
         // every place that changes the stored layers goes through here, so the host knows when to look again
@@ -65,14 +82,14 @@ namespace LivingMap
         {
             get
             {
-                return _cfgShare.Value && ZNet.instance != null && ZNet.instance.IsServer() && !ZNet.instance.IsDedicated()
+                return !_shareOff && _cfgShare.Value && ZNet.instance != null && ZNet.instance.IsServer() && !ZNet.instance.IsDedicated()
                     && _zdoAuthoritative && _zdoPasses > 0;
             }
         }
 
         private bool ShareClient
         {
-            get { return _cfgUseHostMap.Value && ZNet.instance != null && !ZNet.instance.IsServer(); }
+            get { return !_shareOff && _cfgUseHostMap.Value && ZNet.instance != null && !ZNet.instance.IsServer(); }
         }
 
         private static int TileId(float x, float z)
@@ -144,7 +161,7 @@ namespace LivingMap
                 else if (!_hostBuilding) StartCoroutine(BuildHostTiles(true));
                 // when a build is running, its end sends the index to everyone who said hello
             }
-            catch (Exception e) { HandleError("share/hello", e); }
+            catch (Exception e) { ShareError("share/hello", e); }
         }
 
         // Groups the layers by tile and serialises each tile in a fixed order, a few tiles per frame.
@@ -173,7 +190,7 @@ namespace LivingMap
                 foreach (int idx in _plantedForest)
                     Tile(tiles, TileId((idx % _texSize - half) * _pixelSize, (idx / _texSize - half) * _pixelSize)).Planted.Add(idx);
             }
-            catch (Exception e) { HandleError("share/group", e); _hostBuilding = false; yield break; }
+            catch (Exception e) { ShareError("share/group", e); _hostBuilding = false; yield break; }
 
             Dictionary<int, HostTile> built = new Dictionary<int, HostTile>();
             int n = 0;
@@ -245,7 +262,7 @@ namespace LivingMap
                 _shareSentTiles += found;
                 _shareSentBytes += packed.Length;
             }
-            catch (Exception e) { HandleError("share/get", e); }
+            catch (Exception e) { ShareError("share/get", e); }
         }
 
         // ==================================================================
@@ -424,7 +441,7 @@ namespace LivingMap
                 }
                 if (_cfgDebug.Value) Logger.LogInfo("Host map index: " + count + " tiles, " + _wantQueue.Count + " to fetch, " + dropped.Count + " emptied.");
             }
-            catch (Exception e) { HandleError("share/index", e); }
+            catch (Exception e) { ShareError("share/index", e); }
         }
 
         private void RequestBatch(float now)
@@ -467,7 +484,7 @@ namespace LivingMap
                     _shareGotTiles++;
                 }
             }
-            catch (Exception e) { HandleError("share/tiles", e); }
+            catch (Exception e) { ShareError("share/tiles", e); }
         }
 
         // Puts the explored parts of the host's tiles into our own layers: new tiles always, and
@@ -638,7 +655,7 @@ namespace LivingMap
         {
             if (ShareHost) return "map sharing: host, " + _hostPeers.Count + " player(s) with Living Map, " + _hostTiles.Count + " tiles, sent " + _shareSentTiles + " tiles / " + (_shareSentBytes / 1024) + " KB";
             if (ShareClient) return "host map: " + (_indexHashes.Count > 0 ? _mirror.Count + " of " + _indexHashes.Count + " tiles, " + _wantQueue.Count + " to fetch, got " + (_shareGotBytes / 1024) + " KB" : "no answer from the host (no Living Map there, or sharing off)");
-            return "map sharing: off";
+            return _shareOff ? "map sharing: off after errors (see the log)" : "map sharing: off";
         }
     }
 }
