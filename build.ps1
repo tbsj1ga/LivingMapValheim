@@ -79,8 +79,17 @@ if ($Package) {
         $manifest = $manifest -replace '"version_number"\s*:\s*"[^"]*"', ('"version_number": "' + $ver + '"')
         [System.IO.File]::WriteAllText("$tmp\manifest.json", $manifest, (New-Object System.Text.UTF8Encoding($false)))
         Copy-Item "$ts\icon.png"   "$tmp\icon.png"
-        Copy-Item "$ts\README.md"  "$tmp\README.md"
-        Copy-Item "$root\CHANGELOG.md" "$tmp\CHANGELOG.md"
+        # Thunderstore refuses a README or CHANGELOG that starts with a UTF-8 BOM, and an
+        # editor can put one back at any time, so they are copied through byte by byte without it.
+        foreach ($md in @(@{ From = "$ts\README.md"; To = "$tmp\README.md" },
+                          @{ From = "$root\CHANGELOG.md"; To = "$tmp\CHANGELOG.md" })) {
+            $bytes = [System.IO.File]::ReadAllBytes($md.From)
+            if ($bytes.Length -ge 3 -and $bytes[0] -eq 0xEF -and $bytes[1] -eq 0xBB -and $bytes[2] -eq 0xBF) {
+                $bytes = $bytes[3..($bytes.Length - 1)]
+                Write-Host "  (stripped the UTF-8 BOM from $(Split-Path $md.From -Leaf))"
+            }
+            [System.IO.File]::WriteAllBytes($md.To, $bytes)
+        }
         Copy-Item $out "$tmp\LivingMap.dll"
         if (Test-Path $zip) { Remove-Item $zip -Force }
         Compress-Archive -Path "$tmp\*" -DestinationPath $zip

@@ -1,4 +1,4 @@
-﻿# Changelog
+# Changelog
 
 The version is set in one place — `LivingMapPlugin.Version` in `src/LivingMapPlugin.cs`.
 

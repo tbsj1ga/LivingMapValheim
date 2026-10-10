@@ -1,4 +1,4 @@
-﻿# LivingMap
+# LivingMap
 
 **The vanilla map shows the world as it was generated. LivingMap shows the world as you've
 changed it.**

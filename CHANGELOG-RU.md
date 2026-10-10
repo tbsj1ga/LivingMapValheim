@@ -1,4 +1,4 @@
-﻿# История изменений
+# История изменений
 
 Версия задаётся в одном месте — `LivingMapPlugin.Version` в `src/LivingMapPlugin.cs`.
 

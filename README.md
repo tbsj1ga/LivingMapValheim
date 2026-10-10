@@ -1,4 +1,4 @@
-﻿# LivingMap
+# LivingMap
 
 Client-side Valheim mod: the map shows the world the way people have shaped
 it — buildings, hoe-worked ground, clear-cuts and planted groves — and changes
