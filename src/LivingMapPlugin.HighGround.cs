@@ -82,7 +82,9 @@ namespace LivingMap
             if (!HighWanted || _mm == null || _texSize <= 0) return;
             try
             {
-                Texture2D height = s_fiHeightTex != null ? s_fiHeightTex.GetValue(_mm) as Texture2D : null;
+                // the corrected copy if there is one: ground the players raised out of the water
+                // is land to the shader now, and this layer has nothing to add there
+                Texture2D height = _heightTex != null ? _heightTex : VanillaHeightTexture();
                 if (height == null || height.width != _texSize || height.height != _texSize)
                 {
                     LogOnce("high-height", "The map's height texture is not available; buildings on high ground are drawn only by the detailed map.");

@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections;
 using System.Collections.Generic;
 using System.IO;
@@ -86,7 +86,7 @@ namespace LivingMap
                 UseZdoScan ? (_zdoAuthoritative ? "ZDO (host, whole world)" : "ZDO (client)") : "physics",
                 UseZdoPaths ? "terrain records" : "loaded heightmaps",
                 (_rt != null ? _rt.width : 0) + (_cfgMapScale.Value > 0 ? "" : " auto"), _rt != null ? _pixelSize / _rtScale : 0f,
-                _zdoPassFrames, _zdoPassMs) + "; " + DetailStatus() + "; " + ShareStatus() + "; " + HighStatus()
+                _zdoPassFrames, _zdoPassMs) + "; " + DetailStatus() + "; " + ShareStatus() + "; " + HighStatus() + "; " + HeightStatus()
                 + "\n" + MaterialText();
         }
 

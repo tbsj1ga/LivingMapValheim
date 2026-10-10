@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections;
 using System.Collections.Generic;
 using System.Diagnostics;
@@ -251,6 +251,8 @@ namespace LivingMap
                 hz.Pitch = pitch; hz.Half = pitch / 2; hz.D = delta;
                 _dHeights[key] = hz;                       // replaced, never mutated: safe to hand to workers
             }
+            _heightDirty = true;      // the map's own shader is handed these heights too
+
             int rev;
             _dZoneRev.TryGetValue(key, out rev);
             _dZoneRev[key] = rev + 1;

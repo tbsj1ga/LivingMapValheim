@@ -224,6 +224,7 @@ namespace LivingMap
 
             // --- 08 Detail
             BindHighGroundConfig();
+            BindHeightConfig();
             BindDetailConfig();
             MigrateDefaults();
             BindNoticeConfig();

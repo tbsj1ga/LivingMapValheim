@@ -2,6 +2,25 @@
 
 The version is set in one place — `LivingMapPlugin.Version` in `src/LivingMapPlugin.cs`.
 
+## 0.19.0 (unreleased)
+
+- **The map is told about ground the players changed** (`HeightFromTerrain`, on). The map
+  goes by the world generator's heights, and no amount of digging changes them - but the
+  shader decides almost everything from them: below the water line it draws the sea from its
+  own colours and never reads the map texture at all, from 70 m it lays the rock over it, and
+  in between it draws the coast line and shades the ground by the slope between neighbouring
+  texels. A causeway raised across a lake was therefore still lake to it, which is why such
+  things could only ever be drawn on top of the finished picture, where they look like a
+  sticker on it. The map material is now handed a corrected copy of those heights - the
+  generator's, with the players' terrain edits added, the same edits the detailed map already
+  draws its relief from - so the game draws a causeway as land itself, with its own coast
+  line, paper, light, fog and clouds, and Living Map's paint reaches it like paint on any
+  other ground. A map pixel is 12 m across, so a narrow causeway becomes a 12 m strip of land
+  and the water's edge moves by a pixel; digging below the water line puts water there for
+  the same reason. `Minimap.m_heightTexture` itself is left alone, so everything that reads
+  the game's own heights still sees the generator's. One more texture of the vanilla size
+  (16 MB), rebuilt only where the ground changed.
+
 ## 0.18.0
 
 - **Roads show through the forest** (`PathsClearForest`, on). The map draws its trees over
