@@ -2,6 +2,19 @@
 
 The version is set in one place — `LivingMapPlugin.Version` in `src/LivingMapPlugin.cs`.
 
+## 0.19.1
+
+- **A tree is a tree even when a mod lets you build with it.** Reported with More Vanilla
+  Build Prefabs (issue #6), which puts a `Piece` component on every vanilla prefab so you can
+  place them - trees and rocks included. Living Map asked "has it a Piece?" before "is it a
+  tree?", so with that mod no tree in the world was a tree: they were drawn as buildings
+  (wood pieces 31 099 -> 40 038 in the reporter's world), and with nothing left to count, the
+  cleared-forest rule decided the whole map had been felled - 87 611 forest pixels erased
+  instead of 924. The question is now asked the other way round, for rocks as well. In
+  vanilla neither carries a `Piece`, so nothing there changes. No reset is needed after
+  updating: the forest pass takes the mark off again as soon as it finds trees, and the pass
+  over the object database drops the trees it had filed as buildings.
+
 ## 0.19.0
 
 - **The map is told about ground the players changed** (`HeightFromTerrain`, on). The map

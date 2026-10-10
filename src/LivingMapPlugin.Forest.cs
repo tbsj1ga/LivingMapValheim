@@ -117,6 +117,14 @@ namespace LivingMap
             return true;
         }
 
+        // A rock: what the pickaxe breaks. Not a building, whatever a mod hangs on it.
+        private bool IsRockPrefab(GameObject prefab)
+        {
+            if (prefab.GetComponent<MineRock>() != null || prefab.GetComponent<MineRock5>() != null) return true;
+            return prefab.GetComponent<Destructible>() != null &&
+                   prefab.name.IndexOf("rock", StringComparison.OrdinalIgnoreCase) >= 0;
+        }
+
         private static int ZoneKey(int zx, int zy)
         {
             return (zx << 16) | (zy & 0xFFFF);

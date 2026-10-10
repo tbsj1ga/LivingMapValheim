@@ -17,6 +17,7 @@ namespace LivingMap
         {
             public bool IsPiece;
             public bool IsTree;
+            public bool IsRock;           // a mineable rock, which is not a building either
             public bool IsTerrain;        // the _TerrainCompiler record of a zone
             public byte Mat;
             public Vector3 Min, Max;      // prefab-local AABB of its "piece"-layer colliders
@@ -267,11 +268,24 @@ namespace LivingMap
                 info.IsTerrain = true;
                 return info;
             }
-            if (prefab.GetComponent<Piece>() == null)
+            // What a thing *is* comes before what it can do. A mod that lets you build with
+            // the vanilla props - More Vanilla Build Prefabs and its like - puts a Piece
+            // component on every one of them, trees and rocks included; asking about the Piece
+            // first turned every tree in the world into a building, and with no trees left to
+            // count, the cleared-forest rule then erased the forest from the whole map
+            // (issue #6: 87 611 pixels "felled" instead of 924). In vanilla neither carries a
+            // Piece, so this order changes nothing there.
+            if (IsTreePrefab(prefab))
             {
-                info.IsTree = IsTreePrefab(prefab);
+                info.IsTree = true;
                 return info;
             }
+            if (IsRockPrefab(prefab))
+            {
+                info.IsRock = true;
+                return info;
+            }
+            if (prefab.GetComponent<Piece>() == null) return info;
 
             WearNTear wnt = prefab.GetComponent<WearNTear>();
             if (wnt != null)

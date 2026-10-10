@@ -964,17 +964,9 @@ namespace LivingMap
             if (ZNetScene.instance == null) return 0;      // the kind is read off the prefab: not yet
             k = 0;
             PrefabInfo info = PrefabFor(hash);
-            if (info.IsPiece) k = 3;
-            else if (info.IsTree) k = 1;
-            else if (!info.IsTerrain && ZNetScene.instance != null)
-            {
-                GameObject prefab = ZNetScene.instance.GetPrefab(hash);
-                if (prefab != null)
-                {
-                    if (prefab.GetComponent<MineRock>() != null || prefab.GetComponent<MineRock5>() != null) k = 2;
-                    else if (prefab.GetComponent<Destructible>() != null && prefab.name.IndexOf("rock", StringComparison.OrdinalIgnoreCase) >= 0) k = 2;
-                }
-            }
+            if (info.IsTree) k = 1;              // a tree first: it may carry a Piece as well
+            else if (info.IsRock) k = 2;
+            else if (info.IsPiece) k = 3;
             _dKind[hash] = k;
             return k;
         }
