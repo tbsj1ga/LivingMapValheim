@@ -5,6 +5,8 @@ it — buildings, hoe-worked ground, clear-cuts and planted groves — and chang
 along with it. No Harmony patches, no effect on players without the mod. The only
 network traffic is the host handing its map to players who have the mod (0.17.0).
 
+![Zooming in on a base: the map turns into the detailed picture step by step](https://raw.githubusercontent.com/tbsj1ga/LivingMapValheim/main/docs/media/detail-zoom.webp)
+
 > **New in 0.18.0 — roads you can actually follow.** The map draws its trees over everything
 > it has drawn, so a road under a canopy was hidden whatever colour it had: the forest pattern
 > now comes off where a road runs (`PathsClearForest`), and `PathWidthMeters` draws a road
@@ -169,10 +171,6 @@ port of the game's map shader: buildings with their real shape, direction and ro
 paths and fields with their own textures, the forest as it stands.
 
 ![Zoomed in: vanilla on the left, LivingMap on the right](https://raw.githubusercontent.com/tbsj1ga/LivingMapValheim/main/docs/media/detail-compare.png)
-
-The switch from one to the other as you zoom in:
-
-![Zooming in on a base: the map turns into the detailed picture step by step](https://raw.githubusercontent.com/tbsj1ga/LivingMapValheim/main/docs/media/detail-zoom.webp)
 
 Close up, in detail: a base, and a clearing cut into the forest.
 

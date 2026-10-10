@@ -6,6 +6,8 @@ changed it.**
 Your bases, roads, fields and the forest you've cut down appear on the map and the minimap,
 right where they are, and update as you keep building.
 
+![Zooming in on a base: the map turns into the detailed picture step by step](https://raw.githubusercontent.com/tbsj1ga/LivingMapValheim/main/docs/media/detail-zoom.webp)
+
 > ## 🆕 New in 0.18.0: a road you can follow through the forest
 >
 > The map stamps its trees over everything it has already drawn, so a road through the
@@ -19,30 +21,6 @@ right where they are, and update as you keep building.
 >
 > Settings also take effect while you watch, instead of waiting for something else to
 > redraw the map.
->
-> ## New in 0.17.0: your base in the mountains is on the map
->
-> Above about 95 metres the game's own map covers the ground with its rock pattern, and
-> anything drawn under it was simply gone - a mountain base was not on the map at all.
-> Now it shows: in full when you zoom in, and as a marker layer on the minimap and the
-> zoomed-out map.
->
-> The map also **opens without a stutter** and fills in faster, and the settings worth
-> knowing are no longer hidden: **Map sharpness** (raise it if buildings look smeared),
-> **Building outline**, **Building colours: brightness**.
->
-> **Experimental, off by default: the host's map for its players.** When you host, players
-> on your server who have Living Map can get your map - buildings, paths, cleared forest -
-> but **only where their own map is explored**. Nothing new is revealed. The host turns on
-> `ShareWithPlayers`, the player turns on `UseHostMap`.
->
-> ## The detailed map (since 0.16.0)
->
-> Zoom the big map in and it is **drawn in detail, in the vanilla map's own style**:
-> buildings with their roofs, paths, fields and cleared forest. The closer you zoom, the
-> finer it gets. The first time you open the map a short note asks whether to keep it on,
-> and you can turn it off any time: *Close-up detail* in the settings window, or
-> `DetailEnabled = false` in `BepInEx/config/j1ga.livingmap.cfg`.
 
 ## The three views
 
@@ -61,10 +39,6 @@ through a port of the game's own map shader: buildings with their real shape and
 and fields with their own textures.
 
 ![Zoomed in: vanilla on the left, LivingMap on the right](https://raw.githubusercontent.com/tbsj1ga/LivingMapValheim/main/docs/media/detail-compare.png)
-
-And the switch from one to the other as you zoom:
-
-![Zooming in on a base: the map turns into the detailed picture step by step](https://raw.githubusercontent.com/tbsj1ga/LivingMapValheim/main/docs/media/detail-zoom.webp)
 
 ## What you'll see
 

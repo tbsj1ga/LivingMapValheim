@@ -5,6 +5,8 @@
 меняется вместе с ним. Ничего не патчит через Harmony, игроку без мода не мешает
 никак. По сети передаётся только одно: хост отдаёт свою карту игрокам с модом (0.17.0).
 
+![Приближение к базе: карта шаг за шагом становится детальной](https://raw.githubusercontent.com/tbsj1ga/LivingMapValheim/main/docs/media/detail-zoom.webp)
+
 > **Новое в 0.18.0 — дороги, по которым видно идти.** Карта рисует деревья поверх всего
 > нарисованного, поэтому дорога под кронами пропадала при любом цвете: теперь под дорогой
 > лесной узор снимается (`PathsClearForest`), а `PathWidthMeters` рисует дорогу шире одной
@@ -166,10 +168,6 @@ GitHub Issues: https://github.com/tbsj1ga/LivingMapValheim/issues — прило
 своими текстурами, лес таким, какой он есть.
 
 ![Вблизи: слева ванильная карта, справа LivingMap](https://raw.githubusercontent.com/tbsj1ga/LivingMapValheim/main/docs/media/detail-compare.png)
-
-Переход между ними при приближении:
-
-![Приближение к базе: карта шаг за шагом становится детальной](https://raw.githubusercontent.com/tbsj1ga/LivingMapValheim/main/docs/media/detail-zoom.webp)
 
 Вблизи, в деталях: база и вырубка в лесу.
 
