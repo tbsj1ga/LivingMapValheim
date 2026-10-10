@@ -31,6 +31,7 @@ namespace LivingMap
         private readonly HashSet<int> _plantedForest = new HashSet<int>();
         private readonly HashSet<int> _plantedTrees = new HashSet<int>();   // the same trees, one dot each
         private readonly Dictionary<int, int> _outsideCounts = new Dictionary<int, int>();   // trees per pixel outside the vanilla forest, per pass
+        private readonly Dictionary<int, int> _dotCounts = new Dictionary<int, int>();       // ... and the same with saplings counted, for the dots
         private readonly Dictionary<int, bool> _forestBiome = new Dictionary<int, bool>();   // pixel -> the vanilla map draws forest in this biome at all
         private int _biomeLookupsThisFrame;
         private const int BiomeLookupsPerFrame = 600;
@@ -51,8 +52,12 @@ namespace LivingMap
         // the host, and on a client the zones that sat inside the active area for two passes.
         private bool ForestWanted
         {
-            get { return (_cfgShowForest.Value || _cfgShowPlanted.Value) && !_forestDisabled && UseZdoScan; }
+            // the dots need the same data: the tree count per pixel, and the vanilla mask to know
+            // which pixels the map already draws as woodland
+            get { return (_cfgShowForest.Value || _cfgShowPlanted.Value || DotsWanted) && !_forestDisabled && UseZdoScan; }
         }
+
+        private bool DotsWanted { get { return _cfgShowPlantedTrees != null && _cfgShowPlantedTrees.Value; } }
 
         private void InitForestLayer()
         {
@@ -105,6 +110,7 @@ namespace LivingMap
             _treeCount = null;
             _trustedZoneScratch.Clear();
             _outsideCounts.Clear();
+            _dotCounts.Clear();
             _forestCursor = -1;
         }
 
@@ -116,6 +122,22 @@ namespace LivingMap
             if (prefab.GetComponent<TreeBase>() == null) return false;
             if (_cfgDebug.Value) Logger.LogInfo("Tree prefab: " + prefab.name);
             return true;
+        }
+
+        // A sapling: a Plant whose grown form is a tree. Carrots, turnips and barley are Plants
+        // too and grow into something you pick, which is why the grown prefab is what decides.
+        private bool IsSaplingPrefab(GameObject prefab)
+        {
+            Plant plant = prefab.GetComponent<Plant>();
+            if (plant == null || plant.m_grownPrefabs == null) return false;
+            for (int i = 0; i < plant.m_grownPrefabs.Length; i++)
+            {
+                GameObject g = plant.m_grownPrefabs[i];
+                if (g == null || g.GetComponent<TreeBase>() == null) continue;
+                if (_cfgDebug.Value) Logger.LogInfo("Sapling prefab: " + prefab.name + " -> " + g.name);
+                return true;
+            }
+            return false;
         }
 
         private static int ZoneKey(int zx, int zy)
@@ -195,27 +217,45 @@ namespace LivingMap
             return zones;
         }
 
+        // The dots: a pixel the map shows bare that holds planted trees. Counted apart from the
+        // woodland pattern, because the two mean different things - the pattern needs a wood,
+        // a dot needs a tree - and because a sapling counts here. Nothing in the world
+        // generator plants a sapling, so one is always somebody's planting, and it is the
+        // single tree by the house that this layer exists for; it would be odd to mark it only
+        // once it had grown. The dots are not in the mask, so they are not the mask's business:
+        // what they need drawn again is the map layer and the hidden-ground layer.
+        private void UpdatePlantedTreeDots()
+        {
+            int before = _plantedTrees.Count;
+            _plantedTrees.Clear();
+            if (DotsWanted)
+            {
+                int dotMin = _cfgPlantedTreesMin != null ? Mathf.Max(1, _cfgPlantedTreesMin.Value) : 1;
+                foreach (KeyValuePair<int, int> kv in _dotCounts)
+                    if (kv.Value >= dotMin) _plantedTrees.Add(kv.Key);
+            }
+            if (before == _plantedTrees.Count) return;
+            _rtDirty = true;
+            _highDirty = true;
+            _highSig = -1;
+            if (_cfgDebug.Value)
+                Logger.LogInfo("Planted trees: " + _plantedTrees.Count + " pixels with a dot, from " +
+                               _dotCounts.Count + " pixels holding planted trees outside the map's own forest.");
+        }
+
         // Planted forest: enough trees in a pixel the vanilla mask leaves bare. A tree that is
         // in the database exists, so pixels are added anywhere; they are dropped again on the
         // host everywhere and on a client only where the zone is synced, like build pieces.
         private bool UpdatePlantedForest()
         {
+            UpdatePlantedTreeDots();
+
             if (!_cfgShowPlanted.Value)
             {
                 if (_plantedForest.Count == 0) return false;
                 _plantedForest.Clear();
                 return true;
             }
-
-            // the dots are the same trees counted differently: the pattern needs a wood, a dot
-            // needs a tree, so the two sets are built from one pass over the same counts
-            bool dots = _cfgShowPlantedTrees != null && _cfgShowPlantedTrees.Value;
-            int dotMin = _cfgPlantedTreesMin != null ? Mathf.Max(1, _cfgPlantedTreesMin.Value) : 1;
-            int dotsBefore = _plantedTrees.Count;
-            _plantedTrees.Clear();
-            if (dots)
-                foreach (KeyValuePair<int, int> kv in _outsideCounts)
-                    if (kv.Value >= dotMin) _plantedTrees.Add(kv.Key);
 
             int min = Mathf.Max(1, _cfgPlantedMinTrees.Value);
             int added = 0, removed = 0;
@@ -241,7 +281,7 @@ namespace LivingMap
                 Logger.LogInfo(string.Format("Planted forest: {0} pixels (+{1}, -{2}), {3} tree pixels outside the vanilla forest, {4} biome lookups cached{5}",
                     _plantedForest.Count, added, removed, _outsideCounts.Count, _forestBiome.Count, SampleText()));
             else _forestSample.Clear();
-            return added > 0 || removed > 0 || dotsBefore != _plantedTrees.Count;
+            return added > 0 || removed > 0;
         }
 
         private bool PixelCanHoldForest(int idx)

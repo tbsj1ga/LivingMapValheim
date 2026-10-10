@@ -28,6 +28,7 @@ namespace LivingMap
         private readonly List<PieceRec> _fillScratch = new List<PieceRec>();
         private int _rtIncrements;
         private bool _drawnBuildings, _drawnPaths, _drawnOutline;   // layer switches at the last full rebuild
+        private bool _collectedCleared, _collectedDots;             // ... and the two that change what is collected
         private const int MaxIncrementalPieces = 1500;    // beyond this a full rebuild is the cheaper option
         private const float MapRebuildInterval = 0.5f;    // seconds between texture updates after something changed
         private float _nextRtRebuild;

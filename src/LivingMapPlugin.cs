@@ -174,6 +174,27 @@ namespace LivingMap
                 else _nextScanTime = now + 0.25f;
             }
 
+            // Two switches change what is collected, not only what is drawn: levelled ground is
+            // read out of the terrain records, and the dots are counted while walking the
+            // database. Both are remembered - a record is parsed once per revision, the counts
+            // once per pass - so without this, turning one on did nothing at all until the world
+            // was loaded again.
+            if (_cfgShowCleared.Value != _collectedCleared)
+            {
+                _collectedCleared = _cfgShowCleared.Value;
+                _tcRevision.Clear();
+                _nextZdoPass = 0f;
+                _lastScanPos = new Vector3(float.MinValue, 0f, float.MinValue);
+                _nextScanTime = 0f;
+                Logger.LogInfo("Levelled ground turned " + (_collectedCleared ? "on" : "off") + ": the terrain records are read again.");
+            }
+            if (DotsWanted != _collectedDots)
+            {
+                _collectedDots = DotsWanted;
+                ResetZdoPass();
+                _nextZdoPass = 0f;
+            }
+
             if (UseZdoScan && (_cfgShowBuildings.Value || _treeCount != null || (UseZdoPaths && _cfgShowPaths.Value))) StepZdoScan(now, pos);
 
             if (now >= _nextRefogTime && (_fogPieces.Count > 0 || _fogTerrain.Count > 0 || _fogForest.Count > 0))
@@ -300,6 +321,8 @@ namespace LivingMap
             _lastScanPos = new Vector3(float.MinValue, 0f, float.MinValue);
             _nextScanTime = 0f; _lastScanTime = 0f;
             _nextSaveTime = Time.realtimeSinceStartup + SaveInterval;
+            _collectedCleared = _cfgShowCleared.Value;
+            _collectedDots = DotsWanted;
             _ready = true;
 
             Logger.LogInfo(string.Format(

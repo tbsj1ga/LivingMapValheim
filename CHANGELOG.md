@@ -16,7 +16,11 @@ The version is set in one place — `LivingMapPlugin.Version` in `src/LivingMapP
   as its own woodland pattern and only ever for a whole map pixel at a time, so a sapling by
   the house or a line along a road reaches it only once six of them stand in one pixel
   (`PlantedForestMinTrees`). This marks them with a dot instead, from one tree up
-  (`PlantedTreesMinimum`), in its own colour (`Tree_Planted`). It is off by default and meant
+  (`PlantedTreesMinimum`), in its own colour (`Tree_Planted`). **A sapling counts as a
+  planted tree**: the world generator plants none, so a sapling is always somebody's, and it
+  would be odd to mark the tree by the house only once it had grown. The biome does not come
+  into it either - the map draws no forest in a swamp, but a tree planted there still stands
+  where the map shows none. It is off by default and meant
   to stay that way for most: dots beside the map's own stamped woods do not look like the
   rest of the map, and close up the detailed map draws every tree properly anyway. It is
   here for the zoomed-out map and the minimap, where nothing else can show them at all.
@@ -26,6 +30,13 @@ The version is set in one place — `LivingMapPlugin.Version` in `src/LivingMapP
   ground raised above the water is still water to it. A dirt bridge across a lake was on no
   map but the detailed one; now it is on all of them. The setting keeps its name
   (`HighGroundOverlay`) and is called *Show what the map hides (mountains, water)*.
+- **Two switches now take effect without loading the world again**: *Levelled ground*
+  (`ShowClearedGround`) and the planted-tree dots. Both change what is *collected*, not only
+  what is drawn - levelled ground is read out of the terrain records, a record is read once
+  per change; the dots are counted while walking the object database, once per pass - so
+  turning either on used to do nothing at all until the next world load. This is what a dirt
+  bridge needs, too: raising ground with the hoe paints nothing, so an unpainted causeway is
+  levelled ground, and that setting is what puts it on the map at all.
 
 ## 0.17.0 — The host's map for its players
 
