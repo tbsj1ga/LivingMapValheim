@@ -12,6 +12,14 @@ The version is set in one place — `LivingMapPlugin.Version` in `src/LivingMapP
 - **`PathWidthMeters`** (0 = the road's real width): a road is often one cell across, which at
   6 or 12 metres to a map pixel is a single pixel of line and easy to lose. 4 to 6 makes it a
   line that can be followed. It widens what is drawn, not what is remembered.
+- **Single planted trees, as a dot each** (`ShowPlantedTrees`, **off**). The map draws trees
+  as its own woodland pattern and only ever for a whole map pixel at a time, so a sapling by
+  the house or a line along a road reaches it only once six of them stand in one pixel
+  (`PlantedForestMinTrees`). This marks them with a dot instead, from one tree up
+  (`PlantedTreesMinimum`), in its own colour (`Tree_Planted`). It is off by default and meant
+  to stay that way for most: dots beside the map's own stamped woods do not look like the
+  rest of the map, and close up the detailed map draws every tree properly anyway. It is
+  here for the zoomed-out map and the minimap, where nothing else can show them at all.
 - **Ground the map hides now includes water.** The layer that draws over the rock pattern of
   high ground does the same under water: the map's shader draws the sea from its own colours
   and never reads what is painted there, and its heights come from the world generator, so

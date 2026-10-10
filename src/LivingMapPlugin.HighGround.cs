@@ -49,6 +49,7 @@ namespace LivingMap
         private long _highSig = -1;                     // and what it was: a redraw it does not need is skipped
         private readonly List<PieceRec> _highScratch = new List<PieceRec>();
         private readonly List<long> _highCells = new List<long>();
+        private readonly List<int> _highTrees = new List<int>();        // map pixels with planted trees
 
         private void BindHighGroundConfig()
         {
@@ -208,7 +209,20 @@ namespace LivingMap
                 for (int i = 0; i < _highCells.Count; i++) sig = sig * 31 + _highCells[i];
                 sig = sig * 31 + (_cfgOutline.Value ? 1 : 0);
 
-                if (_highScratch.Count == 0 && _highCells.Count == 0)
+                _highTrees.Clear();
+                if (_cfgShowPlantedTrees != null && _cfgShowPlantedTrees.Value)
+                {
+                    float hf = _texSize * 0.5f;
+                    foreach (int idx in _plantedTrees)
+                    {
+                        if (!IsHighPixel(idx)) continue;
+                        float wx = (idx % _texSize - hf) * _pixelSize, wz = (idx / _texSize - hf) * _pixelSize;
+                        if (IsWorldExplored(explored, exploredOthers, wx, wz)) _highTrees.Add(idx);
+                    }
+                    for (int i = 0; i < _highTrees.Count; i++) sig = sig * 31 + _highTrees[i];
+                }
+
+                if (_highScratch.Count == 0 && _highCells.Count == 0 && _highTrees.Count == 0)
                 {
                     _highSig = sig;
                     ReleaseHighLayer();
@@ -216,7 +230,7 @@ namespace LivingMap
                 }
                 if (sig == _highSig && _rtHigh != null && _rtHigh.IsCreated())
                 {
-                    _highScratch.Clear(); _highCells.Clear();
+                    _highScratch.Clear(); _highCells.Clear(); _highTrees.Clear();
                     return;
                 }
                 _highSig = sig;
@@ -250,6 +264,18 @@ namespace LivingMap
                             Solid(TerrainColor(kind)), k, half, h, flip, PathDrawWidth(grid));
                     }
 
+                    if (_highTrees.Count > 0)
+                    {
+                        Color tc = Solid(_cfgPlantedTreeColor.Value);
+                        float tr = _pixelSize * 0.3f, hf2 = _texSize * 0.5f;
+                        for (int i = 0; i < _highTrees.Count; i++)
+                        {
+                            int idx = _highTrees[i];
+                            float wx = (idx % _texSize - hf2) * _pixelSize, wz = (idx / _texSize - hf2) * _pixelSize;
+                            EmitQuad(wx - tr, wz - tr, wx + tr, wz + tr, tc, k, half, h, flip, 0f);
+                        }
+                    }
+
                     if (_cfgOutline.Value)
                     {
                         float grow = Mathf.Max(0f, _cfgOutlineWidth.Value);
@@ -277,7 +303,7 @@ namespace LivingMap
                 }
 
                 _highPieceCount = _highScratch.Count; _highCellCount = _highCells.Count;
-                _highScratch.Clear(); _highCells.Clear();
+                _highScratch.Clear(); _highCells.Clear(); _highTrees.Clear();
                 if (_cfgDebug.Value)
                     Logger.LogInfo(string.Format("High-ground layer: {0} pieces, {1} path cells, {2}px, {3:0.0} ms CPU",
                         _highPieceCount, _highCellCount, _rtHigh.width, _sw.Elapsed.TotalMilliseconds));

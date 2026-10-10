@@ -29,6 +29,7 @@ namespace LivingMap
 
         // planted forest: trees stand where the vanilla mask shows none
         private readonly HashSet<int> _plantedForest = new HashSet<int>();
+        private readonly HashSet<int> _plantedTrees = new HashSet<int>();   // the same trees, one dot each
         private readonly Dictionary<int, int> _outsideCounts = new Dictionary<int, int>();   // trees per pixel outside the vanilla forest, per pass
         private readonly Dictionary<int, bool> _forestBiome = new Dictionary<int, bool>();   // pixel -> the vanilla map draws forest in this biome at all
         private int _biomeLookupsThisFrame;
@@ -206,6 +207,16 @@ namespace LivingMap
                 return true;
             }
 
+            // the dots are the same trees counted differently: the pattern needs a wood, a dot
+            // needs a tree, so the two sets are built from one pass over the same counts
+            bool dots = _cfgShowPlantedTrees != null && _cfgShowPlantedTrees.Value;
+            int dotMin = _cfgPlantedTreesMin != null ? Mathf.Max(1, _cfgPlantedTreesMin.Value) : 1;
+            int dotsBefore = _plantedTrees.Count;
+            _plantedTrees.Clear();
+            if (dots)
+                foreach (KeyValuePair<int, int> kv in _outsideCounts)
+                    if (kv.Value >= dotMin) _plantedTrees.Add(kv.Key);
+
             int min = Mathf.Max(1, _cfgPlantedMinTrees.Value);
             int added = 0, removed = 0;
             foreach (KeyValuePair<int, int> kv in _outsideCounts)
@@ -230,7 +241,7 @@ namespace LivingMap
                 Logger.LogInfo(string.Format("Planted forest: {0} pixels (+{1}, -{2}), {3} tree pixels outside the vanilla forest, {4} biome lookups cached{5}",
                     _plantedForest.Count, added, removed, _outsideCounts.Count, _forestBiome.Count, SampleText()));
             else _forestSample.Clear();
-            return added > 0 || removed > 0;
+            return added > 0 || removed > 0 || dotsBefore != _plantedTrees.Count;
         }
 
         private bool PixelCanHoldForest(int idx)
@@ -282,6 +293,7 @@ namespace LivingMap
                 {
                     MarkStoreChanged();
                     _maskDirty = true;
+                    if (_cfgShowPlantedTrees.Value) { _rtDirty = true; _highDirty = true; _highSig = -1; }
                     if (_cfgDebug.Value)
                         Logger.LogInfo(string.Format("Cleared forest: {0} pixels (+{1}, -{2}) over {3} zones, {4:0.0} ms CPU{5}",
                             _clearedForest.Count, _forestAdded, _forestRemoved, _trustedZoneScratch.Count, _forestMs, SampleText()));

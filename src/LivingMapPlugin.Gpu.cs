@@ -261,6 +261,8 @@ namespace LivingMap
                     }
                 }
 
+                DrawPlantedTrees(explored, exploredOthers, k, half, h, flip);
+
                 if (_cfgShowBuildings.Value && _pieces.Count > 0)
                 {
                     float minPiece = Mathf.Max(0.1f, _cfgPieceSize.Value);
@@ -465,6 +467,23 @@ namespace LivingMap
                 quads++;
             }
             return quads;
+        }
+
+        // A dot per map pixel where trees stand that the map's own woodland pattern does not
+        // know about. The map cannot draw a tree - its forest is a pattern it stamps over whole
+        // pixels - so this is the only way a planted sapling reaches the zoomed-out map and the
+        // minimap at all, and the reason the layer is off unless asked for.
+        private void DrawPlantedTrees(BitArray explored, BitArray exploredOthers, float k, float half, int h, bool flip)
+        {
+            if (_cfgShowPlantedTrees == null || !_cfgShowPlantedTrees.Value || _plantedTrees.Count == 0) return;
+            Color c = _cfgPlantedTreeColor.Value;
+            float r = _pixelSize * 0.3f;                 // a dot inside the pixel, not the whole of it
+            foreach (int idx in _plantedTrees)
+            {
+                float wx = (idx % _texSize - half) * _pixelSize, wz = (idx / _texSize - half) * _pixelSize;
+                if (!IsWorldExplored(explored, exploredOthers, wx, wz)) continue;
+                EmitQuad(wx - r, wz - r, wx + r, wz + r, c, k, half, h, flip, 0f);
+            }
         }
 
         private static readonly Comparison<PieceRec> ByTop = delegate(PieceRec a, PieceRec b) { return a.Y.CompareTo(b.Y); };
