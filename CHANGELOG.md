@@ -2,7 +2,7 @@
 
 The version is set in one place — `LivingMapPlugin.Version` in `src/LivingMapPlugin.cs`.
 
-## 0.19.0 (unreleased)
+## 0.19.0
 
 - **The map is told about ground the players changed** (`HeightFromTerrain`, on). The map
   goes by the world generator's heights, and no amount of digging changes them - but the
