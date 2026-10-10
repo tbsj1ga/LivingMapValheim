@@ -13,19 +13,22 @@ The version is set in one place — `LivingMapPlugin.Version` in `src/LivingMapP
 - **`PathWidthMeters`** (0 = the road's real width): a road is often one cell across, which at
   6 or 12 metres to a map pixel is a single pixel of line and easy to lose. 4 to 6 makes it a
   line that can be followed. It widens what is drawn, not what is remembered.
-- **Ground the map hides now includes water.** The layer that draws over the rock pattern of
-  high ground does the same under water: the map's shader draws the sea from its own colours
+- **The map also hides what is over water** - and there is now a switch for it
+  (`HighGroundIncludesWater`, **off**). The map's shader draws the sea from its own colours
   and never reads what is painted there, and its heights come from the world generator, so
-  ground raised above the water is still water to it. A dirt bridge across a lake was on no
-  map but the detailed one; now it is on all of them. Over water it is drawn **solid**, in the
-  colour the map layer itself would have used, less the same amount the map layer takes off a
-  flat piece (there is no paper under this layer and no styling over it, so the plain colour
-  flashes) - on a mountain the layer has the rock to let through and is kept faint, under
-  water there is nothing beneath it - and the layer now keeps
-  **mip levels**, without which the whole map on screen means one texel in eight is sampled
-  and a causeway two texels wide came out as a dotted line of stray pixels. The mips cost a
-  third more memory for that texture. The setting keeps its name (`HighGroundOverlay`) and is
-  called *Show what the map hides (mountains, water)*.
+  ground raised above the water is still water to it: a pier or a dirt bridge across a lake
+  is on no map but the detailed one. Turned on, the same layer that covers the mountains
+  draws them. It is off by default because of what that layer can honestly look like over
+  water: on a mountain it covers the rock pattern, which hid everything anyway, but over
+  water it is a flat patch of colour on top of the finished picture - above the waves, above
+  the fog, above the clouds - with none of the paper and shading the map gives everything
+  else, so a causeway reads as a plain band and a harbour as bright specks lit through the
+  clouds. Close up, the detailed map draws all of it properly. Drawn in the colour the map
+  layer itself would use, less the same amount the map layer takes off a flat piece, and the
+  layer now keeps **mip levels**, without which the whole map on screen means one texel in
+  eight is sampled and a line two texels wide came out as a dotted trail of stray pixels; the
+  mips cost a third more memory for that texture.
+
 - **A setting that changes how a layer looks now takes effect at once** - a road width, a
   colour, an outline, the strength of that overlay. Each layer held what it had been drawn
   with until something asked it to draw again; with the detailed map off nothing did, so

@@ -101,7 +101,7 @@ namespace LivingMap
             _cfgShowBuildings = Config.Bind(SecLayers, "ShowBuildings", true,
                 Ui("Show buildings on the map.", UiLayers, "Buildings", 90, false));
             _cfgShowPaths = Config.Bind(SecLayers, "ShowPaths", true,
-                Ui("Show dirt paths, fields and paving made with the hoe and the cultivator.", UiLayers, "Paths and fields", 85, false));
+                Ui("Show dirt paths, fields and paving made with the hoe and the cultivator.", UiLayers, "Paths and fields", 88, false));
             _cfgShowForest = Config.Bind(SecLayers, "ShowClearedForest", true,
                 Ui("Remove the forest from the map where you have cut it down (the vanilla map always shows the forest the world started with).", UiLayers, "Cleared forest", 80, false));
             _cfgShowPlanted = Config.Bind(SecLayers, "ShowPlantedForest", true,
@@ -112,9 +112,9 @@ namespace LivingMap
                 Ui("Only draw on ground you have explored. Off shows everything the mod knows about - on the host, the whole world.", UiLayers, "Only explored ground", 65, false));
             _cfgPathWidth = Config.Bind(SecLayers, "PathWidthMeters", 0f,
                 Ui("How wide a road is drawn, in metres. 0 = its real width. A road is often one cell across, which on the zoomed-out map and the minimap is a single pixel and easy to lose against a dark biome; 4 to 6 makes it a line you can follow. It only widens what is drawn, not what is remembered.",
-                    new AcceptableValueRange<float>(0f, 12f), UiLayers, "Road width (m)", 83, false));
+                    new AcceptableValueRange<float>(0f, 12f), UiLayers, "Road width (m)", 87, false));
             _cfgPathsClearForest = Config.Bind(SecLayers, "PathsClearForest", true,
-                Ui("Where a road runs through forest, stop drawing the forest pattern over it. The map draws its trees on top of everything, so a road under them is hidden whatever colour it is - and where a road was laid the trees are gone anyway.", UiLayers, "Roads show through the forest", 82, false));
+                Ui("Where a road runs through forest, stop drawing the forest pattern over it. The map draws its trees on top of everything, so a road under them is hidden whatever colour it is - and where a road was laid the trees are gone anyway.", UiLayers, "Roads show through the forest", 86, false));
             _cfgShowCleared = Config.Bind(SecLayers, "ShowClearedGround", false,
                 Ui("Also mark ground that was only levelled or raised, not painted. Covers everything you have terraformed, so it paints wide areas.", UiLayers, "Levelled ground", 60, false));
             _cfgForestRadius = Config.Bind(SecLayers, "ClearedForestRadius", 12f,

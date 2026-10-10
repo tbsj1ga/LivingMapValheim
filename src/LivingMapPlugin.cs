@@ -182,6 +182,7 @@ namespace LivingMap
             if (_cfgShowCleared.Value != _collectedCleared)
             {
                 _collectedCleared = _cfgShowCleared.Value;
+            _highWaterOn = HighWaterWanted;
                 _tcRevision.Clear();
                 _nextZdoPass = 0f;
                 _lastScanPos = new Vector3(float.MinValue, 0f, float.MinValue);
@@ -429,6 +430,7 @@ namespace LivingMap
         // settings window with no effect at all, while with the detailed map on it worked. Four
         // times a second, which is nothing: these are a few dozen values in memory.
         private long _drawSig = -1, _maskCfgSig = -1;
+        private bool _highWaterOn;
         private float _nextSigCheck;
 
         private void WatchDrawSettings(float now)
@@ -456,6 +458,13 @@ namespace LivingMap
             {
                 if (_drawSig != -1) { _rtDirty = true; _highDirty = true; _highSig = -1; }
                 _drawSig = d;
+            }
+
+            if (HighWaterWanted != _highWaterOn)
+            {
+                _highWaterOn = HighWaterWanted;
+                _highPixels = null;                  // which pixels the map hides has changed
+                _highDirty = true; _highSig = -1;
             }
 
             long m = 17;

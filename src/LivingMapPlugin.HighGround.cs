@@ -35,6 +35,7 @@ namespace LivingMap
 
         private ConfigEntry<string> _cfgHighOverlay;
         private ConfigEntry<float> _cfgHighStrength;
+        private ConfigEntry<bool> _cfgHighWater;
 
         private RenderTexture _rtHigh;
         private Material _glMatHigh;
@@ -55,13 +56,16 @@ namespace LivingMap
         {
             _cfgHighOverlay = Config.Bind(SecLayers, "HighGroundOverlay", HighBoth,
                 Ui("Buildings and roads the game's map will not show: above 70 metres it covers the ground with its rock pattern, and over water it draws the sea from its own colours - in both it ignores what the mod paints, so a mountain base or a dirt bridge across a lake is not on the minimap or the zoomed-out map at all. This draws them on top. Close up the detailed map draws it properly anyway, so this is for the other two. Both (default): on the minimap and on the zoomed-out map. Minimap: only there, for anyone who would rather the zoomed-out map stayed exactly the game's own picture. Costs a texture of its own, the same size as the map layer with its mip levels (20 to 340 MB, see Map sharpness), and only from the moment something is built on ground the map hides - livingmap status says how much.",
-                    new AcceptableValueList<string>(HighOff, HighMinimap, HighBoth), UiLayers, "Show what the map hides (mountains, water)", 85, false));
+                    new AcceptableValueList<string>(HighOff, HighMinimap, HighBoth), UiLayers, "Show what the map hides (mountains)", 85, false));
+            _cfgHighWater = Config.Bind(SecLayers, "HighGroundIncludesWater", false,
+                Ui("Do the same over water: a pier, a dirt bridge or a causeway, which the map shows nothing of because its shader draws the sea from its own colours and its heights come from the world generator, so ground raised above the water is still water to it. Off by default, and the reason is honesty about what it can look like: over a mountain this layer covers the rock pattern, which hid everything anyway, but over water it is a flat patch of colour laid on top of the finished picture - above the waves, above the fog, above the clouds - with none of the paper and shading the map gives everything else. A causeway comes out as a plain band, and a harbour lit through the clouds. Close up the detailed map draws all of it properly, with the map's own paper and light; this is for anyone who would rather have it marked on the zoomed-out map and the minimap than have those two look untouched.", UiLayers, "...and over water too", 83, false));
             _cfgHighStrength = Config.Bind(SecLayers, "HighGroundStrength", 0.55f,
-                Ui("How strongly this shows **on a mountain**, where the layer lies over the map's rock pattern: at full strength its colours are the plain ones, which in daylight on snow is louder than anything the map draws itself, so it is kept low - lower lets the rock show through and settles it into the picture. Over water it makes no difference: there the map draws plain sea and nothing of ours is under it, so a pier or a causeway is drawn solid, in the colour the map layer itself would have used.",
+                Ui("How strongly this shows on a mountain, where the layer lies over the map's rock pattern: at full strength its colours are the plain ones, which in daylight on snow is louder than anything the map draws itself, so it is kept low - lower lets the rock show through and settles it into the picture. Over water (see the setting above) it makes no difference: there the map draws plain sea and nothing of ours is under it, so a pier or a causeway keeps its own colour.",
                     new AcceptableValueRange<float>(0.2f, 1f), UiLayers, "...and how strongly", 84, false));
         }
 
         private string HighMode { get { return _cfgHighOverlay != null ? _cfgHighOverlay.Value : HighOff; } }
+        private bool HighWaterWanted { get { return _cfgHighWater != null && _cfgHighWater.Value; } }
         private float HighStrength { get { return _cfgHighStrength != null ? Mathf.Clamp(_cfgHighStrength.Value, 0.2f, 1f) : 0.7f; } }
         private bool HighWanted { get { return !_highUnavailable && HighMode != HighOff && _cfgEnabled != null && _cfgEnabled.Value; } }
 
@@ -93,6 +97,7 @@ namespace LivingMap
                 Texture2D mask = s_fiForestTex != null ? s_fiForestTex.GetValue(_mm) as Texture2D : null;
                 if (mask != null && (mask.width != _texSize || mask.height != _texSize)) mask = null;
 
+                bool wantWater = HighWaterWanted;
                 BitArray high = new BitArray(_texSize * _texSize);
                 BitArray water = new BitArray(_texSize * _texSize);
                 BitArray mist = mask != null ? new BitArray(_texSize * _texSize) : null;
@@ -112,8 +117,9 @@ namespace LivingMap
                         // the water is still water to it, and a dirt bridge was on no map but the
                         // detailed one.
                         float m = px[i].r;
-                        if (m >= HighGroundFrom || m < WaterHidesBelow) { high[baseIdx + i] = true; found++; }
-                        if (m < WaterHidesBelow) water[baseIdx + i] = true;
+                        bool wet = m < WaterHidesBelow;
+                        if (m >= HighGroundFrom || (wet && wantWater)) { high[baseIdx + i] = true; found++; }
+                        if (wet) water[baseIdx + i] = true;
                     }
                     if (mist == null) continue;
                     Color[] mk = mask.GetPixels(0, z, _texSize, h);
