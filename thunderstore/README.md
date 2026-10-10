@@ -36,20 +36,35 @@ right where they are, and update as you keep building.
 > but **only where their own map is explored**. Nothing new is revealed. The host turns on
 > `ShareWithPlayers`, the player turns on `UseHostMap`.
 >
-> ## New in 0.16.0: the detailed map (experimental)
+> ## The detailed map (since 0.16.0)
 >
-> Zoom the big map in and it is now **drawn in detail, in the vanilla map's own style**:
+> Zoom the big map in and it is **drawn in detail, in the vanilla map's own style**:
 > buildings with their roofs, paths, fields and cleared forest. The closer you zoom, the
-> finer it gets.
->
-> It's **experimental** — if something looks wrong, please
-> [report it](https://github.com/tbsj1ga/LivingMapValheim/issues). The first time you open
-> the map, a short note asks whether to keep it on. You can turn it off any time in
-> `BepInEx/config/j1ga.livingmap.cfg`, section `[08 Detail]`: `DetailEnabled = false`.
+> finer it gets. The first time you open the map a short note asks whether to keep it on,
+> and you can turn it off any time: *Close-up detail* in the settings window, or
+> `DetailEnabled = false` in `BepInEx/config/j1ga.livingmap.cfg`.
+
+## The three views
+
+**The minimap**, which you look at most. Living Map paints into the very texture the game's
+map shader reads, so this view keeps the vanilla look - it just has your base in it.
+
+![The minimap: vanilla on the left, LivingMap on the right](https://raw.githubusercontent.com/tbsj1ga/LivingMapValheim/main/docs/media/minimap-compare.png)
+
+**The big map, zoomed out** - the same, over a whole peninsula: roads, fields, the forest you
+cut down and the one you planted, buildings by material.
+
+![The big map zoomed out: vanilla on the left, LivingMap on the right](https://raw.githubusercontent.com/tbsj1ga/LivingMapValheim/main/docs/media/map-compare.png)
+
+**The big map, zoomed in - the detailed map.** This is the one view Living Map draws itself,
+through a port of the game's own map shader: buildings with their real shape and roofs, paths
+and fields with their own textures.
+
+![Zoomed in: vanilla on the left, LivingMap on the right](https://raw.githubusercontent.com/tbsj1ga/LivingMapValheim/main/docs/media/detail-compare.png)
+
+And the switch from one to the other as you zoom:
 
 ![Zooming in on a base: the map turns into the detailed picture step by step](https://raw.githubusercontent.com/tbsj1ga/LivingMapValheim/main/docs/media/detail-zoom.webp)
-
-![Close up: vanilla on the left, LivingMap on the right](https://raw.githubusercontent.com/tbsj1ga/LivingMapValheim/main/docs/media/detail-compare.png)
 
 ## What you'll see
 
@@ -60,10 +75,6 @@ right where they are, and update as you keep building.
   Plant a grove and it appears.
 - Everything respects the fog of war and sits under your pins and markers, on the big map
   and the minimap.
-
-![The big map: vanilla on the left, LivingMap on the right](https://raw.githubusercontent.com/tbsj1ga/LivingMapValheim/main/docs/media/map-compare.png)
-
-![The minimap: vanilla on the left, LivingMap on the right](https://raw.githubusercontent.com/tbsj1ga/LivingMapValheim/main/docs/media/minimap-compare.png)
 
 ## The detailed map, close up
 

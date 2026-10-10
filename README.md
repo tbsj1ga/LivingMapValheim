@@ -15,9 +15,9 @@ network traffic is the host handing its map to players who have the mod (0.17.0)
 > Map get your buildings, paths and forest wherever their own map is explored. See
 > [The host's map](#the-hosts-map-0170).
 >
-> **New in 0.16.0 — the detailed map (experimental).** Zoom the big map in and it is drawn in
+> **The detailed map (0.16.0).** Zoom the big map in and it is drawn in
 > detail, in the vanilla map's own style: buildings with their roofs, paths, fields and
-> cleared forest. See [The detailed map](#the-detailed-map-0160-experimental) and the
+> cleared forest. See [The detailed map](#the-detailed-map) and the
 > [changelog](CHANGELOG.md).
 
 It is not a fork of [AzuMapDetails](https://thunderstore.io/c/valheim/p/Azumatt/AzuMapDetails/)
@@ -47,7 +47,7 @@ the documentation, the Thunderstore package skeleton and the built
 (`*.bin`), the BepInEx config, intermediate `bin/` and `obj/`, zip packages
 and a stray DLL copy in the root — all listed in `.gitignore`.
 
-## The detailed map (0.16.0, experimental)
+## The detailed map
 
 When you zoom the big map in, it is drawn in detail — in the vanilla map's own style. The
 tiles are drawn by a port of the game's map shader (`Custom/mapshader`, read from its DX11
@@ -151,17 +151,34 @@ GitHub Issues: https://github.com/tbsj1ga/LivingMapValheim/issues — please att
 
 ## Screenshots
 
+Three views, and Living Map draws only one of them itself.
+
+**The minimap.** The minimap and the zoomed-out map are the game's own map shader: Living Map
+paints into the very texture that shader reads, so they keep the vanilla look exactly — the
+same paper, forest stamps, water and light — with your base in them. Vanilla on the left.
+
+![The minimap: vanilla on the left, LivingMap on the right](https://raw.githubusercontent.com/tbsj1ga/LivingMapValheim/main/docs/media/minimap-compare.png)
+
+**The big map, zoomed out.** The same picture over a whole peninsula: roads, fields, cleared
+and planted forest, buildings coloured by material.
+
+![The big map zoomed out: vanilla on the left, LivingMap on the right](https://raw.githubusercontent.com/tbsj1ga/LivingMapValheim/main/docs/media/map-compare.png)
+
+**The big map, zoomed in — the detailed map.** This one Living Map draws itself, through a
+port of the game's map shader: buildings with their real shape, direction and roof slopes,
+paths and fields with their own textures, the forest as it stands.
+
+![Zoomed in: vanilla on the left, LivingMap on the right](https://raw.githubusercontent.com/tbsj1ga/LivingMapValheim/main/docs/media/detail-compare.png)
+
+The switch from one to the other as you zoom in:
+
 ![Zooming in on a base: the map turns into the detailed picture step by step](https://raw.githubusercontent.com/tbsj1ga/LivingMapValheim/main/docs/media/detail-zoom.webp)
 
-![Close up: vanilla on the left, LivingMap on the right](https://raw.githubusercontent.com/tbsj1ga/LivingMapValheim/main/docs/media/detail-compare.png)
+Close up, in detail: a base, and a clearing cut into the forest.
 
 ![A base up close: roofs, walls, paving, paths and fields](https://raw.githubusercontent.com/tbsj1ga/LivingMapValheim/main/docs/media/detail-base.png)
 
 ![A clearing cut into the forest](https://raw.githubusercontent.com/tbsj1ga/LivingMapValheim/main/docs/media/detail-forest.png)
-
-![The big map: vanilla on the left, LivingMap on the right](https://raw.githubusercontent.com/tbsj1ga/LivingMapValheim/main/docs/media/map-compare.png)
-
-![The minimap: vanilla on the left, LivingMap on the right](https://raw.githubusercontent.com/tbsj1ga/LivingMapValheim/main/docs/media/minimap-compare.png)
 
 ## Installation
 

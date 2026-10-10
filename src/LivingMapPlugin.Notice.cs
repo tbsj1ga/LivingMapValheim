@@ -41,11 +41,11 @@ namespace LivingMap
             string header = ru ? "Living Map " + NoticeVersion + ": детальная карта" : "Living Map " + NoticeVersion + ": a detailed map";
             string text = ru
                 ? "Если приблизить большую карту, она теперь рисуется детально, в стиле ванильной карты: постройки с крышами, дороги, поля и вырубки, и чем ближе, тем детальнее.\n\n"
-                  + "Это экспериментальная функция. Если заметите ошибку, напишите, пожалуйста, на GitHub: github.com/tbsj1ga/LivingMapValheim/issues\n\n"
+                  + "Если что-то выглядит неправильно, напишите, пожалуйста, на GitHub: github.com/tbsj1ga/LivingMapValheim/issues\n\n"
                   + "Выключить её можно и потом: в файле BepInEx/config/j1ga.livingmap.cfg, раздел [08 Detail], строка DetailEnabled = false.\n\n"
                   + "Оставить детальную карту включённой?"
                 : "When you zoom the big map in, it is now drawn in detail, in the vanilla map's style: buildings with their roofs, paths, fields and cleared forest - the closer, the more detailed.\n\n"
-                  + "This is an experimental feature. If you notice a problem, please report it on GitHub: github.com/tbsj1ga/LivingMapValheim/issues\n\n"
+                  + "If something looks wrong, please report it on GitHub: github.com/tbsj1ga/LivingMapValheim/issues\n\n"
                   + "You can turn it off later too: in BepInEx/config/j1ga.livingmap.cfg, section [08 Detail], line DetailEnabled = false.\n\n"
                   + "Keep the detailed map on?";
             try

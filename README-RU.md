@@ -15,9 +15,9 @@
 > получают ваши постройки, дороги и лес там, где их собственная карта разведана. См.
 > [Карта хоста](#карта-хоста-0170).
 >
-> **Новое в 0.16.0 — детальная карта (эксперимент).** При приближении большая карта рисуется
+> **Детальная карта (0.16.0).** При приближении большая карта рисуется
 > детально, в стиле самой ванильной карты: постройки с крышами, дороги, поля и вырубки.
-> Подробности — в разделе [Детальная карта](#детальная-карта-0160-эксперимент) и в
+> Подробности — в разделе [Детальная карта](#детальная-карта) и в
 > [истории изменений](CHANGELOG-RU.md).
 
 Это не форк [AzuMapDetails](https://thunderstore.io/c/valheim/p/Azumatt/AzuMapDetails/)
@@ -47,7 +47,7 @@
 `bin/`, `obj/`, zip-пакеты и дубликат DLL в корне папки; всё это перечислено в
 `.gitignore`.
 
-## Детальная карта (0.16.0, эксперимент)
+## Детальная карта
 
 При приближении большая карта рисуется детально — в стиле самой ванильной карты. Плитки
 рисует порт шейдера карты игры (`Custom/mapshader`, по его DX11-байткоду), на вход которому
@@ -148,17 +148,34 @@ GitHub Issues: https://github.com/tbsj1ga/LivingMapValheim/issues — прило
 
 ## Скриншоты
 
-![Приближение к базе: карта шаг за шагом становится детальной](https://raw.githubusercontent.com/tbsj1ga/LivingMapValheim/main/docs/media/detail-zoom.webp)
+Видов три, и сам мод рисует только один из них.
+
+**Мини-карта.** Мини-карта и отзумленная карта — это собственный шейдер игры: мод красит в ту
+самую текстуру, которую шейдер читает, поэтому вид остаётся ровно ванильным — та же бумага,
+те же штампы леса, вода и свет, — только с вашей базой. Слева ванильная.
+
+![Мини-карта: слева ванильная, справа LivingMap](https://raw.githubusercontent.com/tbsj1ga/LivingMapValheim/main/docs/media/minimap-compare.png)
+
+**Большая карта, отзумленная.** То же самое на масштабе целого полуострова: дороги, поля,
+вырубки и посадки, постройки по цвету материала.
+
+![Большая карта отзумленная: слева ванильная, справа LivingMap](https://raw.githubusercontent.com/tbsj1ga/LivingMapValheim/main/docs/media/map-compare.png)
+
+**Большая карта вблизи — детальная карта.** Вот её мод рисует сам, портом игрового шейдера
+карты: постройки своей настоящей формы, с направлением и скатами крыш, дороги и поля со
+своими текстурами, лес таким, какой он есть.
 
 ![Вблизи: слева ванильная карта, справа LivingMap](https://raw.githubusercontent.com/tbsj1ga/LivingMapValheim/main/docs/media/detail-compare.png)
+
+Переход между ними при приближении:
+
+![Приближение к базе: карта шаг за шагом становится детальной](https://raw.githubusercontent.com/tbsj1ga/LivingMapValheim/main/docs/media/detail-zoom.webp)
+
+Вблизи, в деталях: база и вырубка в лесу.
 
 ![База вблизи: крыши, стены, мощение, дороги и поля](https://raw.githubusercontent.com/tbsj1ga/LivingMapValheim/main/docs/media/detail-base.png)
 
 ![Вырубка в лесу](https://raw.githubusercontent.com/tbsj1ga/LivingMapValheim/main/docs/media/detail-forest.png)
-
-![Большая карта: слева ванильная, справа с LivingMap](https://raw.githubusercontent.com/tbsj1ga/LivingMapValheim/main/docs/media/map-compare.png)
-
-![Мини-карта: слева ванильная, справа с LivingMap](https://raw.githubusercontent.com/tbsj1ga/LivingMapValheim/main/docs/media/minimap-compare.png)
 
 ## Установка
 
