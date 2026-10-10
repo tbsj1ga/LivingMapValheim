@@ -15,7 +15,7 @@ namespace LivingMap
     {
         public const string Guid = "j1ga.livingmap";
         public const string Name = "Living Map";
-        public const string Version = "0.18.0";
+        public const string Version = "0.19.0";
 
         private const byte MatNone = 255;
         private const byte TerrainNone = 0;
@@ -183,6 +183,8 @@ namespace LivingMap
             {
                 _collectedCleared = _cfgShowCleared.Value;
             _highWaterOn = HighWaterWanted;
+            _heightOn = HeightsWanted;
+            _heightDirty = true;
                 _tcRevision.Clear();
                 _nextZdoPass = 0f;
                 _lastScanPos = new Vector3(float.MinValue, 0f, float.MinValue);
@@ -227,12 +229,14 @@ namespace LivingMap
                         RebuildMask();
                     }
                     _highDirty = true;      // the same shapes, drawn again for high ground
+                    if (_heightDirty) RebuildHeightLayer();
                 }
             }
 
             try { ShareTick(now); }
             catch (Exception e) { HandleError("share", e); }
 
+            if (_heightDirty && now >= _nextRtRebuild) RebuildHeightLayer();
             if (_highDirty && HighWanted) RebuildHighLayer();
 
             if (_cfgPersist.Value && _storeChanged && now >= _nextSaveTime)
@@ -303,6 +307,7 @@ namespace LivingMap
                 return false;
             }
 
+            try { DropHeightTexture(); } catch { }
             ApplyTextureToMap(_rt, true);
             if (_rtMask != null) ApplyMaskToMap(_rtMask, true);
             else DropForestData();
@@ -336,6 +341,7 @@ namespace LivingMap
                 catch (Exception e) { Logger.LogWarning("Could not restore the vanilla map texture: " + e.Message); }
             }
 
+            try { DropHeightTexture(); } catch (Exception e) { Logger.LogWarning("Map heights teardown: " + e.Message); }
             ReleaseGpuLayer();
             try { HighTeardown(); } catch (Exception e) { Logger.LogWarning("High-ground layer teardown: " + e.Message); }
             try { DetailTeardown(); } catch (Exception e) { Logger.LogWarning("Detail layer teardown: " + e.Message); }
@@ -430,7 +436,7 @@ namespace LivingMap
         // settings window with no effect at all, while with the detailed map on it worked. Four
         // times a second, which is nothing: these are a few dozen values in memory.
         private long _drawSig = -1, _maskCfgSig = -1;
-        private bool _highWaterOn;
+        private bool _highWaterOn, _heightOn;
         private float _nextSigCheck;
 
         private void WatchDrawSettings(float now)
@@ -458,6 +464,13 @@ namespace LivingMap
             {
                 if (_drawSig != -1) { _rtDirty = true; _highDirty = true; _highSig = -1; }
                 _drawSig = d;
+            }
+
+            if (HeightsWanted != _heightOn)
+            {
+                _heightOn = HeightsWanted;
+                if (_heightOn) _heightDirty = true;
+                else DropHeightTexture();
             }
 
             if (HighWaterWanted != _highWaterOn)
@@ -564,8 +577,12 @@ namespace LivingMap
             idx = -1;
             if (_texSize <= 0 || _pixelSize <= 0f) return false;
             float half = _texSize * 0.5f;
-            int px = Mathf.RoundToInt(world.x / _pixelSize + half);
-            int py = Mathf.RoundToInt(world.z / _pixelSize + half);
+            // The texel that contains the point, not the nearest grid point: the map's texel i
+            // covers world [(i - half) * pixel, (i + 1 - half) * pixel), which is how the shader
+            // reads it and how the painted layers are drawn. Rounding put every index half a
+            // pixel - six metres - out of step with what was drawn in it.
+            int px = Mathf.FloorToInt(world.x / _pixelSize + half);
+            int py = Mathf.FloorToInt(world.z / _pixelSize + half);
             if (px < 0 || py < 0 || px >= _texSize || py >= _texSize) return false;
             idx = py * _texSize + px;
             return true;
@@ -586,8 +603,8 @@ namespace LivingMap
                 for (int x = cx - pr; x <= cx + pr; x++)
                 {
                     if (x < 0 || x >= _texSize) continue;
-                    float wx = (x - half) * _pixelSize;
-                    float wz = (y - half) * _pixelSize;
+                    float wx = (x + 0.5f - half) * _pixelSize;
+                    float wz = (y + 0.5f - half) * _pixelSize;
                     float dx = wx - center.x, dz = wz - center.z;
                     if (dx * dx + dz * dz > r2) continue;
                     result.Add(y * _texSize + x);

@@ -2,6 +2,34 @@
 
 The version is set in one place — `LivingMapPlugin.Version` in `src/LivingMapPlugin.cs`.
 
+## 0.19.0
+
+- **The map is told about ground the players changed** (`HeightFromTerrain`, on). The map
+  goes by the world generator's heights, and no amount of digging changes them - but the
+  shader decides almost everything from them: below the water line it draws the sea from its
+  own colours and never reads the map texture at all, from 70 m it lays the rock over it, and
+  in between it draws the coast line and shades the ground by the slope between neighbouring
+  texels. A causeway raised across a lake was therefore still lake to it, which is why such
+  things could only ever be drawn on top of the finished picture, where they look like a
+  sticker on it. The map material is now handed a corrected copy of those heights - the
+  generator's, with the players' terrain edits added, the same edits the detailed map already
+  draws its relief from - so the game draws a causeway as land itself, with its own coast
+  line, paper, light, fog and clouds, and Living Map's paint reaches it like paint on any
+  other ground. A map pixel is 12 m across, so a narrow causeway becomes a 12 m strip of land
+  and the water's edge moves by a pixel; digging below the water line puts water there for
+  the same reason. `Minimap.m_heightTexture` itself is left alone, so everything that reads
+  the game's own heights still sees the generator's. One more texture of the vanilla size
+  (16 MB), rebuilt only where the ground changed.
+- **Everything counted by map pixel is half a pixel further over than it was** - six metres -
+  and now lands where it is drawn. The map's texel *i* covers the world from `(i - half) *
+  pixel` to the next one, which is how the shader reads it and how the painted layer is
+  drawn; the index of a world position was being rounded to the nearest grid point instead,
+  which is the texel next door for half of them. It showed up as the raised ground and the
+  water in a dug pit sitting up and to the right of where they are, and it was equally true
+  of the forest taken off a road, the cleared and planted forest, and which pixel a building
+  was filed under.
+
+
 ## 0.18.0
 
 - **Roads show through the forest** (`PathsClearForest`, on). The map draws its trees over

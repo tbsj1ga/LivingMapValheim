@@ -7,6 +7,11 @@ network traffic is the host handing its map to players who have the mod (0.17.0)
 
 ![Zooming in on a base: the map turns into the detailed picture step by step](https://raw.githubusercontent.com/tbsj1ga/LivingMapValheim/main/docs/media/detail-zoom.webp)
 
+> **New in 0.19.0 — the map knows the ground you moved.** A dirt causeway across a lake is
+> land on the map now, with the game's own coast line drawn around it, and a pit you dug
+> below the water line holds water. The map goes by the world generator's heights; it is now
+> handed those heights with your terrain edits added (`HeightFromTerrain`).
+>
 > **New in 0.18.0 — roads you can actually follow.** The map draws its trees over everything
 > it has drawn, so a road under a canopy was hidden whatever colour it had: the forest pattern
 > now comes off where a road runs (`PathsClearForest`), and `PathWidthMeters` draws a road
@@ -250,6 +255,7 @@ the file are what the tables below list.
 | `HighGroundIncludesWater` | Do the same over water — a pier, a dirt bridge, a causeway — which the map shows nothing of: its shader draws the sea from its own colours, and the heights it goes by come from the world generator, so ground raised above the water is still water to it. **Off**, and deliberately: over a mountain this layer replaces a rock pattern that hid everything anyway, but over water it is a flat patch of colour on top of the finished picture — above the waves, the fog and the clouds, without the paper and shading the map gives everything else. Close up the detailed map draws all of it properly. |
 | `PaletteStrength` | How bright the building colours are, all at once, on every layer (0.85; 1 = exactly the colours set below). The map shader brightens what it is given by about half again — fine on snow, a white spot over a swamp. |
 | `HighGroundStrength` | How strongly that layer shows, 0.2 to 1 (0.7). It lies over the map rather than in it, so at 1 the colours are the plain ones — loud in daylight on snow; lower lets the rock show through. |
+| `HeightFromTerrain` | Hand the map's shader the generator's heights **with the players' terrain edits added**, so a raised causeway is land to it — drawn with the game's own coast line, paper and light — and a pit dug below the water line holds water. The shader decides from those heights where the sea is (and under the sea it never reads the map texture at all), where the rock of the high ground starts, and how the ground is shaded; nothing a player digs changes the generator. A map pixel is 12 m, so a narrow causeway becomes a 12 m strip. One more texture of the vanilla size (16 MB). `Minimap.m_heightTexture` itself is left alone. |
 | `ShowClearedGround` | Also mark ground that was only levelled or raised, never painted: a terrace, a filled hollow, a causeway. On by default since 0.18.0 — it covers everything you have ever terraformed, so turn it off for a map of only what you painted and built. |
 | `ShowClearedForest` | Erase the map's forest pattern where the trees are gone. The vanilla forest is a static mask from the world generator; the mod compares it with the trees in the object database. On the host every generated zone is checked, on a client of a dedicated server the zones you have been in this session (remembered between sessions). Clearings around locations show up too. Needs `BuildingScanSource = ZDO`. |
 | `ClearedForestRadius` | Radius in metres of the window in which trees around a pixel are counted. 12 = the pixel and its neighbours, a 36×36 m window. Larger ignores natural gaps, smaller follows the edge of a clearing more closely. |

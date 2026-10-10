@@ -8,7 +8,14 @@ right where they are, and update as you keep building.
 
 ![Zooming in on a base: the map turns into the detailed picture step by step](https://raw.githubusercontent.com/tbsj1ga/LivingMapValheim/main/docs/media/detail-zoom.webp)
 
-> ## 🆕 New in 0.18.0: a road you can follow through the forest
+> ## 🆕 New in 0.19.0: the map knows the ground you moved
+>
+> Build a dirt causeway across a lake and the map draws it as **land**, with the game's own
+> coast line around it — not a marker on top of the water. Dig a pond below the water line
+> and it holds **water**. The map goes by the heights the world was generated with, which no
+> amount of digging changes; now it is handed those heights with your terrain edits added.
+>
+> ## New in 0.18.0: a road you can follow through the forest
 >
 > The map stamps its trees over everything it has already drawn, so a road through the
 > Black Forest was hidden whatever colour you gave it. Now the forest comes off where a
@@ -47,6 +54,8 @@ and fields with their own textures.
 - **Roads and fields**: hoe paths, paving and farmland.
 - **Cleared forest**: where you've chopped the trees down, the map stops showing forest.
   Plant a grove and it appears.
+- **Ground you raised or dug out**: a causeway across a lake is drawn as land, with a coast
+  line around it, and a pond you dug below the water line holds water.
 - Everything respects the fog of war and sits under your pins and markers, on the big map
   and the minimap.
 
