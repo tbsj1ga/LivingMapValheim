@@ -195,8 +195,8 @@ namespace LivingMap
 
         private bool PixelWithin(int idx, Vector3 center, float r2, float half)
         {
-            float dx = (idx % _texSize - half) * _pixelSize - center.x;
-            float dz = (idx / _texSize - half) * _pixelSize - center.z;
+            float dx = (idx % _texSize + 0.5f - half) * _pixelSize - center.x;
+            float dz = (idx / _texSize + 0.5f - half) * _pixelSize - center.z;
             return dx * dx + dz * dz <= r2;
         }
 

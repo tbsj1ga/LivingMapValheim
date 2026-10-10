@@ -20,6 +20,15 @@ The version is set in one place — `LivingMapPlugin.Version` in `src/LivingMapP
   the same reason. `Minimap.m_heightTexture` itself is left alone, so everything that reads
   the game's own heights still sees the generator's. One more texture of the vanilla size
   (16 MB), rebuilt only where the ground changed.
+- **Everything counted by map pixel is half a pixel further over than it was** - six metres -
+  and now lands where it is drawn. The map's texel *i* covers the world from `(i - half) *
+  pixel` to the next one, which is how the shader reads it and how the painted layer is
+  drawn; the index of a world position was being rounded to the nearest grid point instead,
+  which is the texel next door for half of them. It showed up as the raised ground and the
+  water in a dug pit sitting up and to the right of where they are, and it was equally true
+  of the forest taken off a road, the cleared and planted forest, and which pixel a building
+  was filed under.
+
 
 ## 0.18.0
 

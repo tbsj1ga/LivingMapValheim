@@ -426,7 +426,7 @@ namespace LivingMap
                     if (_zdoBuckets.ContainsKey(idx)) continue;
                     if (!_zdoAuthoritative)
                     {
-                        Vector3 w = new Vector3((idx % _texSize - half) * _pixelSize, 0f, (idx / _texSize - half) * _pixelSize);
+                        Vector3 w = new Vector3((idx % _texSize + 0.5f - half) * _pixelSize, 0f, (idx / _texSize + 0.5f - half) * _pixelSize);
                         if (!ZNetScene.InActiveArea(w, _zdoPassOrigin) || !ZNetScene.InActiveArea(w, _zdoPrevOrigin)) continue;
                     }
                     _removeScratch.Add(idx);

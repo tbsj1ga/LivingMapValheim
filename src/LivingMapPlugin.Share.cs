@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections;
 using System.Collections.Generic;
 using System.IO;
@@ -176,7 +176,7 @@ namespace LivingMap
                 // a piece goes with the tile of its map pixel's centre, as the player buckets it
                 foreach (KeyValuePair<int, List<PieceRec>> kv in _pieces)
                 {
-                    TileData td = Tile(tiles, TileId((kv.Key % _texSize - half) * _pixelSize, (kv.Key / _texSize - half) * _pixelSize));
+                    TileData td = Tile(tiles, TileId((kv.Key % _texSize + 0.5f - half) * _pixelSize, (kv.Key / _texSize + 0.5f - half) * _pixelSize));
                     td.Pieces.AddRange(kv.Value);
                 }
                 float grid = Mathf.Max(0.5f, _cfgTerrainGrid.Value);
@@ -186,9 +186,9 @@ namespace LivingMap
                     Tile(tiles, TileId((gx + 0.5f) * grid, (gz + 0.5f) * grid)).Terrain.Add(new KeyValuePair<long, byte>(kv.Key, kv.Value));
                 }
                 foreach (int idx in _clearedForest)
-                    Tile(tiles, TileId((idx % _texSize - half) * _pixelSize, (idx / _texSize - half) * _pixelSize)).Cleared.Add(idx);
+                    Tile(tiles, TileId((idx % _texSize + 0.5f - half) * _pixelSize, (idx / _texSize + 0.5f - half) * _pixelSize)).Cleared.Add(idx);
                 foreach (int idx in _plantedForest)
-                    Tile(tiles, TileId((idx % _texSize - half) * _pixelSize, (idx / _texSize - half) * _pixelSize)).Planted.Add(idx);
+                    Tile(tiles, TileId((idx % _texSize + 0.5f - half) * _pixelSize, (idx / _texSize + 0.5f - half) * _pixelSize)).Planted.Add(idx);
             }
             catch (Exception e) { ShareError("share/group", e); _hostBuilding = false; yield break; }
 

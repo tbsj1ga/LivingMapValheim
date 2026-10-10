@@ -577,8 +577,12 @@ namespace LivingMap
             idx = -1;
             if (_texSize <= 0 || _pixelSize <= 0f) return false;
             float half = _texSize * 0.5f;
-            int px = Mathf.RoundToInt(world.x / _pixelSize + half);
-            int py = Mathf.RoundToInt(world.z / _pixelSize + half);
+            // The texel that contains the point, not the nearest grid point: the map's texel i
+            // covers world [(i - half) * pixel, (i + 1 - half) * pixel), which is how the shader
+            // reads it and how the painted layers are drawn. Rounding put every index half a
+            // pixel - six metres - out of step with what was drawn in it.
+            int px = Mathf.FloorToInt(world.x / _pixelSize + half);
+            int py = Mathf.FloorToInt(world.z / _pixelSize + half);
             if (px < 0 || py < 0 || px >= _texSize || py >= _texSize) return false;
             idx = py * _texSize + px;
             return true;
@@ -599,8 +603,8 @@ namespace LivingMap
                 for (int x = cx - pr; x <= cx + pr; x++)
                 {
                     if (x < 0 || x >= _texSize) continue;
-                    float wx = (x - half) * _pixelSize;
-                    float wz = (y - half) * _pixelSize;
+                    float wx = (x + 0.5f - half) * _pixelSize;
+                    float wz = (y + 0.5f - half) * _pixelSize;
                     float dx = wx - center.x, dz = wz - center.z;
                     if (dx * dx + dz * dz > r2) continue;
                     result.Add(y * _texSize + x);

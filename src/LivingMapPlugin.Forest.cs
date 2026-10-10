@@ -245,7 +245,7 @@ namespace LivingMap
             if (wg == null) return false;
             _biomeLookupsThisFrame++;
             float half = _texSize * 0.5f;
-            Vector3 w = new Vector3((idx % _texSize - half) * _pixelSize, 0f, (idx / _texSize - half) * _pixelSize);
+            Vector3 w = new Vector3((idx % _texSize + 0.5f - half) * _pixelSize, 0f, (idx / _texSize + 0.5f - half) * _pixelSize);
             Heightmap.Biome b = wg.GetBiome(w);
             ok = b == Heightmap.Biome.Meadows || b == Heightmap.Biome.BlackForest || b == Heightmap.Biome.Plains;
             _forestBiome[idx] = ok;
@@ -343,7 +343,7 @@ namespace LivingMap
             for (int i = 0; i < _forestSample.Count; i++)
             {
                 int idx = _forestSample[i];
-                sb.Append(string.Format(" ({0:0}, {1:0})", (idx % _texSize - half) * _pixelSize, (idx / _texSize - half) * _pixelSize));
+                sb.Append(string.Format(" ({0:0}, {1:0})", (idx % _texSize + 0.5f - half) * _pixelSize, (idx / _texSize + 0.5f - half) * _pixelSize));
             }
             _forestSample.Clear();
             return sb.ToString();

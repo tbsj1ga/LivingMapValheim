@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
 using BepInEx.Configuration;
 using UnityEngine;
@@ -74,16 +74,16 @@ namespace LivingMap
                 int pz1 = Mathf.CeilToInt((z.Cz + zhalf) / _pixelSize + half);
                 for (int pz = Mathf.Max(pz0, 0); pz <= Mathf.Min(pz1, _texSize - 1); pz++)
                 {
-                    float cz = (pz - half) * _pixelSize;
+                    // the world rect this texel covers, as the shader reads it: [i, i + 1)
+                    float wz0 = (pz - half) * _pixelSize;
                     for (int px = Mathf.Max(px0, 0); px <= Mathf.Min(px1, _texSize - 1); px++)
                     {
-                        float cx = (px - half) * _pixelSize;
+                        float wx0 = (px - half) * _pixelSize;
                         float up = 0f, down = 0f;
                         for (int sz = 1; sz <= HeightSamples; sz++)
                             for (int sx = 1; sx <= HeightSamples; sx++)
                             {
-                                float d = ZoneDelta(z, cx - _pixelSize * 0.5f + step * sx,
-                                                       cz - _pixelSize * 0.5f + step * sz);
+                                float d = ZoneDelta(z, wx0 + step * sx, wz0 + step * sz);
                                 if (d > up) up = d;
                                 else if (d < down) down = d;
                             }
