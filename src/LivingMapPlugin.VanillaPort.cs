@@ -601,7 +601,9 @@ namespace LivingMap
                     float cx0 = (int)(key >> 32) * grid, cz0 = (int)key * grid;
                     byte kind = j.TerrKinds[i];
                     Color32 c = kind == TerrainPaved ? p.Paved : kind == TerrainDirt ? p.Dirt : kind == TerrainCultivated ? p.Cultivated : p.Cleared;
-                    PaintRect(d, n, j, cx0, cz0, cx0 + grid, cz0 + grid, c, kind);
+                    // a road is drawn at the width that was asked for, around the cell's middle
+                    float g = kind == TerrainCleared ? grid : Mathf.Max(grid, j.PathWidth), e = (g - grid) * 0.5f;
+                    PaintRect(d, n, j, cx0 - e, cz0 - e, cx0 + grid + e, cz0 + grid + e, c, kind);
                 }
                 // Flat outlines only when not styled (styled buildings get a darker edge of their
                 // own). Not at the widest levels either: the width here is one pixel of the level,

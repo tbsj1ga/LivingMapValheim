@@ -24,6 +24,8 @@ namespace LivingMap
         private ConfigEntry<bool> _cfgOnlyPlayerBuilt;
         private ConfigEntry<bool> _cfgShowPaths;
         private ConfigEntry<bool> _cfgShowCleared;
+        private ConfigEntry<float> _cfgPathWidth;
+        private ConfigEntry<bool> _cfgPathsClearForest;
         private ConfigEntry<bool> _cfgShowForest;
         private ConfigEntry<float> _cfgForestRadius;
         private ConfigEntry<int> _cfgForestMaxTrees;
@@ -108,6 +110,11 @@ namespace LivingMap
                 Ui("Only buildings placed by players: ruins, villages and other buildings that come with the world are left out.", UiLayers, "Only player buildings", 70, false));
             _cfgRespectFog = Config.Bind(SecLayers, "RespectFog", true,
                 Ui("Only draw on ground you have explored. Off shows everything the mod knows about - on the host, the whole world.", UiLayers, "Only explored ground", 65, false));
+            _cfgPathWidth = Config.Bind(SecLayers, "PathWidthMeters", 0f,
+                Ui("How wide a road is drawn, in metres. 0 = its real width. A road is often one cell across, which on the zoomed-out map and the minimap is a single pixel and easy to lose against a dark biome; 4 to 6 makes it a line you can follow. It only widens what is drawn, not what is remembered.",
+                    new AcceptableValueRange<float>(0f, 12f), UiLayers, "Road width (m)", 83, false));
+            _cfgPathsClearForest = Config.Bind(SecLayers, "PathsClearForest", true,
+                Ui("Where a road runs through forest, stop drawing the forest pattern over it. The map draws its trees on top of everything, so a road under them is hidden whatever colour it is - and where a road was laid the trees are gone anyway.", UiLayers, "Roads show through the forest", 82, false));
             _cfgShowCleared = Config.Bind(SecLayers, "ShowClearedGround", false,
                 Ui("Also mark ground that was only levelled or raised, not painted. Covers everything you have terraformed, so it paints wide areas.", UiLayers, "Levelled ground", 60, false));
             _cfgForestRadius = Config.Bind(SecLayers, "ClearedForestRadius", 12f,

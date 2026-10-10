@@ -2,6 +2,23 @@
 
 The version is set in one place — `LivingMapPlugin.Version` in `src/LivingMapPlugin.cs`.
 
+## 0.18.0
+
+- **Roads show through the forest** (`PathsClearForest`, on). The map draws its trees over
+  everything it has already drawn, so a road under a canopy was hidden whatever colour it was
+  given - reported from a dirt road in the Black Forest. Where there is enough road in a map
+  pixel, the forest pattern is now taken off it, on the zoomed-out map, the minimap and the
+  detailed map alike. Where a road was laid the trees are gone anyway.
+- **`PathWidthMeters`** (0 = the road's real width): a road is often one cell across, which at
+  6 or 12 metres to a map pixel is a single pixel of line and easy to lose. 4 to 6 makes it a
+  line that can be followed. It widens what is drawn, not what is remembered.
+- **Ground the map hides now includes water.** The layer that draws over the rock pattern of
+  high ground does the same under water: the map's shader draws the sea from its own colours
+  and never reads what is painted there, and its heights come from the world generator, so
+  ground raised above the water is still water to it. A dirt bridge across a lake was on no
+  map but the detailed one; now it is on all of them. The setting keeps its name
+  (`HighGroundOverlay`) and is called *Show what the map hides (mountains, water)*.
+
 ## 0.17.0 — The host's map for its players
 
 - **When you host, the players on your server get your map** - if they have Living Map

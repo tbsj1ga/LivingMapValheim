@@ -256,7 +256,7 @@ namespace LivingMap
                         float wz = (gz + 0.5f) * grid;
                         if (!IsWorldExplored(explored, exploredOthers, wx, wz)) { _fogTerrain.Add(kv.Key); continue; }
                         EmitQuad(wx - halfGrid, wz - halfGrid, wx + halfGrid, wz + halfGrid,
-                            TerrainColor(kv.Value), k, half, h, flip, grid);
+                            TerrainColor(kv.Value), k, half, h, flip, PathDrawWidth(grid));
                         quads++;
                     }
                 }
@@ -381,7 +381,7 @@ namespace LivingMap
                         if (!IsWorldExplored(explored, exploredOthers, wx, wz)) { _fogTerrain.Add(key); continue; }
                         if (!_cfgShowPaths.Value) continue;
                         EmitQuad(wx - halfGrid, wz - halfGrid, wx + halfGrid, wz + halfGrid,
-                            TerrainColor(kind), k, half, h, flip, grid);
+                            TerrainColor(kind), k, half, h, flip, PathDrawWidth(grid));
                         quads++;
                         cells++;
                         if (_cfgShowBuildings.Value)
@@ -571,7 +571,12 @@ namespace LivingMap
                 GL.PushMatrix();
                 GL.LoadPixelMatrix(0f, _rtMask.width, 0f, _rtMask.height);
                 // red is the forest channel: multiply by zero to clear it, add one to set it
-                int clearedDrawn = 0, plantedDrawn = 0;
+                int clearedDrawn = 0, plantedDrawn = 0, roadDrawn = 0;
+                // the map draws its trees over everything, so a road under them is hidden whatever
+                // colour it is; where a road was laid the trees are gone anyway
+                RebuildPathForest();
+                if (_pathForest.Count > 0)
+                    roadDrawn = DrawMaskPixels(_pathForest, _glMatMask, new Color(0f, 1f, 1f, 1f), explored, exploredOthers, flip);
                 if (_cfgShowForest.Value && _clearedForest.Count > 0)
                     clearedDrawn = DrawMaskPixels(_clearedForest, _glMatMask, new Color(0f, 1f, 1f, 1f), explored, exploredOthers, flip);
                 if (_cfgShowPlanted.Value && _plantedForest.Count > 0)
@@ -580,8 +585,8 @@ namespace LivingMap
                 RenderTexture.active = prev;
 
                 if (_cfgDebug.Value)
-                    Logger.LogInfo(string.Format("Forest mask rebuilt: {0} cleared, {1} planted, {2} held back by fog, {3:0.0} ms CPU",
-                        clearedDrawn, plantedDrawn, _fogForest.Count, _sw.Elapsed.TotalMilliseconds));
+                    Logger.LogInfo(string.Format("Forest mask rebuilt: {0} cleared, {1} planted, {2} under roads, {3} held back by fog, {4:0.0} ms CPU",
+                        clearedDrawn, plantedDrawn, roadDrawn, _fogForest.Count, _sw.Elapsed.TotalMilliseconds));
             }
             catch (Exception e)
             {

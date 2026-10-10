@@ -15,7 +15,7 @@ namespace LivingMap
     {
         public const string Guid = "j1ga.livingmap";
         public const string Name = "Living Map";
-        public const string Version = "0.17.0";
+        public const string Version = "0.18.0";
 
         private const byte MatNone = 255;
         private const byte TerrainNone = 0;
@@ -194,6 +194,7 @@ namespace LivingMap
                     _paletteApplied = PaletteStrength;
                     _rtDirty = true; _highDirty = true; _highSig = -1;
                 }
+                if (_addTerrain.Count > 0) _maskDirty = true;   // roads clear the forest: the mask holds them
                 bool adds = _addPieces.Count > 0 || _addTerrain.Count > 0;
                 if ((_rtDirty || adds || _maskDirty) && now >= _nextRtRebuild)
                 {
@@ -393,6 +394,40 @@ namespace LivingMap
         // ------------------------------------------------------------------
         // shared helpers
         // ------------------------------------------------------------------
+
+        // A road is as wide as the cells it is painted on - often one, which at 6 or 12 m a map
+        // pixel is a single pixel of line. The setting widens what is drawn without touching what
+        // is remembered, so it can be turned back down at any time.
+        private float PathDrawWidth(float grid)
+        {
+            float w = _cfgPathWidth != null ? _cfgPathWidth.Value : 0f;
+            return w > grid ? w : grid;
+        }
+
+        // Map pixels with enough road in them to be worth a hole in the forest pattern. A stray
+        // cell is not: the threshold is about sixteen square metres of painted ground, so a road
+        // crossing the pixel counts and a corner of a field does not.
+        private readonly HashSet<int> _pathForest = new HashSet<int>();
+
+        private void RebuildPathForest()
+        {
+            _pathForest.Clear();
+            if (_cfgPathsClearForest == null || !_cfgPathsClearForest.Value || !_cfgShowPaths.Value) return;
+            float grid = Mathf.Max(0.5f, _cfgTerrainGrid.Value);
+            int need = Mathf.Max(1, Mathf.CeilToInt(16f / (grid * grid)));
+            Dictionary<int, int> count = new Dictionary<int, int>();
+            foreach (KeyValuePair<long, byte> kv in _terrain)
+            {
+                if (kv.Value == TerrainCleared) continue;          // levelled ground is not a road
+                float cx = ((int)(kv.Key >> 32) + 0.5f) * grid, cz = ((int)(kv.Key & 0xFFFFFFFFL) + 0.5f) * grid;
+                int idx;
+                if (!WorldToIndex(new Vector3(cx, 0f, cz), out idx)) continue;
+                int n;
+                count.TryGetValue(idx, out n);
+                count[idx] = n + 1;
+                if (n + 1 == need) _pathForest.Add(idx);
+            }
+        }
 
         private Color TerrainColor(byte kind)
         {

@@ -31,6 +31,7 @@ namespace LivingMap
     {
         private const string HighOff = "Off", HighMinimap = "Minimap", HighBoth = "Both";
         private const float HighGroundFrom = 70f;       // where the shader's rock pattern begins
+        private const float WaterHidesBelow = 29.5f;    // and below this it draws water instead of the map
 
         private ConfigEntry<string> _cfgHighOverlay;
         private ConfigEntry<float> _cfgHighStrength;
@@ -52,11 +53,11 @@ namespace LivingMap
         private void BindHighGroundConfig()
         {
             _cfgHighOverlay = Config.Bind(SecLayers, "HighGroundOverlay", HighBoth,
-                Ui("Buildings and paths above 70 metres, drawn over the game's rock pattern. The game's map hides whatever is under that pattern, so a base in the mountains is not on the minimap or on the zoomed-out map at all; this draws it on top of them. Close up the detailed map draws it properly anyway, so this is for the other two. Both (default): on the minimap and on the zoomed-out map. Minimap: only there, for anyone who would rather the zoomed-out map stayed exactly the game's own picture. Costs a texture of its own, the same size as the map layer (16 to 256 MB, see Map sharpness), and only from the moment something is built that high - livingmap status says how much.",
-                    new AcceptableValueList<string>(HighOff, HighMinimap, HighBoth), UiLayers, "Mountains: buildings over the rock", 85, false));
+                Ui("Buildings and roads the game's map will not show: above 70 metres it covers the ground with its rock pattern, and over water it draws the sea from its own colours - in both it ignores what the mod paints, so a mountain base or a dirt bridge across a lake is not on the minimap or the zoomed-out map at all. This draws them on top. Close up the detailed map draws it properly anyway, so this is for the other two. Both (default): on the minimap and on the zoomed-out map. Minimap: only there, for anyone who would rather the zoomed-out map stayed exactly the game's own picture. Costs a texture of its own, the same size as the map layer (16 to 256 MB, see Map sharpness), and only from the moment something is built that high - livingmap status says how much.",
+                    new AcceptableValueList<string>(HighOff, HighMinimap, HighBoth), UiLayers, "Show what the map hides (mountains, water)", 85, false));
             _cfgHighStrength = Config.Bind(SecLayers, "HighGroundStrength", 0.55f,
                 Ui("How strongly those buildings show. The layer is drawn over the map rather than into it, so at full strength its colours are the plain ones, which in daylight on snow is louder than anything the map draws itself. It also lies over the clouds and the fog the map draws for itself, which nothing short of drawing into the map could change, so it is kept low: lower lets the rock show through and settles it into the picture; 1 is the plain colour.",
-                    new AcceptableValueRange<float>(0.2f, 1f), UiLayers, "Mountains: how strongly", 84, false));
+                    new AcceptableValueRange<float>(0.2f, 1f), UiLayers, "...and how strongly", 84, false));
         }
 
         private string HighMode { get { return _cfgHighOverlay != null ? _cfgHighOverlay.Value : HighOff; } }
@@ -101,7 +102,16 @@ namespace LivingMap
                     Color[] px = height.GetPixels(0, z, _texSize, h);
                     int baseIdx = z * _texSize;
                     for (int i = 0; i < px.Length; i++)
-                        if (px[i].r >= HighGroundFrom) { high[baseIdx + i] = true; found++; }
+                    {
+                        // The two places the game's map does not show what is drawn into it: under
+                        // the rock pattern of high ground, and under water - where the shader draws
+                        // the sea from its own colours and never reads the map texture at all. Its
+                        // heights come from the world generator, so ground a player raised above
+                        // the water is still water to it, and a dirt bridge was on no map but the
+                        // detailed one.
+                        float m = px[i].r;
+                        if (m >= HighGroundFrom || m < WaterHidesBelow) { high[baseIdx + i] = true; found++; }
+                    }
                     if (mist == null) continue;
                     Color[] mk = mask.GetPixels(0, z, _texSize, h);
                     for (int i = 0; i < mk.Length; i++)
@@ -110,7 +120,7 @@ namespace LivingMap
                 _highPixels = high;
                 _highMist = mist;
                 if (_cfgDebug.Value)
-                    Logger.LogInfo("High ground: " + found + " map pixels at or above " + HighGroundFrom + " m (" +
+                    Logger.LogInfo("Hidden ground: " + found + " map pixels above " + HighGroundFrom + " m or under water (" +
                                    (found * 100f / (_texSize * (float)_texSize)).ToString("0.0") + " % of the map), " +
                                    misty + " under the mist.");
             }
@@ -237,7 +247,7 @@ namespace LivingMap
                         if (!_terrain.TryGetValue(key, out kind)) continue;
                         float cx = ((int)(key >> 32) + 0.5f) * grid, cz = ((int)(key & 0xFFFFFFFFL) + 0.5f) * grid;
                         EmitQuad(cx - halfGrid, cz - halfGrid, cx + halfGrid, cz + halfGrid,
-                            Solid(TerrainColor(kind)), k, half, h, flip, grid);
+                            Solid(TerrainColor(kind)), k, half, h, flip, PathDrawWidth(grid));
                     }
 
                     if (_cfgOutline.Value)
@@ -546,10 +556,10 @@ namespace LivingMap
 
         private string HighStatus()
         {
-            if (!HighWanted) return "mountains overlay off";
-            if (_highPixels == null) return "mountains overlay: no height data";
-            if (_rtHigh == null) return "mountains overlay on, nothing built above " + HighGroundFrom + " m";
-            return string.Format("mountains overlay {0}: {1} pieces, {2} path cells at {3}px ({4:0} MB)",
+            if (!HighWanted) return "hidden-ground overlay off";
+            if (_highPixels == null) return "hidden-ground overlay: no height data";
+            if (_rtHigh == null) return "hidden-ground overlay on, nothing on ground the map hides";
+            return string.Format("hidden-ground overlay {0}: {1} pieces, {2} path cells at {3}px ({4:0} MB)",
                 HighMode.ToLowerInvariant(), _highPieceCount, _highCellCount, _rtHigh.width,
                 _rtHigh.width * (double)_rtHigh.height * 4 / (1024 * 1024));
         }

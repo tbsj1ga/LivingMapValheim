@@ -167,7 +167,7 @@ namespace LivingMap
             public HashSet<long> LiveZones;         // zones whose objects were read (trees drawn, no forest pattern)
             public Dictionary<long, HeightZone> Heights;
             public Color32[] MatColors; public Color32 MatUnknown, Outline; public bool DrawOutline;
-            public List<long> TerrKeys; public List<byte> TerrKinds; public float Grid;
+            public List<long> TerrKeys; public List<byte> TerrKinds; public float Grid, PathWidth;
             public Color32 Paved, Dirt, Cultivated, Cleared;
             public long Sig;
             public PortJob Port;                    // the vanilla map shader's inputs (DetailStyle = Vanilla)
@@ -679,6 +679,7 @@ namespace LivingMap
                     if (!fog || IsExplored(ex, exo, idx)) sig += ex != null && idx < ex.Length && ex[idx] ? 2 : 1;   // own vs others' ground
                     if (_plantedForest.Contains(idx)) sig += 7919;
                     else if (_clearedForest.Contains(idx)) sig += 104729;
+                    else if (_pathForest.Contains(idx)) sig += 15485863;
                     List<PieceRec> bucket;
                     if (buildings && _pieces.TryGetValue(idx, out bucket)) sig += bucket.Count * 131L;
                 }
@@ -819,6 +820,7 @@ namespace LivingMap
                              : exo != null && idx < exo.Length && exo[idx] ? shared : 0f;
                     if (planted && _plantedForest.Contains(idx)) j.ForestFix[k] = 1;
                     else if (cleared && _clearedForest.Contains(idx)) j.ForestFix[k] = -1;
+                    else if (_pathForest.Contains(idx)) j.ForestFix[k] = -1;      // a road is not under trees
                 }
 
             // zones: height edits, and at the finer levels the objects themselves
@@ -874,6 +876,7 @@ namespace LivingMap
 
             j.TerrKeys = new List<long>(); j.TerrKinds = new List<byte>();
             j.Grid = Mathf.Max(0.5f, _cfgTerrainGrid.Value);
+            j.PathWidth = PathDrawWidth(j.Grid);
             if (_cfgShowPaths.Value && _terrain.Count > 0)
             {
                 bool showCleared = _cfgShowCleared.Value;
