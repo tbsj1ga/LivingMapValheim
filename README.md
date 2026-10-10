@@ -1,10 +1,16 @@
-# LivingMap
+﻿# LivingMap
 
 Client-side Valheim mod: the map shows the world the way people have shaped
 it — buildings, hoe-worked ground, clear-cuts and planted groves — and changes
 along with it. No Harmony patches, no effect on players without the mod. The only
 network traffic is the host handing its map to players who have the mod (0.17.0).
 
+> **New in 0.18.0 — roads you can actually follow.** The map draws its trees over everything
+> it has drawn, so a road under a canopy was hidden whatever colour it had: the forest pattern
+> now comes off where a road runs (`PathsClearForest`), and `PathWidthMeters` draws a road
+> wider than the one cell it is. Levelled ground is drawn by default now, and what the map
+> hides over water is a switch of its own (`HighGroundIncludesWater`, off).
+>
 > **New in 0.17.0 — the host's map for its players.** Players on your server who have Living
 > Map get your buildings, paths and forest wherever their own map is explored. See
 > [The host's map](#the-hosts-map-0170).
@@ -223,10 +229,13 @@ the file are what the tables below list.
 | `ShowBuildings` | Build pieces, coloured by material. |
 | `OnlyPlayerBuilt` | Show only what players placed: pieces that came with a location (ruins, draugr villages, dvergr outposts) carry no creator and are skipped. Switching it drops the stored pieces and collects them again — the host in seconds, a client of a dedicated server gets pieces from earlier sessions back only by passing by them. Off. |
 | `ShowPaths` | Hoe-painted ground: dirt paths, paving and cultivated soil. |
-| `HighGroundOverlay` | Buildings and paths above 70 m, drawn over the game's rock pattern on the minimap and the zoomed-out map, where the shader hides them. `Off` / `Minimap` / `Both` (default). A texture of its own on the map layer's grid (capped at 8192), unsmoothed because it is always seen magnified, created only when something stands that high and redrawn only when it changes. |
+| `PathWidthMeters` | How wide a road is drawn, 0–12 m (0 = its real width). A road is often one cell across, a single pixel at 12 m to the map pixel. It widens what is drawn, not what is remembered. |
+| `PathsClearForest` | Where there is enough road in a map pixel, take the forest pattern off it (on). The map stamps its trees over everything it has already drawn, so a road under a canopy was hidden whatever colour it had — and where a road was laid the trees are gone anyway. Levelled ground is not a road: that is `ShowClearedForest`'s business. |
+| `HighGroundOverlay` | Buildings and paths above 70 m, drawn over the game's rock pattern on the minimap and the zoomed-out map, where the shader hides them. `Off` / `Minimap` / `Both` (default). A texture of its own on the map layer's grid (capped at 8192), with mip levels so a thin shape fades rather than breaks up when the whole map is on screen, created only when something stands on ground the map hides and redrawn only when it changes. |
+| `HighGroundIncludesWater` | Do the same over water — a pier, a dirt bridge, a causeway — which the map shows nothing of: its shader draws the sea from its own colours, and the heights it goes by come from the world generator, so ground raised above the water is still water to it. **Off**, and deliberately: over a mountain this layer replaces a rock pattern that hid everything anyway, but over water it is a flat patch of colour on top of the finished picture — above the waves, the fog and the clouds, without the paper and shading the map gives everything else. Close up the detailed map draws all of it properly. |
 | `PaletteStrength` | How bright the building colours are, all at once, on every layer (0.85; 1 = exactly the colours set below). The map shader brightens what it is given by about half again — fine on snow, a white spot over a swamp. |
 | `HighGroundStrength` | How strongly that layer shows, 0.2 to 1 (0.7). It lies over the map rather than in it, so at 1 the colours are the plain ones — loud in daylight on snow; lower lets the rock show through. |
-| `ShowClearedGround` | Also mark ground that was merely levelled with the hoe (no paint). Off by default — it paints every terraced area. |
+| `ShowClearedGround` | Also mark ground that was only levelled or raised, never painted: a terrace, a filled hollow, a causeway. On by default since 0.18.0 — it covers everything you have ever terraformed, so turn it off for a map of only what you painted and built. |
 | `ShowClearedForest` | Erase the map's forest pattern where the trees are gone. The vanilla forest is a static mask from the world generator; the mod compares it with the trees in the object database. On the host every generated zone is checked, on a client of a dedicated server the zones you have been in this session (remembered between sessions). Clearings around locations show up too. Needs `BuildingScanSource = ZDO`. |
 | `ClearedForestRadius` | Radius in metres of the window in which trees around a pixel are counted. 12 = the pixel and its neighbours, a 36×36 m window. Larger ignores natural gaps, smaller follows the edge of a clearing more closely. |
 | `ClearedForestMaxTrees` | How many trees that window may still hold for the pixel to count as cleared. A natural wood has 6–40 per 36×36 m window, a clearing with a couple of trees left standing 1–2. |

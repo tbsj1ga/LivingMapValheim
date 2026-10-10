@@ -1,4 +1,4 @@
-# LivingMap
+﻿# LivingMap
 
 **The vanilla map shows the world as it was generated. LivingMap shows the world as you've
 changed it.**
@@ -6,7 +6,21 @@ changed it.**
 Your bases, roads, fields and the forest you've cut down appear on the map and the minimap,
 right where they are, and update as you keep building.
 
-> ## 🆕 New in 0.17.0: your base in the mountains is on the map
+> ## 🆕 New in 0.18.0: a road you can follow through the forest
+>
+> The map stamps its trees over everything it has already drawn, so a road through the
+> Black Forest was hidden whatever colour you gave it. Now the forest comes off where a
+> road runs - on the minimap, the zoomed-out map and the detailed one alike - and
+> **Road width (m)** draws a road wider than the single cell it is, so you can follow it
+> at a glance.
+>
+> **Levelled ground is drawn by default now**: a terrace, a filled hollow, a causeway.
+> Turn *Levelled ground* off for a map of only what you painted and built.
+>
+> Settings also take effect while you watch, instead of waiting for something else to
+> redraw the map.
+>
+> ## New in 0.17.0: your base in the mountains is on the map
 >
 > Above about 95 metres the game's own map covers the ground with its rock pattern, and
 > anything drawn under it was simply gone - a mountain base was not on the map at all.

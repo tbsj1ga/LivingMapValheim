@@ -115,8 +115,8 @@ namespace LivingMap
                     new AcceptableValueRange<float>(0f, 12f), UiLayers, "Road width (m)", 87, false));
             _cfgPathsClearForest = Config.Bind(SecLayers, "PathsClearForest", true,
                 Ui("Where a road runs through forest, stop drawing the forest pattern over it. The map draws its trees on top of everything, so a road under them is hidden whatever colour it is - and where a road was laid the trees are gone anyway.", UiLayers, "Roads show through the forest", 86, false));
-            _cfgShowCleared = Config.Bind(SecLayers, "ShowClearedGround", false,
-                Ui("Also mark ground that was only levelled or raised, not painted. Covers everything you have terraformed, so it paints wide areas.", UiLayers, "Levelled ground", 60, false));
+            _cfgShowCleared = Config.Bind(SecLayers, "ShowClearedGround", true,
+                Ui("Also mark ground that was only levelled or raised, never painted with the hoe: a terrace, a filled hollow, a causeway. It covers everything you have ever terraformed, so around a big base it paints wide areas - turn it off for a map that shows only what you painted and built.", UiLayers, "Levelled ground", 60, false));
             _cfgForestRadius = Config.Bind(SecLayers, "ClearedForestRadius", 12f,
                 Ui("Metres around a map pixel checked for trees when deciding whether it is cleared forest. Larger ignores natural gaps between trees, smaller follows the edge of a clearing more closely.",
                     new AcceptableValueRange<float>(6f, 96f), UiAdvanced, "Cleared forest: search radius (m)", 60, true));
@@ -238,15 +238,28 @@ namespace LivingMap
         {
             ConfigEntry<int> ver = Config.Bind(SecGeneral, "ConfigVersion", 1,
                 Hidden("Internal: which defaults these sections have been updated to. Do not edit."));
-            if (ver.Value >= 2) return;
-            // 2: the map layer's size follows the graphics card unless it was set by hand. 2 was
-            // the default before, so a 2 in the file is taken as "never chosen".
-            if (_cfgMapScale.Value == 2)
+            if (ver.Value < 2)
             {
-                _cfgMapScale.Value = 0;
-                Logger.LogInfo("Map sharpness now follows the graphics card (MapTextureScale = 0). Set it to 2 to keep what it was.");
+                // 2: the map layer's size follows the graphics card unless it was set by hand. 2 was
+                // the default before, so a 2 in the file is taken as "never chosen".
+                if (_cfgMapScale.Value == 2)
+                {
+                    _cfgMapScale.Value = 0;
+                    Logger.LogInfo("Map sharpness now follows the graphics card (MapTextureScale = 0). Set it to 2 to keep what it was.");
+                }
             }
-            ver.Value = 2;
+            if (ver.Value < 3)
+            {
+                // 3: levelled ground is drawn by default. It was off, so a false in the file is
+                // taken as "never chosen" - there is no way to tell that from a deliberate one,
+                // which is why it says so in the log.
+                if (!_cfgShowCleared.Value)
+                {
+                    _cfgShowCleared.Value = true;
+                    Logger.LogInfo("Levelled ground is now drawn by default (ShowClearedGround = true). Set it back to false for a map of only what you painted and built.");
+                }
+            }
+            ver.Value = 3;
         }
 
         // ------------------------------------------------------------------
