@@ -254,11 +254,36 @@ namespace LivingMap
 
         private string HeightStatus()
         {
-            if (!HeightsWanted) return "map heights: the generator's own";
+            if (!HeightsWanted) return "map heights: the generator's own" + HereText();
             if (_heightUnavailable) return "map heights: unavailable";
-            if (_heightTex == null) return "map heights: nothing raised or cut yet";
-            return string.Format("map heights: {0} pixels of ground the players changed, {1:0.0} MB",
-                _heightApplied.Count, _texSize * (double)_texSize * 4 / (1024 * 1024));
+            if (_heightTex == null) return "map heights: nothing raised or cut yet" + HereText();
+            return string.Format("map heights: {0} pixels of ground the players changed, {1:0.0} MB{2}",
+                _heightApplied.Count, _texSize * (double)_texSize * 4 / (1024 * 1024), HereText());
+        }
+
+        // What the map shader is told about the ground under your feet: the generator's height,
+        // what the players' digging adds to it, and which side of the water line that puts it.
+        // One line settles "why is my causeway still water" without guessing.
+        private string HereText()
+        {
+            try
+            {
+                if (Player.m_localPlayer == null) return "";
+                int idx;
+                if (!WorldToIndex(Player.m_localPlayer.transform.position, out idx)) return "";
+                Texture2D src = VanillaHeightTexture();
+                if (src == null) return "";
+                float gen = src.GetPixel(idx % _texSize, idx / _texSize).r;
+                float add;
+                _heightApplied.TryGetValue(idx, out add);
+                float shown = gen + add;
+                return string.Format("; under you: pixel {0},{1} - generator {2:0.0} m{3}, the map sees {4} (water below {5:0.0} m)",
+                    idx % _texSize, idx / _texSize, gen,
+                    add == 0f ? "" : string.Format(" {0}{1:0.0} m from digging", add > 0f ? "+" : "", add),
+                    shown < WaterHidesBelow ? "water" : shown >= HighGroundFrom ? "rock" : "ground",
+                    WaterHidesBelow);
+            }
+            catch { return ""; }
         }
     }
 }
