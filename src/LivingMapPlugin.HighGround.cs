@@ -317,7 +317,10 @@ namespace LivingMap
 
         private Color Over(Color c)
         {
-            return new Color(c.r, c.g, c.b, 1f);
+            // Its own alpha, and the same amount off the colour as the map layer takes off a
+            // flat piece: there is no paper under this and no styling over it, so the plain
+            // colour flashes brighter than the same building standing on land a pixel away.
+            return new Color(c.r * FlatPieceDamp, c.g * FlatPieceDamp, c.b * FlatPieceDamp, c.a);
         }
 
         // the shape's own ground: water is drawn solid, high ground softened
