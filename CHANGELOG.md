@@ -1,4 +1,4 @@
-# Changelog
+﻿# Changelog
 
 The version is set in one place — `LivingMapPlugin.Version` in `src/LivingMapPlugin.cs`.
 
@@ -8,35 +8,32 @@ The version is set in one place — `LivingMapPlugin.Version` in `src/LivingMapP
   everything it has already drawn, so a road under a canopy was hidden whatever colour it was
   given - reported from a dirt road in the Black Forest. Where there is enough road in a map
   pixel, the forest pattern is now taken off it, on the zoomed-out map, the minimap and the
-  detailed map alike. Where a road was laid the trees are gone anyway.
+  detailed map alike. Where a road was laid the trees are gone anyway. Ground that was only
+  levelled is not a road and keeps its forest: that is the cleared-forest layer's business.
 - **`PathWidthMeters`** (0 = the road's real width): a road is often one cell across, which at
   6 or 12 metres to a map pixel is a single pixel of line and easy to lose. 4 to 6 makes it a
   line that can be followed. It widens what is drawn, not what is remembered.
-- **Single planted trees, as a dot each** (`ShowPlantedTrees`, **off**). The map draws trees
-  as its own woodland pattern and only ever for a whole map pixel at a time, so a sapling by
-  the house or a line along a road reaches it only once six of them stand in one pixel
-  (`PlantedForestMinTrees`). This marks them with a dot instead, from one tree up
-  (`PlantedTreesMinimum`), in its own colour (`Tree_Planted`). **A sapling counts as a
-  planted tree**: the world generator plants none, so a sapling is always somebody's, and it
-  would be odd to mark the tree by the house only once it had grown. The biome does not come
-  into it either - the map draws no forest in a swamp, but a tree planted there still stands
-  where the map shows none. It is off by default and meant
-  to stay that way for most: dots beside the map's own stamped woods do not look like the
-  rest of the map, and close up the detailed map draws every tree properly anyway. It is
-  here for the zoomed-out map and the minimap, where nothing else can show them at all.
 - **Ground the map hides now includes water.** The layer that draws over the rock pattern of
   high ground does the same under water: the map's shader draws the sea from its own colours
   and never reads what is painted there, and its heights come from the world generator, so
   ground raised above the water is still water to it. A dirt bridge across a lake was on no
-  map but the detailed one; now it is on all of them. The setting keeps its name
-  (`HighGroundOverlay`) and is called *Show what the map hides (mountains, water)*.
-- **Two switches now take effect without loading the world again**: *Levelled ground*
-  (`ShowClearedGround`) and the planted-tree dots. Both change what is *collected*, not only
-  what is drawn - levelled ground is read out of the terrain records, a record is read once
-  per change; the dots are counted while walking the object database, once per pass - so
-  turning either on used to do nothing at all until the next world load. This is what a dirt
-  bridge needs, too: raising ground with the hoe paints nothing, so an unpainted causeway is
-  levelled ground, and that setting is what puts it on the map at all.
+  map but the detailed one; now it is on all of them. Over water it is drawn **solid**, in the
+  colour the map layer itself would have used - on a mountain the layer has the rock to let
+  through and is kept faint, under water there is nothing beneath it - and the layer now keeps
+  **mip levels**, without which the whole map on screen means one texel in eight is sampled
+  and a causeway two texels wide came out as a dotted line of stray pixels. The mips cost a
+  third more memory for that texture. The setting keeps its name (`HighGroundOverlay`) and is
+  called *Show what the map hides (mountains, water)*.
+- **A setting that changes how a layer looks now takes effect at once** - a road width, a
+  colour, an outline, the strength of that overlay. Each layer held what it had been drawn
+  with until something asked it to draw again; with the detailed map off nothing did, so
+  changing the road width did nothing at all, while with the detailed map on it looked as
+  though it worked.
+- **Levelled ground** (`ShowClearedGround`) now appears when the setting is turned on, without
+  loading the world again. It is read out of the terrain records, and a record is read once
+  per change, so switching it on used to do nothing until next time the world loaded. This is
+  what an unpainted dirt bridge needs, too: raising ground with the hoe paints nothing, so a
+  causeway is levelled ground, and that setting is what collects it at all.
 
 ## 0.17.0 — The host's map for its players
 

@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections;
 using System.Collections.Generic;
 using BepInEx.Configuration;
@@ -42,6 +42,7 @@ namespace LivingMap
         private bool _highUnavailable;
         private BitArray _highPixels;                   // map pixels whose ground is that high
         private BitArray _highMist;                     // ... and those the Mistlands mist covers
+        private BitArray _highWater;                    // ... and those the shader draws as sea
         private RawImage _highSmall, _highLarge;
         private Sprite _highCircle;
         private Color _highLight = Color.white;
@@ -49,15 +50,14 @@ namespace LivingMap
         private long _highSig = -1;                     // and what it was: a redraw it does not need is skipped
         private readonly List<PieceRec> _highScratch = new List<PieceRec>();
         private readonly List<long> _highCells = new List<long>();
-        private readonly List<int> _highTrees = new List<int>();        // map pixels with planted trees
 
         private void BindHighGroundConfig()
         {
             _cfgHighOverlay = Config.Bind(SecLayers, "HighGroundOverlay", HighBoth,
-                Ui("Buildings and roads the game's map will not show: above 70 metres it covers the ground with its rock pattern, and over water it draws the sea from its own colours - in both it ignores what the mod paints, so a mountain base or a dirt bridge across a lake is not on the minimap or the zoomed-out map at all. This draws them on top. Close up the detailed map draws it properly anyway, so this is for the other two. Both (default): on the minimap and on the zoomed-out map. Minimap: only there, for anyone who would rather the zoomed-out map stayed exactly the game's own picture. Costs a texture of its own, the same size as the map layer (16 to 256 MB, see Map sharpness), and only from the moment something is built that high - livingmap status says how much.",
+                Ui("Buildings and roads the game's map will not show: above 70 metres it covers the ground with its rock pattern, and over water it draws the sea from its own colours - in both it ignores what the mod paints, so a mountain base or a dirt bridge across a lake is not on the minimap or the zoomed-out map at all. This draws them on top. Close up the detailed map draws it properly anyway, so this is for the other two. Both (default): on the minimap and on the zoomed-out map. Minimap: only there, for anyone who would rather the zoomed-out map stayed exactly the game's own picture. Costs a texture of its own, the same size as the map layer with its mip levels (20 to 340 MB, see Map sharpness), and only from the moment something is built on ground the map hides - livingmap status says how much.",
                     new AcceptableValueList<string>(HighOff, HighMinimap, HighBoth), UiLayers, "Show what the map hides (mountains, water)", 85, false));
             _cfgHighStrength = Config.Bind(SecLayers, "HighGroundStrength", 0.55f,
-                Ui("How strongly those buildings show. The layer is drawn over the map rather than into it, so at full strength its colours are the plain ones, which in daylight on snow is louder than anything the map draws itself. It also lies over the clouds and the fog the map draws for itself, which nothing short of drawing into the map could change, so it is kept low: lower lets the rock show through and settles it into the picture; 1 is the plain colour.",
+                Ui("How strongly this shows **on a mountain**, where the layer lies over the map's rock pattern: at full strength its colours are the plain ones, which in daylight on snow is louder than anything the map draws itself, so it is kept low - lower lets the rock show through and settles it into the picture. Over water it makes no difference: there the map draws plain sea and nothing of ours is under it, so a pier or a causeway is drawn solid, in the colour the map layer itself would have used.",
                     new AcceptableValueRange<float>(0.2f, 1f), UiLayers, "...and how strongly", 84, false));
         }
 
@@ -74,7 +74,7 @@ namespace LivingMap
         // per pixel (512 KB at the vanilla size).
         private void BuildHighPixels()
         {
-            _highPixels = null;
+            _highPixels = null; _highWater = null;
             if (!HighWanted || _mm == null || _texSize <= 0) return;
             try
             {
@@ -94,6 +94,7 @@ namespace LivingMap
                 if (mask != null && (mask.width != _texSize || mask.height != _texSize)) mask = null;
 
                 BitArray high = new BitArray(_texSize * _texSize);
+                BitArray water = new BitArray(_texSize * _texSize);
                 BitArray mist = mask != null ? new BitArray(_texSize * _texSize) : null;
                 const int band = 64;
                 int found = 0, misty = 0;
@@ -112,6 +113,7 @@ namespace LivingMap
                         // detailed one.
                         float m = px[i].r;
                         if (m >= HighGroundFrom || m < WaterHidesBelow) { high[baseIdx + i] = true; found++; }
+                        if (m < WaterHidesBelow) water[baseIdx + i] = true;
                     }
                     if (mist == null) continue;
                     Color[] mk = mask.GetPixels(0, z, _texSize, h);
@@ -119,6 +121,7 @@ namespace LivingMap
                         if (mk[i].g > 0.35f) { mist[baseIdx + i] = true; misty++; }
                 }
                 _highPixels = high;
+                _highWater = water;
                 _highMist = mist;
                 if (_cfgDebug.Value)
                     Logger.LogInfo("Hidden ground: " + found + " map pixels above " + HighGroundFrom + " m or under water (" +
@@ -127,7 +130,7 @@ namespace LivingMap
             }
             catch (Exception e)
             {
-                _highPixels = null; _highMist = null;
+                _highPixels = null; _highWater = null; _highMist = null;
                 _highUnavailable = true;
                 HandleError("high ground pixels", e);
             }
@@ -209,20 +212,7 @@ namespace LivingMap
                 for (int i = 0; i < _highCells.Count; i++) sig = sig * 31 + _highCells[i];
                 sig = sig * 31 + (_cfgOutline.Value ? 1 : 0);
 
-                _highTrees.Clear();
-                if (_cfgShowPlantedTrees != null && _cfgShowPlantedTrees.Value)
-                {
-                    float hf = _texSize * 0.5f;
-                    foreach (int idx in _plantedTrees)
-                    {
-                        if (!IsHighPixel(idx)) continue;
-                        float wx = (idx % _texSize - hf) * _pixelSize, wz = (idx / _texSize - hf) * _pixelSize;
-                        if (IsWorldExplored(explored, exploredOthers, wx, wz)) _highTrees.Add(idx);
-                    }
-                    for (int i = 0; i < _highTrees.Count; i++) sig = sig * 31 + _highTrees[i];
-                }
-
-                if (_highScratch.Count == 0 && _highCells.Count == 0 && _highTrees.Count == 0)
+                if (_highScratch.Count == 0 && _highCells.Count == 0)
                 {
                     _highSig = sig;
                     ReleaseHighLayer();
@@ -230,7 +220,7 @@ namespace LivingMap
                 }
                 if (sig == _highSig && _rtHigh != null && _rtHigh.IsCreated())
                 {
-                    _highScratch.Clear(); _highCells.Clear(); _highTrees.Clear();
+                    _highScratch.Clear(); _highCells.Clear();
                     return;
                 }
                 _highSig = sig;
@@ -261,30 +251,17 @@ namespace LivingMap
                         if (!_terrain.TryGetValue(key, out kind)) continue;
                         float cx = ((int)(key >> 32) + 0.5f) * grid, cz = ((int)(key & 0xFFFFFFFFL) + 0.5f) * grid;
                         EmitQuad(cx - halfGrid, cz - halfGrid, cx + halfGrid, cz + halfGrid,
-                            Solid(TerrainColor(kind)), k, half, h, flip, PathDrawWidth(grid));
-                    }
-
-                    if (_highTrees.Count > 0)
-                    {
-                        Color tc = Solid(_cfgPlantedTreeColor.Value);
-                        float tr = _pixelSize * 0.3f, hf2 = _texSize * 0.5f;
-                        for (int i = 0; i < _highTrees.Count; i++)
-                        {
-                            int idx = _highTrees[i];
-                            float wx = (idx % _texSize - hf2) * _pixelSize, wz = (idx / _texSize - hf2) * _pixelSize;
-                            EmitQuad(wx - tr, wz - tr, wx + tr, wz + tr, tc, k, half, h, flip, 0f);
-                        }
+                            HighColor(TerrainColor(kind), cx, cz), k, half, h, flip, PathDrawWidth(grid));
                     }
 
                     if (_cfgOutline.Value)
                     {
                         float grow = Mathf.Max(0f, _cfgOutlineWidth.Value);
-                        Color oc = Solid(_cfgOutlineColor.Value);
                         for (int i = 0; i < _highScratch.Count; i++)
                         {
                             PieceRec rec = _highScratch[i];
                             EmitQuad(rec.X0 - grow, rec.Z0 - grow, rec.X1 + grow, rec.Z1 + grow,
-                                oc, k, half, h, flip, minPiece + grow * 2f);
+                                HighColor(_cfgOutlineColor.Value, rec.CX, rec.CZ), k, half, h, flip, minPiece + grow * 2f);
                         }
                     }
 
@@ -292,7 +269,7 @@ namespace LivingMap
                     for (int i = 0; i < _highScratch.Count; i++)
                     {
                         PieceRec rec = _highScratch[i];
-                        EmitQuad(rec.X0, rec.Z0, rec.X1, rec.Z1, Solid(MatColor(rec.Mat)), k, half, h, flip, minPiece);
+                        EmitQuad(rec.X0, rec.Z0, rec.X1, rec.Z1, HighColor(MatColor(rec.Mat), rec.CX, rec.CZ), k, half, h, flip, minPiece);
                     }
                 }
                 finally
@@ -302,8 +279,10 @@ namespace LivingMap
                     RenderTexture.active = prev;
                 }
 
+                try { _rtHigh.GenerateMips(); } catch { }
+
                 _highPieceCount = _highScratch.Count; _highCellCount = _highCells.Count;
-                _highScratch.Clear(); _highCells.Clear(); _highTrees.Clear();
+                _highScratch.Clear(); _highCells.Clear();
                 if (_cfgDebug.Value)
                     Logger.LogInfo(string.Format("High-ground layer: {0} pieces, {1} path cells, {2}px, {3:0.0} ms CPU",
                         _highPieceCount, _highCellCount, _rtHigh.width, _sw.Elapsed.TotalMilliseconds));
@@ -322,13 +301,32 @@ namespace LivingMap
         // alpha, while the blend leaves it premultiplied - the shape would come out darker than
         // it is on the map. So everything is drawn solid: a path is its own colour over the rock
         // rather than mixed into it.
-        private static Color Solid(Color c)
+        // Over a mountain this layer lies on top of the rock pattern, and has to let it through
+        // or it reads as a sticker on the picture: muted a fifth towards its own brightness and
+        // drawn at HighGroundStrength. Over water there is nothing to let through - the shader
+        // draws plain sea there and ignores everything else - so the same shape is drawn solid,
+        // in the colour the map layer would have used, and a causeway reads as the ground it is
+        // rather than as a smear. Which is which is baked into the texture's own alpha, so the
+        // image itself is drawn at full strength.
+        private Color Solid(Color c)
         {
-            // a fifth of the way to its own brightness: the map's palette is never this saturated,
-            // and a building here is seen against snow, which shows every bit of it
             const float mute = 0.2f;
             float l = 0.299f * c.r + 0.587f * c.g + 0.114f * c.b;
-            return new Color(c.r + (l - c.r) * mute, c.g + (l - c.g) * mute, c.b + (l - c.b) * mute, 1f);
+            return new Color(c.r + (l - c.r) * mute, c.g + (l - c.g) * mute, c.b + (l - c.b) * mute, HighStrength);
+        }
+
+        private Color Over(Color c)
+        {
+            return new Color(c.r, c.g, c.b, 1f);
+        }
+
+        // the shape's own ground: water is drawn solid, high ground softened
+        private Color HighColor(Color c, float wx, float wz)
+        {
+            int idx;
+            bool water = _highWater != null && WorldToIndex(new Vector3(wx, 0f, wz), out idx) &&
+                         idx < _highWater.Length && _highWater[idx];
+            return water ? Over(c) : Solid(c);       // c is what the map layer would draw there
         }
 
         private bool EnsureHighTexture()
@@ -360,10 +358,16 @@ namespace LivingMap
                 int size = Mathf.Min(_rt.width, 8192);
                 RenderTexture rt = new RenderTexture(size, size, 0, RenderTextureFormat.ARGB32);
                 rt.name = "LivingMap_HighGround";
-                rt.useMipMap = false;
-                rt.autoGenerateMips = false;
+                // With mip levels, and they are what makes this layer bearable zoomed out: the
+                // whole map on screen is one texel in eight of this texture, and without them the
+                // card picks that one texel and drops the other sixty-three - a causeway two
+                // texels wide came out as a dotted line of stray pixels. The mips average instead,
+                // so a thin thing fades rather than breaks up. They cost a third more memory.
+                rt.useMipMap = true;
+                rt.autoGenerateMips = false;         // generated once per rebuild, not per draw
                 // Point, not the map layer's smoothing: what is drawn here are shapes with
                 // edges, and under magnification smoothing turns a building into a soft patch.
+                // Point still picks a mip level, so this is crisp close up and quiet far out.
                 rt.filterMode = FilterMode.Point;
                 rt.anisoLevel = 0;
                 rt.wrapMode = _rt.wrapMode;
@@ -406,7 +410,7 @@ namespace LivingMap
             if (_glMatHigh != null) { try { UnityEngine.Object.Destroy(_glMatHigh); } catch { } _glMatHigh = null; }
             DestroyHighImage(ref _highSmall);
             DestroyHighImage(ref _highLarge);
-            _highPixels = null; _highMist = null;
+            _highPixels = null; _highWater = null; _highMist = null;
             _highScratch.Clear();
         }
 
@@ -457,7 +461,7 @@ namespace LivingMap
         private Color HighLight()
         {
             Material m = _mm != null && _mm.m_mapImageSmall != null ? _mm.m_mapImageSmall.material : null;
-            if (m == null) return new Color(1f, 1f, 1f, HighStrength);
+            if (m == null) return Color.white;
             try
             {
                 if (!m.HasProperty("_lightColor") || !m.HasProperty("_ambientLightColor")) return Color.white;
@@ -473,10 +477,10 @@ namespace LivingMap
                     Mathf.Clamp01(diff * lt.g * sun.g + amb.g * ambG.g),
                     Mathf.Clamp01(diff * lt.b * sun.b + amb.b * ambG.b), 1f);
                 Color g = lit.gamma;                                             // the UI multiplies in gamma space
-                g.a = HighStrength;                                              // ... and blends the layer by its alpha
+                g.a = 1f;                                                        // the strength is in the texture's own alpha
                 return g;
             }
-            catch { return new Color(1f, 1f, 1f, HighStrength); }
+            catch { return Color.white; }
         }
 
         private void ShowHigh(ref RawImage img, RawImage map, bool round)
@@ -587,7 +591,7 @@ namespace LivingMap
             if (_rtHigh == null) return "hidden-ground overlay on, nothing on ground the map hides";
             return string.Format("hidden-ground overlay {0}: {1} pieces, {2} path cells at {3}px ({4:0} MB)",
                 HighMode.ToLowerInvariant(), _highPieceCount, _highCellCount, _rtHigh.width,
-                _rtHigh.width * (double)_rtHigh.height * 4 / (1024 * 1024));
+                _rtHigh.width * (double)_rtHigh.height * 4 * 4 / 3 / (1024 * 1024));
         }
     }
 }

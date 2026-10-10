@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections;
 using System.Collections.Generic;
 using System.IO;
@@ -27,8 +27,7 @@ namespace LivingMap
         private readonly List<PieceRec> _groupScratch = new List<PieceRec>();
         private readonly List<PieceRec> _fillScratch = new List<PieceRec>();
         private int _rtIncrements;
-        private bool _drawnBuildings, _drawnPaths, _drawnOutline;   // layer switches at the last full rebuild
-        private bool _collectedCleared, _collectedDots;             // ... and the two that change what is collected
+        private bool _collectedCleared;                             // ... and the one that changes what is collected
         private const int MaxIncrementalPieces = 1500;    // beyond this a full rebuild is the cheaper option
         private const float MapRebuildInterval = 0.5f;    // seconds between texture updates after something changed
         private float _nextRtRebuild;
@@ -221,9 +220,6 @@ namespace LivingMap
                 // everything is drawn from scratch, so nothing is pending any more
                 _addPieces.Clear(); _addTerrain.Clear();
                 _fogPieces.Clear(); _fogTerrain.Clear();
-                _drawnBuildings = _cfgShowBuildings.Value;
-                _drawnPaths = _cfgShowPaths.Value;
-                _drawnOutline = _cfgOutline.Value;
 
                 BitArray explored = null, exploredOthers = null;
                 if (_cfgRespectFog.Value)
@@ -261,8 +257,6 @@ namespace LivingMap
                         quads++;
                     }
                 }
-
-                DrawPlantedTrees(explored, exploredOthers, k, half, h, flip);
 
                 if (_cfgShowBuildings.Value && _pieces.Count > 0)
                 {
@@ -468,23 +462,6 @@ namespace LivingMap
                 quads++;
             }
             return quads;
-        }
-
-        // A dot per map pixel where trees stand that the map's own woodland pattern does not
-        // know about. The map cannot draw a tree - its forest is a pattern it stamps over whole
-        // pixels - so this is the only way a planted sapling reaches the zoomed-out map and the
-        // minimap at all, and the reason the layer is off unless asked for.
-        private void DrawPlantedTrees(BitArray explored, BitArray exploredOthers, float k, float half, int h, bool flip)
-        {
-            if (_cfgShowPlantedTrees == null || !_cfgShowPlantedTrees.Value || _plantedTrees.Count == 0) return;
-            Color c = _cfgPlantedTreeColor.Value;
-            float r = _pixelSize * 0.3f;                 // a dot inside the pixel, not the whole of it
-            foreach (int idx in _plantedTrees)
-            {
-                float wx = (idx % _texSize - half) * _pixelSize, wz = (idx / _texSize - half) * _pixelSize;
-                if (!IsWorldExplored(explored, exploredOthers, wx, wz)) continue;
-                EmitQuad(wx - r, wz - r, wx + r, wz + r, c, k, half, h, flip, 0f);
-            }
         }
 
         private static readonly Comparison<PieceRec> ByTop = delegate(PieceRec a, PieceRec b) { return a.Y.CompareTo(b.Y); };

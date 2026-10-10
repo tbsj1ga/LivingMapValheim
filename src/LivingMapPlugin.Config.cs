@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections;
 using System.Collections.Generic;
 using System.IO;
@@ -25,9 +25,6 @@ namespace LivingMap
         private ConfigEntry<bool> _cfgShowPaths;
         private ConfigEntry<bool> _cfgShowCleared;
         private ConfigEntry<float> _cfgPathWidth;
-        private ConfigEntry<bool> _cfgShowPlantedTrees;
-        private ConfigEntry<int> _cfgPlantedTreesMin;
-        private ConfigEntry<Color> _cfgPlantedTreeColor;
         private ConfigEntry<bool> _cfgPathsClearForest;
         private ConfigEntry<bool> _cfgShowForest;
         private ConfigEntry<float> _cfgForestRadius;
@@ -118,11 +115,6 @@ namespace LivingMap
                     new AcceptableValueRange<float>(0f, 12f), UiLayers, "Road width (m)", 83, false));
             _cfgPathsClearForest = Config.Bind(SecLayers, "PathsClearForest", true,
                 Ui("Where a road runs through forest, stop drawing the forest pattern over it. The map draws its trees on top of everything, so a road under them is hidden whatever colour it is - and where a road was laid the trees are gone anyway.", UiLayers, "Roads show through the forest", 82, false));
-            _cfgShowPlantedTrees = Config.Bind(SecLayers, "ShowPlantedTrees", false,
-                Ui("Mark single trees that stand where the map shows no forest - a sapling by the house, a line along a road - with a dot each. Off by default, and deliberately: the map draws trees as its own woodland pattern and can only do so for a whole map pixel at a time, so a few dots next to it look like something else entirely. Close up the detailed map draws every tree properly anyway; this is for the zoomed-out map and the minimap, where nothing else can show them.", UiLayers, "Planted trees as dots", 74, false));
-            _cfgPlantedTreesMin = Config.Bind(SecLayers, "PlantedTreesMinimum", 1,
-                Ui("How many trees have to stand in a map pixel (12 x 12 m) before it gets a dot. 1 marks a single tree; raise it if the dots appear where the game's own forest should have been.",
-                    new AcceptableValueRange<int>(1, 10), UiLayers, "...from how many trees", 73, false));
             _cfgShowCleared = Config.Bind(SecLayers, "ShowClearedGround", false,
                 Ui("Also mark ground that was only levelled or raised, not painted. Covers everything you have terraformed, so it paints wide areas.", UiLayers, "Levelled ground", 60, false));
             _cfgForestRadius = Config.Bind(SecLayers, "ClearedForestRadius", 12f,
@@ -200,8 +192,6 @@ namespace LivingMap
                 Ui("Colour of paving.", UiColours, "Paving", 78, false));
             _cfgDirtColor = Config.Bind(SecColors, "Terrain_DirtPath", new Color(0.42f, 0.36f, 0.30f, 0.8f),
                 Ui("Colour of dirt paths.", UiColours, "Dirt paths", 77, false));
-            _cfgPlantedTreeColor = Config.Bind(SecColors, "Tree_Planted", new Color(0.33f, 0.46f, 0.30f, 1f),
-                Ui("Colour of the dots for planted trees, when they are shown.", UiColours, "Planted trees", 74, false));
             _cfgClearedColor = Config.Bind(SecColors, "Terrain_Cleared", new Color(0.50f, 0.47f, 0.36f, 0.5f),
                 Ui("Colour of levelled ground (when it is shown).", UiColours, "Levelled ground", 76, false));
             _cfgOutlineColor = Config.Bind(SecColors, "Building_Outline", new Color(0.10f, 0.07f, 0.04f, 0.85f),

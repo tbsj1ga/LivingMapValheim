@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections;
 using System.Collections.Generic;
 using System.IO;
@@ -17,7 +17,6 @@ namespace LivingMap
         {
             public bool IsPiece;
             public bool IsTree;
-            public bool IsSapling;        // a planted tree that has not grown yet
             public bool IsTerrain;        // the _TerrainCompiler record of a zone
             public byte Mat;
             public Vector3 Min, Max;      // prefab-local AABB of its "piece"-layer colliders
@@ -135,7 +134,6 @@ namespace LivingMap
             {
                 Array.Clear(_treeCount, 0, _treeCount.Length);
                 _outsideCounts.Clear();
-                _dotCounts.Clear();
             }
 
             _zdoCursor = 0;
@@ -174,32 +172,17 @@ namespace LivingMap
                 if (UseZdoPaths && _cfgShowPaths.Value) _tcZdos.Add(zdo);
                 return;
             }
-            if (info.IsTree || info.IsSapling)
+            if (info.IsTree)
             {
                 int tidx;
-                if (_treeCount != null && _forestMask != null && WorldToIndex(zdo.GetPosition(), out tidx))
+                if (_treeCount != null && WorldToIndex(zdo.GetPosition(), out tidx))
                 {
-                    // the map shows this pixel bare: its own mask has no forest there, or we took
-                    // the forest off it because the wood was felled
-                    bool bare = !_forestMask[tidx] || _clearedForest.Contains(tidx);
-                    if (info.IsTree)
-                    {
-                        if (_treeCount[tidx] < 255) _treeCount[tidx]++;
-                        if (_cfgShowPlanted.Value && !_forestMask[tidx] && PixelCanHoldForest(tidx))
-                        {
-                            int c;
-                            _outsideCounts.TryGetValue(tidx, out c);
-                            _outsideCounts[tidx] = c + 1;
-                        }
-                    }
-                    // A dot is not the woodland pattern, so the biome does not come into it: the
-                    // map draws no forest in a swamp, but a tree planted there is still a tree
-                    // standing where the map shows none.
-                    if (DotsWanted && bare)
+                    if (_treeCount[tidx] < 255) _treeCount[tidx]++;
+                    if (_cfgShowPlanted.Value && !_forestMask[tidx] && PixelCanHoldForest(tidx))
                     {
                         int c;
-                        _dotCounts.TryGetValue(tidx, out c);
-                        _dotCounts[tidx] = c + 1;
+                        _outsideCounts.TryGetValue(tidx, out c);
+                        _outsideCounts[tidx] = c + 1;
                     }
                 }
                 return;
@@ -282,14 +265,6 @@ namespace LivingMap
             if (prefab.GetComponent<TerrainComp>() != null)
             {
                 info.IsTerrain = true;
-                return info;
-            }
-            // A sapling is placed like a build piece, and carries one, so it has to be asked
-            // about before the piece test - which would throw it away as a thing with no
-            // collider on the piece layer.
-            if (IsSaplingPrefab(prefab))
-            {
-                info.IsSapling = true;
                 return info;
             }
             if (prefab.GetComponent<Piece>() == null)

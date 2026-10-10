@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections;
 using System.Collections.Generic;
 using System.IO;
@@ -188,13 +188,6 @@ namespace LivingMap
                 _nextScanTime = 0f;
                 Logger.LogInfo("Levelled ground turned " + (_collectedCleared ? "on" : "off") + ": the terrain records are read again.");
             }
-            if (DotsWanted != _collectedDots)
-            {
-                _collectedDots = DotsWanted;
-                ResetZdoPass();
-                _nextZdoPass = 0f;
-            }
-
             if (UseZdoScan && (_cfgShowBuildings.Value || _treeCount != null || (UseZdoPaths && _cfgShowPaths.Value))) StepZdoScan(now, pos);
 
             if (now >= _nextRefogTime && (_fogPieces.Count > 0 || _fogTerrain.Count > 0 || _fogForest.Count > 0))
@@ -208,8 +201,7 @@ namespace LivingMap
             {
                 if (!_rt.IsCreated()) _rtDirty = true;      // contents lost, e.g. after alt-tab
                 if (_rtMask != null && !_rtMask.IsCreated()) _maskDirty = true;
-                if (_cfgShowBuildings.Value != _drawnBuildings || _cfgShowPaths.Value != _drawnPaths || _cfgOutline.Value != _drawnOutline)
-                    _rtDirty = true;                        // a layer switch flipped: only a rebuild can honour it
+                WatchDrawSettings(now);
                 if (!Mathf.Approximately(_paletteApplied, PaletteStrength))
                 {                                           // the palette was turned: every layer holds the old one
                     _paletteApplied = PaletteStrength;
@@ -322,7 +314,6 @@ namespace LivingMap
             _nextScanTime = 0f; _lastScanTime = 0f;
             _nextSaveTime = Time.realtimeSinceStartup + SaveInterval;
             _collectedCleared = _cfgShowCleared.Value;
-            _collectedDots = DotsWanted;
             _ready = true;
 
             Logger.LogInfo(string.Format(
@@ -431,6 +422,54 @@ namespace LivingMap
         // cell is not: the threshold is about sixteen square metres of painted ground, so a road
         // crossing the pixel counts and a corner of a field does not.
         private readonly HashSet<int> _pathForest = new HashSet<int>();
+
+        // Everything that changes only how a layer looks: a width, a colour, a switch. A layer
+        // holds what it was drawn with until something asks it to draw again, and with the
+        // detailed map off nothing else asks - which is how a road width could be changed in the
+        // settings window with no effect at all, while with the detailed map on it worked. Four
+        // times a second, which is nothing: these are a few dozen values in memory.
+        private long _drawSig = -1, _maskCfgSig = -1;
+        private float _nextSigCheck;
+
+        private void WatchDrawSettings(float now)
+        {
+            if (now < _nextSigCheck) return;
+            _nextSigCheck = now + 0.25f;
+
+            long d = 17;
+            d = d * 31 + (_cfgShowBuildings.Value ? 1 : 0);
+            d = d * 31 + (_cfgShowPaths.Value ? 1 : 0);
+            d = d * 31 + (_cfgShowCleared.Value ? 1 : 0);
+            d = d * 31 + (_cfgOutline.Value ? 1 : 0);
+            d = d * 31 + (_cfgRespectFog.Value ? 1 : 0);
+            d = d * 31 + _cfgOutlineWidth.Value.GetHashCode();
+            d = d * 31 + _cfgPieceSize.Value.GetHashCode();
+            d = d * 31 + _cfgPathWidth.Value.GetHashCode();
+            d = d * 31 + _cfgHighStrength.Value.GetHashCode();
+            d = d * 31 + _cfgDirtColor.Value.GetHashCode();
+            d = d * 31 + _cfgPavedColor.Value.GetHashCode();
+            d = d * 31 + _cfgCultivatedColor.Value.GetHashCode();
+            d = d * 31 + _cfgClearedColor.Value.GetHashCode();
+            d = d * 31 + _cfgOutlineColor.Value.GetHashCode();
+            for (int i = 0; i < _cfgMatColor.Length; i++) d = d * 31 + _cfgMatColor[i].Value.GetHashCode();
+            if (d != _drawSig)
+            {
+                if (_drawSig != -1) { _rtDirty = true; _highDirty = true; _highSig = -1; }
+                _drawSig = d;
+            }
+
+            long m = 17;
+            m = m * 31 + (_cfgPathsClearForest.Value ? 1 : 0);
+            m = m * 31 + (_cfgShowForest.Value ? 1 : 0);
+            m = m * 31 + (_cfgShowPlanted.Value ? 1 : 0);
+            m = m * 31 + (_cfgShowPaths.Value ? 1 : 0);
+            m = m * 31 + _cfgTerrainGrid.Value.GetHashCode();
+            if (m != _maskCfgSig)
+            {
+                if (_maskCfgSig != -1) _maskDirty = true;
+                _maskCfgSig = m;
+            }
+        }
 
         private void RebuildPathForest()
         {
