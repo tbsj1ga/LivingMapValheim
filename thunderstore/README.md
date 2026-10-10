@@ -6,11 +6,21 @@ changed it.**
 Your bases, roads, fields and the forest you've cut down appear on the map and the minimap,
 right where they are, and update as you keep building.
 
-> ## 🆕 New in 0.17.0: the host's map for its players
+> ## 🆕 New in 0.17.0: your base in the mountains is on the map
 >
-> When you host, **players on your server who have Living Map get your map** - buildings,
-> paths, cleared forest - but **only where their own map is explored**. Nothing new is
-> revealed; a base you rebuilt while they were away just shows as it is now.
+> Above about 95 metres the game's own map covers the ground with its rock pattern, and
+> anything drawn under it was simply gone - a mountain base was not on the map at all.
+> Now it shows: in full when you zoom in, and as a marker layer on the minimap and the
+> zoomed-out map.
+>
+> The map also **opens without a stutter** and fills in faster, and the settings worth
+> knowing are no longer hidden: **Map sharpness** (raise it if buildings look smeared),
+> **Building outline**, **Building colours: brightness**.
+>
+> **Experimental, off by default: the host's map for its players.** When you host, players
+> on your server who have Living Map can get your map - buildings, paths, cleared forest -
+> but **only where their own map is explored**. Nothing new is revealed. The host turns on
+> `ShareWithPlayers`, the player turns on `UseHostMap`.
 >
 > ## New in 0.16.0: the detailed map (experimental)
 >
@@ -59,8 +69,14 @@ right where they are, and update as you keep building.
 
 **Performance.** It only works while the big map is open and zoomed in; closed, it costs
 nothing. Until a part of the map is ready you see the normal map there, so a slower
-computer shows the detail a little later rather than lagging. On a processor with 4
-threads or fewer it uses one background thread and starts closer in.
+computer shows the detail a little later rather than lagging. The background threads it
+uses are chosen from your processor, and they stop the moment you close the map.
+
+**Memory.** The map here is a texture, so it lives on your graphics card: 16 to 256 MB
+depending on **Map sharpness**, which by default is picked from what your card reports
+having - 1 under 3 GB, 2 under 7 GB, 4 above. The mountain layer costs the same again, and
+only from the moment you build above 70 m. `livingmap status` in the console prints exactly
+what is in use.
 
 ## What it doesn't do
 
@@ -111,6 +127,7 @@ command `livingmap status` (F5).
 | [![ExtendedBosses](https://raw.githubusercontent.com/tbsj1ga/ExtendedBossesValheim/main/docs/media/icon-128.png)](https://thunderstore.io/c/valheim/p/j1gA/ExtendedBosses/) | **[ExtendedBosses](https://thunderstore.io/c/valheim/p/j1gA/ExtendedBosses/)** — Raid-style boss fights: phases, adds, nests, shields, marks — built from vanilla parts. |
 | [![HostOwner](https://raw.githubusercontent.com/tbsj1ga/HostOwnerValheim/main/docs/media/icon-128.png)](https://thunderstore.io/c/valheim/p/j1gA/HostOwner/) | **[HostOwner](https://thunderstore.io/c/valheim/p/j1gA/HostOwner/)** — The host takes ownership of stations and bosses near it, so its mods work for everyone. |
 | [![HudLayout](https://raw.githubusercontent.com/tbsj1ga/HudLayoutValheim/main/docs/media/icon-128.png)](https://thunderstore.io/c/valheim/p/j1gA/HudLayout/) | **[HudLayout](https://thunderstore.io/c/valheim/p/j1gA/HudLayout/)** — Move, resize and restyle your HUD with the mouse: bars, food, hotbar, minimap, even other mods' HUD. |
+| [![HealthPulse](https://raw.githubusercontent.com/tbsj1ga/HealthPulseValheim/main/docs/media/icon-128.png)](https://thunderstore.io/c/valheim/p/j1gA/HealthPulse/) | **[HealthPulse](https://thunderstore.io/c/valheim/p/j1gA/HealthPulse/)** — Low health warning: the screen edges pulse red like a heartbeat, faster as your health drops. |
 
 Source, full documentation and the changelog: https://github.com/tbsj1ga/LivingMapValheim
 
