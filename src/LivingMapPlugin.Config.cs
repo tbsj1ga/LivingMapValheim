@@ -159,7 +159,8 @@ namespace LivingMap
             _cfgMatColor = new ConfigEntry<Color>[MatNames.Length];
             Color[] defaults =
             {
-                new Color(0.95f, 0.55f, 0.15f, 1f),
+                new Color(0.72f, 0.42f, 0.14f, 1f),     // wood: the map's shader brightens what it is given,
+                                                        // and the old 0.95, 0.55, 0.15 came out shouting orange
                 new Color(0.72f, 0.74f, 0.80f, 1f),
                 new Color(0.40f, 0.44f, 0.52f, 1f),
                 new Color(0.55f, 0.34f, 0.16f, 1f),
@@ -260,7 +261,18 @@ namespace LivingMap
                     Logger.LogInfo("Levelled ground is now drawn by default (ShowClearedGround = true). Set it back to false for a map of only what you painted and built.");
                 }
             }
-            ver.Value = 3;
+            if (ver.Value < 4)
+            {
+                // 4: wood is drawn darker. The old default was a very saturated orange, which the
+                // map's own brightening pushed further; this is the same hue, a quarter down.
+                Color oldWood = new Color(0.95f, 0.55f, 0.15f, 1f);
+                if (_cfgMatColor.Length > 0 && _cfgMatColor[0].Value == oldWood)
+                {
+                    _cfgMatColor[0].Value = new Color(0.72f, 0.42f, 0.14f, 1f);
+                    Logger.LogInfo("Wooden buildings are drawn a darker wood colour now (Material_Wood). Set it back to F28C26FF for what it was.");
+                }
+            }
+            ver.Value = 4;
         }
 
         // ------------------------------------------------------------------

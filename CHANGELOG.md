@@ -2,6 +2,14 @@
 
 The version is set in one place — `LivingMapPlugin.Version` in `src/LivingMapPlugin.cs`.
 
+## 0.19.2
+
+- **Wooden buildings are drawn in a darker wood** (`Material_Wood`, from `F28C26` to
+  `B86B24`). The old colour was a very saturated orange, and the map's own shader brightens
+  what it is given by about half again, so a timber base shouted off the map in every view.
+  Same hue, a quarter down. A config that still holds the old default is moved to the new one
+  and told so in the log; a colour you chose yourself is left alone.
+
 ## 0.19.1
 
 - **A tree is a tree even when a mod lets you build with it.** Reported with More Vanilla
