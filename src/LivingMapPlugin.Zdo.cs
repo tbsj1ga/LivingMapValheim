@@ -25,14 +25,21 @@ namespace LivingMap
             public Vector3 RoofN;         // prefab-local normal of its slope (up for a ridge or a flat one)
         }
 
-        private FieldInfo _fiObjectsByID;
         private int _zdoPieceLayer = -1;
         private readonly Dictionary<int, PrefabInfo> _prefabCache = new Dictionary<int, PrefabInfo>();
+        // A pass walks the game's own per-sector lists, a whole sector at a time, so a list never
+        // changes under the walk. 0.19.2 and earlier copied the entire id table into a snapshot first: over a
+        // million ZDOs in a big world, a 30 ms hitch at the start of every pass. When the biome
+        // budget stops a frame inside a sector, the rest of that sector is copied here and
+        // finished first next frame.
+        private List<ZDO>[] _zdoSectors;
+        private int _zdoSectorCursor;
         private readonly List<ZDO> _zdoSnapshot = new List<ZDO>();
+        private int _zdoSnapshotCursor;
         private readonly Dictionary<int, List<PieceRec>> _zdoBuckets = new Dictionary<int, List<PieceRec>>();
         private readonly Stack<List<PieceRec>> _listPool = new Stack<List<PieceRec>>();
         private readonly List<int> _removeScratch = new List<int>();
-        private int _zdoCursor = -1;            // index into the snapshot, -1 = no pass running
+        private int _zdoCursor = -1;            // 0 while a pass walks the sectors, -1 = no pass running
         private float _nextZdoPass;
         private Vector3 _zdoPassOrigin, _zdoPrevOrigin;
         private bool _zdoHavePrevOrigin;
@@ -60,7 +67,7 @@ namespace LivingMap
         {
             get
             {
-                return !_zdoDisabled && _fiObjectsByID != null &&
+                return !_zdoDisabled && _fiObjectsBySector != null &&
                        string.Equals(_cfgScanSource.Value, "ZDO", StringComparison.OrdinalIgnoreCase);
             }
         }
@@ -82,14 +89,11 @@ namespace LivingMap
                 if (_zdoCursor >= 0)
                 {
                     _sw.Restart();
-                    int end = Mathf.Min(_zdoSnapshot.Count, _zdoCursor + Mathf.Clamp(_cfgZdoPerFrame.Value, 500, 50000));
-                    _biomeLookupsThisFrame = 0;
-                    for (; _zdoCursor < end && _biomeLookupsThisFrame < BiomeLookupsPerFrame; _zdoCursor++)
-                        ExamineZdo(_zdoSnapshot[_zdoCursor]);
+                    bool done = StepZdoSectors(Mathf.Clamp(_cfgZdoPerFrame.Value, 500, 50000));
                     _zdoPassFrames++;
                     _zdoPassMs += _sw.Elapsed.TotalMilliseconds;
 
-                    if (_zdoCursor >= _zdoSnapshot.Count)
+                    if (done)
                     {
                         FinishZdoPass();                    // may queue the forest check and the terrain records as further phases
                         if (_forestCursor < 0 && _tcCursor < 0) _nextZdoPass = now + _cfgZdoInterval.Value;
@@ -122,14 +126,12 @@ namespace LivingMap
             ZDOMan man = ZDOMan.instance;
             if (man == null || ZNetScene.instance == null || ZNet.instance == null) return false;
 
-            Dictionary<ZDOID, ZDO> all = _fiObjectsByID.GetValue(man) as Dictionary<ZDOID, ZDO>;
-            if (all == null) throw new InvalidOperationException("ZDOMan.m_objectsByID is null");
+            List<ZDO>[] sectors = _fiObjectsBySector.GetValue(man) as List<ZDO>[];
+            if (sectors == null) throw new InvalidOperationException("ZDOMan.m_objectsBySector is null");
 
             ResetZdoPass();
-
-            // a snapshot of the references: the dictionary changes while we walk it over several frames
-            if (_zdoSnapshot.Capacity < all.Count) _zdoSnapshot.Capacity = all.Count;
-            foreach (ZDO zdo in all.Values) _zdoSnapshot.Add(zdo);
+            _zdoSectors = sectors;
+            _zdoSectorCursor = 0;
 
             if (_treeCount != null)
             {
@@ -153,10 +155,47 @@ namespace LivingMap
             _forestCursor = -1;
             _tcCursor = -1;
             _tcZdos.Clear();
+            _zdoSectors = null;
             _zdoSnapshot.Clear();
+            _zdoSnapshotCursor = 0;
             foreach (KeyValuePair<int, List<PieceRec>> kv in _zdoBuckets) ReturnList(kv.Value);
             _zdoBuckets.Clear();
             _removeScratch.Clear();
+        }
+
+        // One frame of a pass; true when the whole world has been walked.
+        private bool StepZdoSectors(int budget)
+        {
+            // the game rebuilt its sectors (a new world): this pass has nothing valid left to walk
+            if (!ReferenceEquals(_fiObjectsBySector.GetValue(ZDOMan.instance), _zdoSectors))
+                throw new InvalidOperationException("ZDOMan.m_objectsBySector was replaced during a pass");
+            _biomeLookupsThisFrame = 0;
+            for (; _zdoSnapshotCursor < _zdoSnapshot.Count; _zdoSnapshotCursor++, budget--)
+            {
+                if (budget <= 0 || _biomeLookupsThisFrame >= BiomeLookupsPerFrame) return false;
+                ExamineZdo(_zdoSnapshot[_zdoSnapshotCursor]);
+            }
+            _zdoSnapshot.Clear();
+            _zdoSnapshotCursor = 0;
+            while (_zdoSectorCursor < _zdoSectors.Length)
+            {
+                if (budget <= 0 || _biomeLookupsThisFrame >= BiomeLookupsPerFrame) return false;
+                List<ZDO> sector = _zdoSectors[_zdoSectorCursor++];
+                budget--;
+                if (sector == null) continue;
+                int n = sector.Count;
+                for (int i = 0; i < n; i++)
+                {
+                    if (_biomeLookupsThisFrame >= BiomeLookupsPerFrame)
+                    {
+                        for (; i < n; i++) _zdoSnapshot.Add(sector[i]);
+                        return false;
+                    }
+                    ExamineZdo(sector[i]);
+                }
+                budget -= n;
+            }
+            return true;
         }
 
         private void ExamineZdo(ZDO zdo)
@@ -492,7 +531,9 @@ namespace LivingMap
                 replaced++;
             }
             _zdoBuckets.Clear();       // its lists now live in _pieces or went back to the pool
+            _zdoSectors = null;
             _zdoSnapshot.Clear();
+            _zdoSnapshotCursor = 0;
             _zdoCursor = -1;
 
             int forestZones = 0;

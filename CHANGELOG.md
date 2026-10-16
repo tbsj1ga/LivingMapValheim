@@ -10,6 +10,11 @@ The version is set in one place — `LivingMapPlugin.Version` in `src/LivingMapP
   Same hue, a quarter down. A config that still holds the old default is moved to the new one
   and told so in the log; a colour you chose yourself is left alone.
 
+- **No more 30 ms hitch every few seconds.** Each ZDO pass started by copying the game's
+  whole object table into a list in one frame; in a big world (over a million objects) that
+  stalled a frame every `ZdoScanInterval` seconds. The pass now walks the game's own
+  per-sector lists, a slice per frame, with nothing copied. The map is drawn the same.
+
 ## 0.19.1
 
 - **A tree is a tree even when a mod lets you build with it.** Reported with More Vanilla

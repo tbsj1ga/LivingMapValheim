@@ -84,11 +84,11 @@ namespace LivingMap
                 _pieceLayerMask = LayerMask.GetMask("piece");
                 _zdoPieceLayer = LayerMask.NameToLayer("piece");
 
-                FieldInfo fiObjects = typeof(ZDOMan).GetField("m_objectsByID", BindingFlags.Instance | BindingFlags.NonPublic | BindingFlags.Public);
-                if (fiObjects != null && typeof(Dictionary<ZDOID, ZDO>).IsAssignableFrom(fiObjects.FieldType))
-                    _fiObjectsByID = fiObjects;
+                FieldInfo fiSectors = typeof(ZDOMan).GetField("m_objectsBySector", BindingFlags.Instance | BindingFlags.NonPublic | BindingFlags.Public);
+                if (fiSectors != null && typeof(List<ZDO>[]).IsAssignableFrom(fiSectors.FieldType))
+                    _fiObjectsBySector = fiSectors;
                 else
-                    Logger.LogWarning("ZDOMan.m_objectsByID was not found or has an unexpected type; build pieces will be scanned through physics instead.");
+                    Logger.LogWarning("ZDOMan.m_objectsBySector was not found or has an unexpected type; build pieces will be scanned through physics instead.");
 
                 FieldInfo fiZones = typeof(ZoneSystem).GetField("m_generatedZones", BindingFlags.Instance | BindingFlags.NonPublic | BindingFlags.Public);
                 if (fiZones != null && typeof(HashSet<Vector2s>).IsAssignableFrom(fiZones.FieldType))
