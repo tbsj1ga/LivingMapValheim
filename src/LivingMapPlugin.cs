@@ -89,6 +89,12 @@ namespace LivingMap
                     _fiObjectsBySector = fiSectors;
                 else
                     Logger.LogWarning("ZDOMan.m_objectsBySector was not found or has an unexpected type; build pieces will be scanned through physics instead.");
+                // portals are kept out of the sectors, in a table of their own
+                _fiPortalObjects = typeof(ZDOMan).GetField("m_portalObjects", BindingFlags.Instance | BindingFlags.NonPublic | BindingFlags.Public);
+                if (_fiPortalObjects != null && !typeof(IDictionary).IsAssignableFrom(_fiPortalObjects.FieldType))
+                    _fiPortalObjects = null;
+                if (_fiPortalObjects == null)
+                    Logger.LogWarning("ZDOMan.m_portalObjects was not found; portals may be missing from the map.");
 
                 FieldInfo fiZones = typeof(ZoneSystem).GetField("m_generatedZones", BindingFlags.Instance | BindingFlags.NonPublic | BindingFlags.Public);
                 if (fiZones != null && typeof(HashSet<Vector2s>).IsAssignableFrom(fiZones.FieldType))

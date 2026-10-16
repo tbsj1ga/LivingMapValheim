@@ -33,6 +33,9 @@ namespace LivingMap
         // budget stops a frame inside a sector, the rest of that sector is copied here and
         // finished first next frame.
         private List<ZDO>[] _zdoSectors;
+        private FieldInfo _fiPortalObjects;
+        private readonly HashSet<int> _portalHashes = new HashSet<int>();
+        private readonly HashSet<ZDO> _portalsSeen = new HashSet<ZDO>();
         private int _zdoSectorCursor;
         private readonly List<ZDO> _zdoSnapshot = new List<ZDO>();
         private int _zdoSnapshotCursor;
@@ -132,6 +135,19 @@ namespace LivingMap
             ResetZdoPass();
             _zdoSectors = sectors;
             _zdoSectorCursor = 0;
+            // The game keeps portals out of the sector lists (ZDO.SetSector skips them) and
+            // holds them in a table of their own; a few dozen, so they go in whole. Without
+            // them a pass would count every portal as gone and clear it off the map.
+            _portalHashes.Clear();
+            if (Game.instance != null && Game.instance.PortalPrefabHash != null)
+                foreach (int h in Game.instance.PortalPrefabHash) _portalHashes.Add(h);
+            IDictionary portals = _fiPortalObjects != null ? _fiPortalObjects.GetValue(man) as IDictionary : null;
+            if (portals != null)
+                foreach (object list in portals.Values)
+                {
+                    List<ZDO> l = list as List<ZDO>;
+                    if (l != null) _zdoSnapshot.AddRange(l);
+                }
 
             if (_treeCount != null)
             {
@@ -158,6 +174,7 @@ namespace LivingMap
             _zdoSectors = null;
             _zdoSnapshot.Clear();
             _zdoSnapshotCursor = 0;
+            _portalsSeen.Clear();
             foreach (KeyValuePair<int, List<PieceRec>> kv in _zdoBuckets) ReturnList(kv.Value);
             _zdoBuckets.Clear();
             _removeScratch.Clear();
@@ -166,9 +183,13 @@ namespace LivingMap
         // One frame of a pass; true when the whole world has been walked.
         private bool StepZdoSectors(int budget)
         {
-            // the game rebuilt its sectors (a new world): this pass has nothing valid left to walk
-            if (!ReferenceEquals(_fiObjectsBySector.GetValue(ZDOMan.instance), _zdoSectors))
-                throw new InvalidOperationException("ZDOMan.m_objectsBySector was replaced during a pass");
+            // the world is gone or the game rebuilt its sectors: drop this pass, the next starts afresh
+            ZDOMan man = ZDOMan.instance;
+            if (man == null || !ReferenceEquals(_fiObjectsBySector.GetValue(man), _zdoSectors))
+            {
+                ResetZdoPass();
+                return false;
+            }
             _biomeLookupsThisFrame = 0;
             for (; _zdoSnapshotCursor < _zdoSnapshot.Count; _zdoSnapshotCursor++, budget--)
             {
@@ -228,6 +249,8 @@ namespace LivingMap
                 return;
             }
             if (!info.IsPiece || !_zdoPassPieces) return;
+            // a portal can sit in its own table and in a sector at once (just built): count it once
+            if (_portalHashes.Contains(hash) && !_portalsSeen.Add(zdo)) return;
             // a location's pieces were never placed by anyone
             if (_cfgOnlyPlayerBuilt.Value && zdo.GetLong(ZDOVars.s_creator, 0L) == 0L) return;
 
@@ -534,6 +557,7 @@ namespace LivingMap
             _zdoSectors = null;
             _zdoSnapshot.Clear();
             _zdoSnapshotCursor = 0;
+            _portalsSeen.Clear();
             _zdoCursor = -1;
 
             int forestZones = 0;
